@@ -5,7 +5,7 @@ const fs    = require('fs');
 const https = require('https');
 const { exec } = require('child_process');
 
-const GITHUB_REPO = 'josiahpapovitch/jpmixer';
+const GITHUB_REPO = 'JPMixing-inc/jpmixer';
 
 function checkForUpdates(silent = false) {
   const options = {
