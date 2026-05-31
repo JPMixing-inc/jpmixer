@@ -47,7 +47,14 @@ Go to the [**Releases page**](https://github.com/JPMixing-inc/jpmixer/releases/l
 | macOS (Intel) | `JPMixer-x.x.x.dmg` |
 | Windows | `JPMixer.Setup.x.x.x.exe` |
 
-**First launch on Mac:** Right-click the app → Open → Open (bypasses Gatekeeper for unsigned apps).  
+**First launch on Mac:** If you see "damaged and can't be opened", run this in Terminal after dragging the app to Applications:
+```
+sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
+```
+Then open normally. This is a one-time step for unsigned apps downloaded via Chrome.
+
+Alternatively, download via Safari — it adds a lighter quarantine flag that the standard right-click → Open → Open Anyway bypass works for.
+
 **First launch on Windows:** Click "More info" → "Run anyway" on the SmartScreen prompt.
 
 ---

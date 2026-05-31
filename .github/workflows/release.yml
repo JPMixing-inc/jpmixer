@@ -24,33 +24,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Patch electron-builder PKG cleanup (ENOENT fix)
-        run: |
-          node -e "
-            const fs = require('fs');
-            const p = 'node_modules/app-builder-lib/out/targets/pkg.js';
-            let src = fs.readFileSync(p, 'utf8');
-            const before = 'await Promise.all([(0, promises_1.unlink)(innerPackageFile), (0, promises_1.unlink)(distInfoFile)]);';
-            const after  = 'await Promise.all([(0, promises_1.unlink)(innerPackageFile).catch(e=>{if(e.code!==\"ENOENT\")throw e;}), (0, promises_1.unlink)(distInfoFile).catch(e=>{if(e.code!==\"ENOENT\")throw e;})]);';
-            if (!src.includes(before)) { console.log('Pattern not found — skipping patch'); process.exit(0); }
-            src = src.replace(before, after);
-            fs.writeFileSync(p, src);
-            console.log('Patched pkg.js successfully');
-          "
-
-      - name: Build macOS arm64 (DMG + PKG)
-        run: npx electron-builder --mac --arm64 --publish never
-
-      - name: Build macOS x64 (DMG + PKG)
-        run: npx electron-builder --mac --x64 --publish never
+      - name: Build macOS (DMG)
+        run: npm run build
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mac-artifacts
-          path: |
-            dist/*.dmg
-            dist/*.pkg
+          path: dist/*.dmg
           if-no-files-found: error
 
   build-windows:
@@ -100,7 +81,6 @@ jobs:
         with:
           files: |
             artifacts/mac/*.dmg
-            artifacts/mac/*.pkg
             artifacts/win/*.exe
           draft: false
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
