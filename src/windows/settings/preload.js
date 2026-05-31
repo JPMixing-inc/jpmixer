@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('jpm', {
   onConsoleStatus:        (cb) => ipcRenderer.on('console-status', (_, data) => cb(data)),
   getInstrumentIconPaths: ()   => ipcRenderer.invoke('get-instrument-icon-paths'),
   openMonitor:            ()   => ipcRenderer.invoke('open-monitor'),
+  openConsole:            ()   => ipcRenderer.invoke('open-console'),
   getConnectionCount:     ()   => ipcRenderer.invoke('get-connection-count'),
   onConnectionCount:      (cb) => ipcRenderer.on('connection-count', (_, data) => cb(data))
 });

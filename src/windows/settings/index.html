@@ -28,6 +28,7 @@
     <button class="tab" data-tab="auxes">Auxes</button>
     <button class="tab" data-tab="ipad">iPad OSC</button>
     <button class="tab" data-tab="monitor">Monitor</button>
+    <button class="tab" data-tab="console">Console</button>
     <button class="tab" data-tab="general">General</button>
   </nav>
 
@@ -167,6 +168,34 @@
         <div class="ip-row" style="margin-top:8px">
           <span class="ip-address" id="monitorUrl">—</span>
         </div>
+      </section>
+
+    </div>
+
+    <!-- ── Console tab ── -->
+    <div class="tab-panel" id="tab-console">
+
+      <section class="card">
+        <h2>Console Controller</h2>
+        <div class="sub" style="margin-bottom:16px">A full channel strip view — main faders, mutes, solos, and aux output faders. Open from any browser on the same network, or launch it here.</div>
+        <div class="card-row">
+          <button class="btn btn-primary" id="openConsoleBtn">Open Console View</button>
+          <div class="sub" id="consoleBtnHint">Start the server first to open.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Direct Link</h2>
+        <div class="sub">Anyone on the same network can open the console controller in any browser:</div>
+        <div class="ip-row" style="margin-top:8px">
+          <span class="ip-address" id="consoleUrl">—</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Note</h2>
+        <div class="sub">The Console Controller sends commands directly to the desk — main faders, mutes, and solos affect the console for <strong>everyone</strong> (FOH included). Restrict access to engineers only.</div>
+        <div class="sub" style="margin-top:8px">If faders don't reflect the desk on first load, the OSC addresses for main faders may differ on your console firmware. Check <strong>http://localhost:[port]/api/osc-all</strong> after moving a fader on the desk to verify.</div>
       </section>
 
     </div>

@@ -237,6 +237,17 @@ ipcMain.handle('open-monitor', () => {
   win.loadURL(`http://localhost:${cfg.serverPort}/monitor.html`);
 });
 
+ipcMain.handle('open-console', () => {
+  if (!serverRunning) return { error: 'Server not running' };
+  const cfg = config.getAll();
+  const win = new BrowserWindow({
+    width: 1600, height: 800,
+    title: 'Console Controller — JPMixer',
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+  win.loadURL(`http://localhost:${cfg.serverPort}/console.html`);
+});
+
 ipcMain.handle('get-instrument-icon-paths', () => ({
   dir1: path.join(__dirname, 'assets', 'Icons For instruments', '1-To-70-SVG-Files-MusicalInstrumentsBundle'),
   dir2: path.join(__dirname, 'assets', 'Icons For instruments', '71-To-120-SVG-Files-MusicalInstrumentsBundle'),

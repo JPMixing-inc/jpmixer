@@ -634,8 +634,10 @@ function setStatus(running) {
     ? (localIP ? `http://${localIP}:${port}` : `http://localhost:${port}`)
     : null;
   $('serverUrl').textContent = base || 'Not running';
-  $('monitorUrl').textContent = base ? `${base}/monitor.html` : '— (server not running)';
-$('monitorBtnHint').style.display = running ? 'none' : '';
+  $('monitorUrl').textContent  = base ? `${base}/monitor.html`  : '— (server not running)';
+  $('consoleUrl').textContent  = base ? `${base}/console.html`  : '— (server not running)';
+  $('monitorBtnHint').style.display = running ? 'none' : '';
+  $('consoleBtnHint').style.display = running ? 'none' : '';
   const btn = $('toggleBtn');
   btn.textContent = running ? 'Stop' : 'Start';
   btn.className   = running ? 'btn stop' : 'btn';
@@ -645,6 +647,11 @@ $('monitorBtnHint').style.display = running ? 'none' : '';
 $('openMonitorBtn').addEventListener('click', async () => {
   const result = await window.jpm.openMonitor();
   if (result && result.error) alert('Start the server first, then open the monitor view.');
+});
+
+$('openConsoleBtn').addEventListener('click', async () => {
+  const result = await window.jpm.openConsole();
+  if (result && result.error) alert('Start the server first, then open the console view.');
 });
 
 $('toggleBtn').addEventListener('click', async () => {
