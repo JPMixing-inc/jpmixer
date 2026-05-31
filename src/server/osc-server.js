@@ -509,6 +509,16 @@ function startWebSocketServer() {
           return;
         }
 
+        if (msg.type === 'fire-snapshot') {
+          const addrMap = {
+            prev: '/Snapshots/Fire_Prev_Snapshot',
+            next: '/Snapshots/Fire_Next_Snapshot',
+          };
+          const addr = addrMap[msg.action];
+          if (addr) sendToDesk(addr, [1]);
+          return;
+        }
+
         if (msg.type === 'set-mute') {
           if (!muteState[msg.aux]) muteState[msg.aux] = {};
           muteState[msg.aux][msg.ch] = !!msg.muted;

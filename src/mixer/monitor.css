@@ -104,16 +104,57 @@ html, body {
 }
 
 .aux-col-header {
-  padding: 7px 10px;
+  padding: 5px 8px;
   font-size: 11px;
   font-weight: 800;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-  text-align: center;
   letter-spacing: 0.4px;
   text-transform: uppercase;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
+
+.aux-col-header span { flex: 1; text-align: center; }
+
+.boost-btn {
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.4;
+}
+.boost-btn:hover  { background: rgba(255,255,255,0.25); }
+.boost-btn:active { transform: scale(0.9); }
+
+.snap-btns {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.snap-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.snap-btn:hover  { background: var(--strip); }
+.snap-btn:active { transform: scale(0.9); }
 
 .aux-col-channels {
   flex: 1;

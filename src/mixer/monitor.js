@@ -210,7 +210,18 @@ function buildGrid() {
     const hdr = document.createElement('div');
     hdr.className = 'aux-col-header';
     hdr.style.background = aux.colour || '#444';
-    hdr.textContent = aux.label || `AUX ${aux.channel}`;
+
+    const hdrLabel = document.createElement('span');
+    hdrLabel.textContent = aux.label || `AUX ${aux.channel}`;
+
+    const boostBtn = document.createElement('button');
+    boostBtn.className = 'boost-btn';
+    boostBtn.textContent = '+5';
+    boostBtn.title = 'Boost entire mix +5 dB';
+    boostBtn.addEventListener('click', () => boostAux(aux.channel, 5));
+
+    hdr.appendChild(hdrLabel);
+    hdr.appendChild(boostBtn);
     col.appendChild(hdr);
 
     const chList = document.createElement('div');
@@ -332,9 +343,38 @@ function updateFaderEl(aux, ch, val) {
   });
 }
 
+// ── Boost ─────────────────────────────────────────────────────────────────
+
+function boostAux(auxCh, db) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  for (const ch of chConfig) {
+    if (!ch.enabled) continue;
+    const current  = (levels[auxCh] || {})[ch.channel] || 0;
+    const newDb    = Math.min(10, Math.max(-150, sliderToDb(current) + db));
+    const newSlider = dbToSlider(newDb);
+    if (!levels[auxCh]) levels[auxCh] = {};
+    levels[auxCh][ch.channel] = newSlider;
+    updateFaderEl(auxCh, ch.channel, newSlider);
+    ws.send(JSON.stringify({
+      address: `/Input_Channels/${ch.channel}/Aux_Send/${auxCh}/send_level`,
+      args: [newDb]
+    }));
+  }
+}
+
+// ── Snapshot firing ────────────────────────────────────────────────────────
+
+function fireSnapshot(action) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'fire-snapshot', action }));
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────
 
 connect();
+
+document.getElementById('snapPrevBtn').addEventListener('click', () => fireSnapshot('prev'));
+document.getElementById('snapNextBtn').addEventListener('click', () => fireSnapshot('next'));
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
