@@ -33,13 +33,6 @@
             "arm64",
             "x64"
           ]
-        },
-        {
-          "target": "pkg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
         }
       ]
     },
@@ -58,7 +51,6 @@
     "dmg": {
       "title": "JPMixer ${version}",
       "icon": "assets/icon.icns",
-      "background": "assets/dmg-background.png",
       "window": {
         "width": 660,
         "height": 400
