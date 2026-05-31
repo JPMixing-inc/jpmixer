@@ -130,6 +130,21 @@ function onMessage(json) {
     return;
   }
 
+  if (json.type === 'scene-recalled') {
+    if (json.levels) {
+      for (const [auxStr, auxLevels] of Object.entries(json.levels)) {
+        const aux = parseInt(auxStr);
+        for (const [chStr, sliderVal] of Object.entries(auxLevels)) {
+          const ch = parseInt(chStr);
+          if (!levels[aux]) levels[aux] = {};
+          levels[aux][ch] = sliderVal;
+          updateFaderEl(aux, ch, sliderVal);
+        }
+      }
+    }
+    return;
+  }
+
   if (json.type === 'connection-count') {
     const el = document.getElementById('monDeviceCount');
     el.style.display = json.count > 0 ? '' : 'none';

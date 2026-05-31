@@ -130,21 +130,41 @@ function sliderToDb(v) {
 }
 
 function applySceneForSnapshot(snapshotName) {
-  if (!serverCfg.sceneRecallEnabled) return;
-  const snapshotScenes = scenes.getAll()[snapshotName];
-  if (!snapshotScenes) return;
+  if (!serverCfg.sceneRecallEnabled) {
+    logEvent('scene-skip', `auto-recall disabled — snapshot:"${snapshotName}"`);
+    return;
+  }
+  const allSavedScenes = scenes.getAll();
+  const snapshotScenes = allSavedScenes[snapshotName];
+  if (!snapshotScenes) {
+    logEvent('scene-skip', `no scene saved for snapshot:"${snapshotName}" (saved keys: ${Object.keys(allSavedScenes).join(', ') || 'none'})`);
+    return;
+  }
+
+  logEvent('scene-recall', `applying scene for snapshot:"${snapshotName}"`);
+
+  // levels broadcast to clients: { auxStr: { chStr: sliderVal (0-1) } }
+  const broadcastLevels = {};
 
   for (const [auxStr, values] of Object.entries(snapshotScenes)) {
+    broadcastLevels[auxStr] = {};
     for (const [chStr, sliderVal] of Object.entries(values)) {
-      sendToDesk(
-        `/Input_Channels/${chStr}/Aux_Send/${auxStr}/send_level`,
-        [sliderToDb(sliderVal)]
-      );
+      const address = `/Input_Channels/${chStr}/Aux_Send/${auxStr}/send_level`;
+      const db = sliderToDb(sliderVal);
+      sendToDesk(address, [db]);
+      // Update cache immediately so desk echoes don't race with the broadcast
+      cache.set(address, { address, args: [db] });
+      broadcastLevels[auxStr][chStr] = sliderVal;
+      // If this channel was muted, update premuteState so unmute restores the recalled value
+      if (premuteState[auxStr]?.[chStr] !== undefined) {
+        premuteState[auxStr][chStr] = db;
+      }
     }
   }
 
-  broadcastToClients({ type: 'scene-recalled', snapshot: snapshotName });
-  console.log(`[JPMixer] Scene recalled for snapshot: ${snapshotName}`);
+  // Broadcast levels directly — don't rely on desk echoes which may be
+  // dropped while loaded=false during a session reload
+  broadcastToClients({ type: 'scene-recalled', snapshot: snapshotName, levels: broadcastLevels });
 }
 
 // ── Config builder — sent to every new browser client ─────────────────────
@@ -478,6 +498,7 @@ function startWebSocketServer() {
 
         // Scene commands from browser
         if (msg.type === 'save-scene') {
+          logEvent('scene-save', `snapshot:"${currentSnapshotName}" aux:${msg.aux}`);
           scenes.saveScene(currentSnapshotName, msg.aux, msg.values);
           broadcastToClients({ type: 'scene-saved', snapshot: currentSnapshotName, aux: msg.aux });
           return;

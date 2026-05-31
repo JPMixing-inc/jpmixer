@@ -230,10 +230,19 @@ function onMessage(e) {
   }
 
   if (json.type === 'scene-recalled') {
-    const hasScene = selectedAux !== null &&
-      allScenes[json.snapshot] &&
-      allScenes[json.snapshot][String(selectedAux)];
-    if (hasScene) showToast('Scene recalled: ' + json.snapshot);
+    if (selectedAux !== null && json.levels && json.levels[String(selectedAux)]) {
+      const auxLevels = json.levels[String(selectedAux)];
+      for (const [chStr, sliderVal] of Object.entries(auxLevels)) {
+        const ch = parseInt(chStr);
+        const slider = volumeInputs[ch - 1];
+        if (slider) {
+          slider.value = sliderVal;
+          setFaderVar(slider, sliderVal);
+          updateDb(slider);
+        }
+      }
+      showToast('Scene recalled: ' + json.snapshot);
+    }
     return;
   }
 
