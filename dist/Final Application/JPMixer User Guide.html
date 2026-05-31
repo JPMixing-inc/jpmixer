@@ -495,7 +495,7 @@
       </div>
 
       <h2>Use Port 80 (Optional)</h2>
-      <p>Click <strong>Use Port 80</strong> to install a background service that forwards port 80 to your server port. Musicians can then open the mixer by typing just the IP address with no colon or number — much easier to hand out on the night. This requires an admin password and installs a persistent service that survives reboots. <em>(Mac only — this feature is not currently available on Windows.)</em></p>
+      <p>Click <strong>Use Port 80</strong> to set up port forwarding from port 80 to your server port. Musicians can then open the mixer by typing just the IP address with no colon or number — much easier to hand out on the night. Both Mac and Windows require administrator privileges and the forwarding persists across reboots. On Mac this installs a LaunchDaemon; on Windows it uses <code>netsh portproxy</code> stored in the system registry.</p>
 
       <h2>Auto-Start on Launch</h2>
       <p>In Settings → <strong>General</strong>, enable <strong>Start server automatically on launch</strong>. JPMixer will start the web server and connect to the console as soon as the app opens — no manual click needed.</p>

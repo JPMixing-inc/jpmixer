@@ -231,6 +231,29 @@ ipcMain.handle('get-instrument-icon-paths', () => ({
 }));
 
 ipcMain.handle('setup-port-80', async (_, serverPort) => {
+  if (process.platform === 'win32') {
+    // Windows: netsh portproxy forwards port 80 → server port at the TCP level.
+    // Stored in registry so it survives reboots. Runs elevated via UAC prompt.
+    const scriptPath = path.join(os.tmpdir(), 'jpmixer-port80.ps1');
+    const script = [
+      `netsh interface portproxy delete v4tov4 listenport=80 listenaddress=0.0.0.0 2>$null`,
+      `netsh interface portproxy add v4tov4 listenport=80 listenaddress=0.0.0.0 connectport=${serverPort} connectaddress=127.0.0.1`,
+      `netsh advfirewall firewall delete rule name="JPMixer Port 80" | Out-Null`,
+      `netsh advfirewall firewall add rule name="JPMixer Port 80" protocol=TCP dir=in localport=80 action=allow`
+    ].join('\r\n');
+
+    try { fs.writeFileSync(scriptPath, script, 'utf8'); }
+    catch (e) { return { ok: false, error: e.message }; }
+
+    return new Promise(resolve => {
+      const escaped = scriptPath.replace(/\\/g, '\\\\');
+      exec(
+        `powershell -NoProfile -Command "Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \\"${escaped}\\"' -Verb RunAs -Wait"`,
+        (err, _out, stderr) => resolve({ ok: !err, error: err ? (stderr || err.message) : null })
+      );
+    });
+  }
+
   const proxyScript = '/tmp/jpmixing-proxy.py';
   const plistTmp    = '/tmp/com.jpmixing.port80.plist';
   const setupTmp    = '/tmp/jpmixing-setup.sh';

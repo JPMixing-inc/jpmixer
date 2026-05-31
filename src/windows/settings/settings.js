@@ -658,7 +658,7 @@ $('port80Btn').addEventListener('click', async () => {
     status.textContent = '✓ Active — persists after reboot';
   } else {
     status.className   = 'ip-status err';
-    status.textContent = '✕ Failed — check admin password';
+    status.textContent = '✕ Failed — run as administrator';
   }
 });
 
