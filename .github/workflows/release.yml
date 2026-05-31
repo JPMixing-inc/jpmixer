@@ -30,12 +30,12 @@ jobs:
             const fs = require('fs');
             const p = 'node_modules/app-builder-lib/out/targets/pkg.js';
             let src = fs.readFileSync(p, 'utf8');
-            src = src.replace(
-              /await \(0, fs_extra_1\.unlink\)\(this\.outFile\)/g,
-              'try { await (0, fs_extra_1.unlink)(this.outFile); } catch (_e) { if (_e.code !== \"ENOENT\") throw _e; }'
-            );
+            const before = 'await Promise.all([(0, promises_1.unlink)(innerPackageFile), (0, promises_1.unlink)(distInfoFile)]);';
+            const after  = 'await Promise.all([(0, promises_1.unlink)(innerPackageFile).catch(e=>{if(e.code!==\"ENOENT\")throw e;}), (0, promises_1.unlink)(distInfoFile).catch(e=>{if(e.code!==\"ENOENT\")throw e;})]);';
+            if (!src.includes(before)) { console.log('Pattern not found — skipping patch'); process.exit(0); }
+            src = src.replace(before, after);
             fs.writeFileSync(p, src);
-            console.log('Patched pkg.js');
+            console.log('Patched pkg.js successfully');
           "
 
       - name: Build macOS arm64 (DMG + PKG)
