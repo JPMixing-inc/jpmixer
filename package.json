@@ -6,15 +6,14 @@
   "scripts": {
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
-    "build": "electron-builder --mac",
-    "build:dmg": "electron-builder --mac dmg",
-    "build:win": "electron-builder --win"
+    "build": "electron-builder --mac --publish never",
+    "build:dmg": "electron-builder --mac dmg --publish never",
+    "build:win": "electron-builder --win --publish never"
   },
   "build": {
     "appId": "com.jpmixing.oscmixer",
     "productName": "JPMixer",
     "npmRebuild": false,
-    "publish": "never",
     "files": [
       "main.js",
       "src/**/*",
