@@ -1,0 +1,18 @@
+{
+  "name": "JPMixer",
+  "short_name": "JPMixer",
+  "description": "Live monitor mix controller",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e0f11",
+  "theme_color": "#0e0f11",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

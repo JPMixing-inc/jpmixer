@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JPMixer Settings</title>
+  <link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+
+  <header>
+    <div class="logo"><img src="logo.png" class="brand-logo" alt="JPMixer" /></div>
+    <div class="header-right">
+      <div class="device-count" id="deviceCount" style="display:none">
+        <span class="device-icon">⬡</span>
+        <span id="deviceCountLabel">0 devices</span>
+      </div>
+      <div class="status-pill" id="statusPill">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusLabel">Stopped</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tab-nav">
+    <button class="tab active" data-tab="connection">Connection</button>
+    <button class="tab" data-tab="channels">Channels</button>
+    <button class="tab" data-tab="auxes">Auxes</button>
+    <button class="tab" data-tab="ipad">iPad OSC</button>
+    <button class="tab" data-tab="monitor">Monitor</button>
+    <button class="tab" data-tab="general">General</button>
+  </nav>
+
+  <main>
+
+    <!-- ── Connection tab ── -->
+    <div class="tab-panel active" id="tab-connection">
+
+      <section class="card">
+        <div class="card-row space-between">
+          <div>
+            <div class="label">Web Server</div>
+            <div class="sub" id="serverUrl">Not running</div>
+          </div>
+          <button class="btn" id="toggleBtn">Start</button>
+        </div>
+        <div class="card-row space-between">
+          <div>
+            <div class="label">Console</div>
+            <div class="sub" id="consoleStatusLabel">Not connected</div>
+          </div>
+          <div class="status-pill" id="consolePill">
+            <span class="dot" id="consoleDot"></span>
+            <span id="consolePillLabel">Offline</span>
+          </div>
+        </div>
+        <div class="ip-row">
+          <span class="ip-label">This Mac's IP</span>
+          <span class="ip-address" id="localIp">—</span>
+          <button class="btn btn-sm" id="port80Btn" title="Forward port 80 → server port (requires admin password)">Use Port 80</button>
+          <span class="ip-status" id="port80Status"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Network</h2>
+
+        <div class="field-row">
+          <label for="serverPort">Server Port</label>
+          <input type="number" id="serverPort" min="1024" max="65535" />
+        </div>
+
+        <div class="field-row">
+          <label for="deskIp">Console IP Address</label>
+          <input type="text" id="deskIp" placeholder="192.168.1.100" />
+        </div>
+
+        <div class="field-row two-col">
+          <div>
+            <label for="deskSendPort">Send Port (to desk)</label>
+            <input type="number" id="deskSendPort" min="1" max="65535" />
+          </div>
+          <div>
+            <label for="deskListenPort">Listen Port (from desk)</label>
+            <input type="number" id="deskListenPort" min="1" max="65535" />
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ── Channels tab ── -->
+    <div class="tab-panel" id="tab-channels">
+
+      <section class="card">
+        <div class="card-row space-between">
+          <h2>Channel Groups</h2>
+          <button class="btn btn-sm" id="addGroupBtn">+ Add Group</button>
+        </div>
+        <div id="groupsList" class="groups-list">
+          <div class="empty-hint">No groups yet — click + Add Group to create one.</div>
+        </div>
+      </section>
+
+      <section class="card channels-card">
+        <h2>Channels</h2>
+        <div class="ch-editor-header">
+          <span></span>
+          <span></span>
+          <span>Icon</span>
+          <span>Label Override</span>
+          <span>Group</span>
+          <span>On</span>
+        </div>
+        <div id="channelsList" class="channels-editor"></div>
+      </section>
+
+    </div>
+
+    <!-- ── Auxes tab ── -->
+    <div class="tab-panel" id="tab-auxes">
+
+      <section class="card channels-card">
+        <h2>Aux / Bus Visibility</h2>
+        <div class="ch-editor-header" style="grid-template-columns: 28px 1fr 32px 28px">
+          <span></span>
+          <span>Name</span>
+          <span>Color</span>
+          <span>Show</span>
+        </div>
+        <div id="auxesList" class="channels-editor"></div>
+      </section>
+
+    </div>
+
+    <!-- ── iPad OSC tab ── -->
+    <div class="tab-panel" id="tab-ipad">
+
+      <section class="card">
+        <div class="card-row space-between">
+          <h2>iPad OSC Connections</h2>
+          <button class="btn btn-sm" id="addIpadBtn">+ Add iPad</button>
+        </div>
+        <div class="sub" style="margin-bottom:10px">Each iPad runs an OSC app. JPMixer relays console data to the iPad and forwards iPad commands to the console.</div>
+        <div id="ipadList">
+          <div class="empty-hint">No iPads configured — click + Add iPad to add one.</div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ── Monitor tab ── -->
+    <div class="tab-panel" id="tab-monitor">
+
+      <section class="card">
+        <h2>Monitor Engineer View</h2>
+        <div class="sub" style="margin-bottom:16px">A full-screen grid showing every aux mix at once — all channels, all faders, live. Designed for a monitor engineer's iPad or second screen.</div>
+        <div class="card-row">
+          <button class="btn btn-primary" id="openMonitorBtn">Open Monitor View</button>
+          <div class="sub" id="monitorBtnHint">Start the server first to open.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Direct Link</h2>
+        <div class="sub">Anyone on the same network can open the monitor view in any browser:</div>
+        <div class="ip-row" style="margin-top:8px">
+          <span class="ip-address" id="monitorUrl">—</span>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ── General tab ── -->
+    <div class="tab-panel" id="tab-general">
+
+      <section class="card">
+        <h2>Console</h2>
+
+        <div class="field-row">
+          <label for="consoleType">Console Type</label>
+          <select id="consoleType">
+            <option value="digico">DiGiCo SD / Quantum</option>
+            <option value="x32">Behringer X32 / Midas M32</option>
+            <option value="yamaha">Yamaha CL / QL</option>
+            <option value="custom">Custom OSC</option>
+          </select>
+        </div>
+
+        <div class="field-row three-col">
+          <div>
+            <label for="channels">Channels</label>
+            <input type="number" id="channels" min="1" max="256" />
+          </div>
+          <div>
+            <label for="auxes">Auxes / Buses</label>
+            <input type="number" id="auxes" min="0" max="64" />
+          </div>
+          <div>
+            <label for="groups">Groups</label>
+            <input type="number" id="groups" min="0" max="64" />
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Startup</h2>
+        <div class="card-row">
+          <label class="toggle-label" for="autoStart">Start server automatically on launch</label>
+          <input type="checkbox" id="autoStart" class="toggle" />
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Ear Scene Recall</h2>
+        <div class="card-row">
+          <div>
+            <label class="toggle-label" for="sceneRecallEnabled">Auto-recall scenes on snapshot change</label>
+            <div class="sub">When enabled, saved ear mixes are pushed to the console whenever the snapshot changes.</div>
+          </div>
+          <input type="checkbox" id="sceneRecallEnabled" class="toggle" />
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <footer>
+    <span class="version">v1.0.0-beta.1</span>
+    <button class="btn btn-primary" id="saveBtn">Save &amp; Apply</button>
+  </footer>
+
+  <!-- Icon picker popup -->
+  <div id="iconPicker" class="icon-picker" style="display:none">
+    <div class="icon-grid"></div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

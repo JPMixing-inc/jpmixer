@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>JPMixer</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/logo.png" />
+  <link rel="stylesheet" href="mixer.css" />
+</head>
+<body class="disconnected auxPicker">
+
+  <header class="topbar">
+    <div class="brand"><img src="logo.png" class="brand-logo" alt="JPMixer" /></div>
+    <button class="aux-bar" id="auxBar" aria-label="Change mix">
+      <span class="aux-bar-name" id="auxBarName">Select Mix</span>
+      <span class="aux-bar-arrow">▾</span>
+    </button>
+    <div class="topbar-right">
+      <label class="pan-label" id="panLabel">
+        <input type="checkbox" id="panCheckbox" />
+        <span class="pan-toggle-btn">PAN</span>
+      </label>
+      <span class="conn-dot" id="connDot"></span>
+    </div>
+  </header>
+
+  <div class="snapshot-bar">
+    <span id="snapshotName">—</span>
+    <button class="scene-btn" id="sceneBtn" title="Save ear scene for this snapshot" style="display:none">💾</button>
+  </div>
+  <div class="scene-toast" id="sceneToast"></div>
+
+  <div class="channels-wrap">
+    <div class="channels-list" id="channelsList"></div>
+  </div>
+
+  <!-- Aux picker overlay — visible when body.auxPicker -->
+  <div class="aux-picker" id="auxPicker">
+    <div class="aux-picker-inner">
+      <div class="aux-picker-title">Select Your Mix</div>
+      <div class="aux-buttons" id="auxButtons"></div>
+    </div>
+  </div>
+
+  <!-- Disconnected overlay — visible when body.disconnected -->
+  <div class="overlay" id="overlay">
+    <div class="overlay-content">
+      <div class="spinner"></div>
+      <p id="overlayMsg">Connecting to console…</p>
+    </div>
+  </div>
+
+  <script src="mixer.js"></script>
+</body>
+</html>
