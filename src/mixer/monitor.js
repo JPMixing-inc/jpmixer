@@ -216,9 +216,9 @@ function buildGrid() {
 
     const boostBtn = document.createElement('button');
     boostBtn.className = 'boost-btn';
-    boostBtn.textContent = '+5';
-    boostBtn.title = 'Boost entire mix +5 dB';
-    boostBtn.addEventListener('click', () => boostAux(aux.channel, 5));
+    boostBtn.textContent = '+0.5';
+    boostBtn.title = 'Boost entire mix +0.5 dB';
+    boostBtn.addEventListener('click', () => boostAux(aux.channel, 0.5));
 
     hdr.appendChild(hdrLabel);
     hdr.appendChild(boostBtn);
