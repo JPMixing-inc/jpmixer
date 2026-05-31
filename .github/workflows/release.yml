@@ -24,11 +24,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Pre-create PKG placeholder (prevents ENOENT on first CI run)
-        run: mkdir -p dist && touch dist/com.jpmixing.oscmixer.pkg
+      - name: Build macOS arm64 (DMG + PKG)
+        run: mkdir -p dist && touch dist/com.jpmixing.oscmixer.pkg && npx electron-builder --mac --arm64 --publish never
 
-      - name: Build macOS (DMG + PKG)
-        run: npm run build
+      - name: Build macOS x64 (DMG + PKG)
+        run: touch dist/com.jpmixing.oscmixer.pkg && npx electron-builder --mac --x64 --publish never
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
