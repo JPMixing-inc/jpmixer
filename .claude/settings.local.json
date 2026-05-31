@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sips -g pixelWidth -g pixelHeight \"/Users/josiahpapovitch/Documents/JPMIXING/Digico OSC/assets/trayTemplate.png\")",
+      "Bash(sips -g pixelWidth -g pixelHeight \"/Users/josiahpapovitch/Documents/JPMIXING/Digico OSC/assets/digico Logo.png\")",
+      "Bash(npm run *)",
+      "Bash(open \"/Users/josiahpapovitch/Documents/JPMIXING/Digico OSC/dist/JPMixing-1.0.0-arm64.dmg\")",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}

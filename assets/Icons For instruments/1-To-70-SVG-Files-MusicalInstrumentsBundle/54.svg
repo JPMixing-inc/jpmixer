@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 23.0.2, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+	<!ENTITY ns_extend "http://ns.adobe.com/Extensibility/1.0/">
+	<!ENTITY ns_ai "http://ns.adobe.com/AdobeIllustrator/10.0/">
+	<!ENTITY ns_graphs "http://ns.adobe.com/Graphs/1.0/">
+	<!ENTITY ns_vars "http://ns.adobe.com/Variables/1.0/">
+	<!ENTITY ns_imrep "http://ns.adobe.com/ImageReplacement/1.0/">
+	<!ENTITY ns_sfw "http://ns.adobe.com/SaveForWeb/1.0/">
+	<!ENTITY ns_custom "http://ns.adobe.com/GenericCustomNamespace/1.0/">
+	<!ENTITY ns_adobe_xpath "http://ns.adobe.com/XPath/1.0/">
+]>
+<svg version="1.1" id="Layer_1" xmlns:x="&ns_extend;" xmlns:i="&ns_ai;" xmlns:graph="&ns_graphs;"
+	 xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 720 720"
+	 style="enable-background:new 0 0 720 720;" xml:space="preserve">
+<style type="text/css">
+	.Drop_x0020_Shadow{fill:none;}
+	.Round_x0020_Corners_x0020_2_x0020_pt{fill:#FFFFFF;stroke:#231F20;stroke-miterlimit:10;}
+	.Live_x0020_Reflect_x0020_X{fill:none;}
+	.Bevel_x0020_Soft{fill:url(#SVGID_1_);}
+	.Dusk{fill:#FFFFFF;}
+	.Foliage_GS{fill:#FFDD00;}
+	.Pompadour_GS{fill-rule:evenodd;clip-rule:evenodd;fill:#44ADE2;}
+</style>
+<metadata>
+	<sfw  xmlns="&ns_sfw;">
+		<slices></slices>
+		<sliceSourceBounds  bottomLeftOrigin="true" height="556.1" width="720" x="0" y="-638.1"></sliceSourceBounds>
+	</sfw>
+</metadata>
+<linearGradient id="SVGID_1_" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0.7071" y2="0.7071">
+	<stop  offset="0" style="stop-color:#DEDFE3"/>
+	<stop  offset="0.1783" style="stop-color:#DADBDF"/>
+	<stop  offset="0.3611" style="stop-color:#CECFD3"/>
+	<stop  offset="0.546" style="stop-color:#B9BCBF"/>
+	<stop  offset="0.7324" style="stop-color:#9CA0A2"/>
+	<stop  offset="0.9181" style="stop-color:#787D7E"/>
+	<stop  offset="1" style="stop-color:#656B6C"/>
+</linearGradient>
+<g id="_x35_4">
+	<g>
+		<path d="M83,631.1H36.2C20,631.1,6.9,618,6.9,601.9V118.1C6.9,102,20,88.9,36.2,88.9H83c16.2,0,29.3,13.1,29.3,29.3v483.8
+			C112.3,618,99.2,631.1,83,631.1z"/>
+		<path d="M83,638.1H36.2c-20,0-36.2-16.2-36.2-36.2V118.1c0-20,16.2-36.2,36.2-36.2H83c20,0,36.2,16.2,36.2,36.2v483.8
+			C119.2,621.8,102.9,638.1,83,638.1z M36.2,95.8c-12.3,0-22.3,10-22.3,22.3v483.8c0,12.3,10,22.3,22.3,22.3H83
+			c12.3,0,22.3-10,22.3-22.3V118.1c0-12.3-10-22.3-22.3-22.3H36.2z"/>
+	</g>
+	<g>
+		<path d="M232.3,631.1h-60.5c-10.2,0-18.5-8.3-18.5-18.5V415.6c0-10.2,8.3-18.5,18.5-18.5h60.5c10.2,0,18.5,8.3,18.5,18.5v197.1
+			C250.8,622.9,242.5,631.1,232.3,631.1z"/>
+		<path d="M232.3,638.1h-60.5c-14,0-25.4-11.4-25.4-25.4V415.6c0-14,11.4-25.4,25.4-25.4h60.5c14,0,25.4,11.4,25.4,25.4v197.1
+			C257.7,626.7,246.3,638.1,232.3,638.1z M171.7,404c-6.4,0-11.6,5.2-11.6,11.6v197.1c0,6.4,5.2,11.6,11.6,11.6h60.5
+			c6.4,0,11.6-5.2,11.6-11.6V415.6c0-6.4-5.2-11.6-11.6-11.6H171.7z"/>
+	</g>
+	<g>
+		<path d="M383.7,631.1h-51.2c-12.8,0-23.2-10.4-23.2-23.2V287.6c0-12.8,10.4-23.2,23.2-23.2h51.2c12.8,0,23.2,10.4,23.2,23.2V608
+			C406.8,620.8,396.5,631.1,383.7,631.1z"/>
+		<path d="M383.7,638.1h-51.2c-16.6,0-30.1-13.5-30.1-30.1V287.6c0-16.6,13.5-30.1,30.1-30.1h51.2c16.6,0,30.1,13.5,30.1,30.1V608
+			C413.7,624.6,400.2,638.1,383.7,638.1z M332.4,271.3c-9,0-16.2,7.3-16.2,16.2V608c0,9,7.3,16.2,16.2,16.2h51.2
+			c9,0,16.2-7.3,16.2-16.2V287.6c0-9-7.3-16.2-16.2-16.2H332.4z"/>
+	</g>
+	<g>
+		<path d="M543.4,631.1h-46.8c-16.2,0-29.3-13.1-29.3-29.3V118.1c0-16.2,13.1-29.3,29.3-29.3h46.8c16.2,0,29.3,13.1,29.3,29.3v483.8
+			C572.6,618,559.5,631.1,543.4,631.1z"/>
+		<path d="M543.4,638.1h-46.8c-20,0-36.2-16.2-36.2-36.2V118.1c0-20,16.2-36.2,36.2-36.2h46.8c20,0,36.2,16.2,36.2,36.2v483.8
+			C579.5,621.8,563.3,638.1,543.4,638.1z M496.5,95.8c-12.3,0-22.3,10-22.3,22.3v483.8c0,12.3,10,22.3,22.3,22.3h46.8
+			c12.3,0,22.3-10,22.3-22.3V118.1c0-12.3-10-22.3-22.3-22.3H496.5z"/>
+	</g>
+	<g>
+		<path d="M696.9,631.1h-65.1c-8.9,0-16.2-7.3-16.2-16.2V467.9c0-8.9,7.3-16.2,16.2-16.2h65.1c8.9,0,16.2,7.3,16.2,16.2V615
+			C713.1,623.9,705.8,631.1,696.9,631.1z"/>
+		<path d="M696.9,638.1h-65.1c-12.7,0-23.1-10.4-23.1-23.1V467.9c0-12.7,10.4-23.1,23.1-23.1h65.1c12.7,0,23.1,10.4,23.1,23.1V615
+			C720,627.7,709.6,638.1,696.9,638.1z M631.7,458.6c-5.1,0-9.3,4.2-9.3,9.3V615c0,5.1,4.2,9.3,9.3,9.3h65.1c5.1,0,9.3-4.2,9.3-9.3
+			V467.9c0-5.1-4.2-9.3-9.3-9.3H631.7z"/>
+	</g>
+</g>
+</svg>
