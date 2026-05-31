@@ -7,7 +7,8 @@
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
     "build": "electron-builder --mac",
-    "build:dmg": "electron-builder --mac dmg"
+    "build:dmg": "electron-builder --mac dmg",
+    "build:win": "electron-builder --win"
   },
   "build": {
     "appId": "com.jpmixing.oscmixer",
@@ -26,18 +27,54 @@
       "category": "public.app-category.music",
       "icon": "assets/icon.icns",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] },
-        { "target": "pkg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "pkg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64", "ia32"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
     },
     "dmg": {
       "title": "JPMixer ${version}",
       "icon": "assets/icon.icns",
       "background": "assets/dmg-background.png",
-      "window": { "width": 660, "height": 400 },
+      "window": {
+        "width": 660,
+        "height": 400
+      },
       "contents": [
-        { "x": 180, "y": 200, "type": "file" },
-        { "x": 480, "y": 200, "type": "link", "path": "/Applications" }
+        {
+          "x": 180,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 480,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     }
   },
@@ -48,6 +85,7 @@
   },
   "devDependencies": {
     "electron": "^29.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^3.0.1"
   }
 }
