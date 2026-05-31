@@ -518,8 +518,7 @@ function startWebSocketServer() {
 
         // Console page — request all cached console state
         if (msg.type === 'request-console-state') {
-          const cfg = buildConfig();
-          ws.send(JSON.stringify({ config: cfg }));
+          ws.send(buildConfig());
           for (const [ch, db] of Object.entries(consoleFaders))
             ws.send(JSON.stringify({ address: `/Input_Channels/${ch}/fader`, args: [db] }));
           for (const [ch, m] of Object.entries(consoleMutes))
