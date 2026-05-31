@@ -24,11 +24,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Patch electron-builder PKG cleanup (ENOENT fix)
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'node_modules/app-builder-lib/out/targets/pkg.js';
+            let src = fs.readFileSync(p, 'utf8');
+            src = src.replace(
+              /await \(0, fs_extra_1\.unlink\)\(this\.outFile\)/g,
+              'try { await (0, fs_extra_1.unlink)(this.outFile); } catch (_e) { if (_e.code !== \"ENOENT\") throw _e; }'
+            );
+            fs.writeFileSync(p, src);
+            console.log('Patched pkg.js');
+          "
+
       - name: Build macOS arm64 (DMG + PKG)
-        run: mkdir -p dist && touch dist/com.jpmixing.oscmixer.pkg && npx electron-builder --mac --arm64 --publish never
+        run: npx electron-builder --mac --arm64 --publish never
 
       - name: Build macOS x64 (DMG + PKG)
-        run: touch dist/com.jpmixing.oscmixer.pkg && npx electron-builder --mac --x64 --publish never
+        run: npx electron-builder --mac --x64 --publish never
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
