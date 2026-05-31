@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Console — JPMixer</title>
+  <link rel="stylesheet" href="console.css" />
+</head>
+<body class="disconnected">
+
+  <header class="con-header">
+    <img src="logo.png" class="brand-logo" alt="JPMixer" />
+    <span class="con-title">Console</span>
+    <span class="con-snapshot" id="conSnapshot">—</span>
+    <div class="snap-btns">
+      <button class="snap-btn" id="snapPrevBtn" title="Fire Previous Snapshot">⏮</button>
+      <button class="snap-btn" id="snapNextBtn" title="Fire Next Snapshot">⏭</button>
+    </div>
+    <span class="con-device-count" id="conDeviceCount" style="display:none">0 devices</span>
+    <span class="conn-dot" id="connDot"></span>
+  </header>
+
+  <div class="con-body">
+    <div class="input-section">
+      <div class="section-label">Input Channels</div>
+      <div class="strips-scroll" id="inputStrips"></div>
+    </div>
+    <div class="aux-section">
+      <div class="section-label">Aux Outputs</div>
+      <div class="aux-strips-scroll" id="auxStrips"></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="overlay-content">
+      <div class="spinner"></div>
+      <p id="overlayMsg">Connecting to console…</p>
+    </div>
+  </div>
+
+  <script src="console.js"></script>
+</body>
+</html>

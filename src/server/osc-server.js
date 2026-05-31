@@ -51,6 +51,13 @@ const muteState    = {};
 const soloState    = {};
 const premuteState = {}; // saved real levels before mute/solo — [aux][ch] = dB
 
+// Console-level state (main faders, mutes, solos) for the console controller page
+const consoleFaders = {}; // ch  → dB
+const consoleMutes  = {}; // ch  → bool
+const consoleSolos  = {}; // ch  → bool
+const auxFaders     = {}; // aux → dB
+const auxMutes      = {}; // aux → bool
+
 // Snapshot tracking
 let currentSnapshotName = '';
 let currentSnapshot     = -1;
@@ -509,6 +516,66 @@ function startWebSocketServer() {
           return;
         }
 
+        // Console page — request all cached console state
+        if (msg.type === 'request-console-state') {
+          const cfg = buildConfig();
+          ws.send(JSON.stringify({ config: cfg }));
+          for (const [ch, db] of Object.entries(consoleFaders))
+            ws.send(JSON.stringify({ address: `/Input_Channels/${ch}/fader`, args: [db] }));
+          for (const [ch, m] of Object.entries(consoleMutes))
+            ws.send(JSON.stringify({ address: `/Input_Channels/${ch}/mute`, args: [m ? 1.0 : 0.0] }));
+          for (const [ch, s] of Object.entries(consoleSolos))
+            ws.send(JSON.stringify({ address: `/Input_Channels/${ch}/solo`, args: [s ? 1.0 : 0.0] }));
+          for (const [aux, db] of Object.entries(auxFaders))
+            ws.send(JSON.stringify({ address: `/Aux_Outputs/${aux}/fader`, args: [db] }));
+          for (const [aux, m] of Object.entries(auxMutes))
+            ws.send(JSON.stringify({ address: `/Aux_Outputs/${aux}/mute`, args: [m ? 1.0 : 0.0] }));
+          return;
+        }
+
+        // Console page — main channel fader
+        if (msg.type === 'console-fader') {
+          sendToDesk(`/Input_Channels/${msg.ch}/fader`, [msg.db]);
+          consoleFaders[msg.ch] = msg.db;
+          broadcastToClients({ address: `/Input_Channels/${msg.ch}/fader`, args: [msg.db] });
+          return;
+        }
+
+        // Console page — main channel mute
+        if (msg.type === 'console-mute') {
+          const val = msg.muted ? 1.0 : 0.0;
+          sendToDesk(`/Input_Channels/${msg.ch}/mute`, [val]);
+          consoleMutes[msg.ch] = msg.muted;
+          broadcastToClients({ address: `/Input_Channels/${msg.ch}/mute`, args: [val] });
+          return;
+        }
+
+        // Console page — main channel solo
+        if (msg.type === 'console-solo') {
+          const val = msg.soloed ? 1.0 : 0.0;
+          sendToDesk(`/Input_Channels/${msg.ch}/solo`, [val]);
+          consoleSolos[msg.ch] = msg.soloed;
+          broadcastToClients({ address: `/Input_Channels/${msg.ch}/solo`, args: [val] });
+          return;
+        }
+
+        // Console page — aux output fader
+        if (msg.type === 'aux-fader') {
+          sendToDesk(`/Aux_Outputs/${msg.aux}/fader`, [msg.db]);
+          auxFaders[msg.aux] = msg.db;
+          broadcastToClients({ address: `/Aux_Outputs/${msg.aux}/fader`, args: [msg.db] });
+          return;
+        }
+
+        // Console page — aux output mute
+        if (msg.type === 'aux-mute') {
+          const val = msg.muted ? 1.0 : 0.0;
+          sendToDesk(`/Aux_Outputs/${msg.aux}/mute`, [val]);
+          auxMutes[msg.aux] = msg.muted;
+          broadcastToClients({ address: `/Aux_Outputs/${msg.aux}/mute`, args: [val] });
+          return;
+        }
+
         if (msg.type === 'fire-snapshot') {
           const addrMap = {
             prev: '/Snapshots/Fire_Prev_Snapshot',
@@ -680,6 +747,22 @@ function start(cfg) {
       if (cache.has(key)) broadcastToClients(cache.get(key));
       return;
     }
+
+    // Console-level fader / mute / solo — track state and forward to console page
+    const chFaderM = oscMsg.address.match(/^\/Input_Channels\/(\d+)\/fader$/);
+    if (chFaderM) { consoleFaders[parseInt(chFaderM[1])] = oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
+
+    const chMuteM = oscMsg.address.match(/^\/Input_Channels\/(\d+)\/mute$/);
+    if (chMuteM) { consoleMutes[parseInt(chMuteM[1])] = !!oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
+
+    const chSoloM = oscMsg.address.match(/^\/Input_Channels\/(\d+)\/solo$/);
+    if (chSoloM) { consoleSolos[parseInt(chSoloM[1])] = !!oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
+
+    const auxFaderM = oscMsg.address.match(/^\/Aux_Outputs\/(\d+)\/fader$/);
+    if (auxFaderM) { auxFaders[parseInt(auxFaderM[1])] = oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
+
+    const auxMuteM = oscMsg.address.match(/^\/Aux_Outputs\/(\d+)\/mute$/);
+    if (auxMuteM) { auxMutes[parseInt(auxMuteM[1])] = !!oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
 
     broadcast(oscMsg, info.address);
   });

@@ -127,6 +127,18 @@ function rebuildTrayMenu() {
         win.loadURL(`http://localhost:${port}/monitor.html`);
       }
     },
+    {
+      label: 'Open Console Controller',
+      enabled: serverRunning,
+      click: () => {
+        const win = new BrowserWindow({
+          width: 1600, height: 800,
+          title: 'Console Controller — JPMixer',
+          webPreferences: { nodeIntegration: false, contextIsolation: true }
+        });
+        win.loadURL(`http://localhost:${port}/console.html`);
+      }
+    },
     { type: 'separator' },
     { label: 'Settings…', click: openSettings },
     { label: 'Check for Updates…', click: () => checkForUpdates(false) },
