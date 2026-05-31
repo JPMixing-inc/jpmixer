@@ -519,6 +519,7 @@ function startWebSocketServer() {
         // Console page — request all cached console state
         if (msg.type === 'request-console-state') {
           ws.send(buildConfig());
+          // Send whatever we've already cached
           for (const [ch, db] of Object.entries(consoleFaders))
             ws.send(JSON.stringify({ address: `/Input_Channels/${ch}/fader`, args: [db] }));
           for (const [ch, m] of Object.entries(consoleMutes))
@@ -529,6 +530,19 @@ function startWebSocketServer() {
             ws.send(JSON.stringify({ address: `/Aux_Outputs/${aux}/fader`, args: [db] }));
           for (const [aux, m] of Object.entries(auxMutes))
             ws.send(JSON.stringify({ address: `/Aux_Outputs/${aux}/mute`, args: [m ? 1.0 : 0.0] }));
+          // Poll the desk for current values — responses come back via OSC and broadcast to all clients
+          const chCount  = cache.has('/Console/Input_Channels')
+            ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
+          const auxCount = cache.has('/Console/Aux_Outputs/modes')
+            ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
+          for (let i = 1; i <= chCount; i++) {
+            sendToDesk(`/Input_Channels/${i}/fader/?`, []);
+            sendToDesk(`/Input_Channels/${i}/mute/?`, []);
+          }
+          for (let i = 1; i <= auxCount; i++) {
+            sendToDesk(`/Aux_Outputs/${i}/fader/?`, []);
+            sendToDesk(`/Aux_Outputs/${i}/mute/?`, []);
+          }
           return;
         }
 
