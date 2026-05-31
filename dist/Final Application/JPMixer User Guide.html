@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JPMixer User Guide</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      color: #1a1a1a;
+      background: #fff;
+    }
+
+    /* ── Cover ── */
+    .cover {
+      background: linear-gradient(135deg, #0e0f11 0%, #1c1e24 60%, #2a0a14 100%);
+      color: #fff;
+      padding: 80px 60px;
+      min-height: 340px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .cover-title {
+      font-size: 56px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: #e8253a;
+      text-shadow: 0 2px 20px rgba(232,37,58,0.4);
+    }
+
+    .cover-subtitle {
+      font-size: 20px;
+      color: rgba(255,255,255,0.6);
+      margin-top: 8px;
+      font-weight: 400;
+    }
+
+    .cover-version {
+      margin-top: 24px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      margin-top: 18px;
+      background: rgba(232,37,58,0.18);
+      border: 1px solid rgba(232,37,58,0.4);
+      color: #ff6b7a;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 20px;
+      width: fit-content;
+    }
+
+    /* ── Layout ── */
+    .content {
+      max-width: 840px;
+      margin: 0 auto;
+      padding: 60px 40px;
+    }
+
+    /* ── TOC ── */
+    .toc {
+      background: #f7f7f8;
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 56px;
+    }
+
+    .toc h2 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #888;
+      margin-bottom: 16px;
+    }
+
+    .toc ol {
+      padding-left: 20px;
+      columns: 2;
+      column-gap: 32px;
+    }
+
+    .toc li { margin: 6px 0; break-inside: avoid; }
+
+    .toc a {
+      color: #e8253a;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .toc a:hover { text-decoration: underline; }
+
+    /* ── Sections ── */
+    section { margin-bottom: 60px; }
+
+    h1 {
+      font-size: 30px;
+      font-weight: 700;
+      color: #0e0f11;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 3px solid #e8253a;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0e0f11;
+      margin: 32px 0 12px;
+    }
+
+    h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #333;
+      margin: 20px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    p { margin-bottom: 12px; color: #333; }
+
+    ul, ol { padding-left: 22px; margin-bottom: 14px; }
+    li { margin: 5px 0; color: #333; }
+
+    /* ── Callout boxes ── */
+    .tip, .warning, .note {
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 18px 0;
+      font-size: 14px;
+    }
+
+    .tip    { background: #edfaf3; border-left: 4px solid #22c55e; color: #15532e; }
+    .warning{ background: #fff7ed; border-left: 4px solid #f97316; color: #7c2d12; }
+    .note   { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e3a8a; }
+
+    .tip strong, .warning strong, .note strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      opacity: 0.7;
+    }
+
+    /* ── Step list ── */
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+    }
+
+    .steps li {
+      counter-increment: step;
+      padding: 14px 14px 14px 56px;
+      position: relative;
+      margin: 10px 0;
+      background: #fafafa;
+      border-radius: 8px;
+      border: 1px solid #eee;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 28px;
+      height: 28px;
+      background: #e8253a;
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    /* ── Tab grid ── */
+    .tab-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin: 16px 0;
+    }
+
+    .tab-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+
+    .tab-card h3 {
+      margin: 0 0 6px;
+      font-size: 14px;
+      color: #e8253a;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .tab-card p { font-size: 13px; color: #555; margin: 0; }
+
+    /* ── Feature badge ── */
+    .new-badge {
+      display: inline-block;
+      background: #e8253a;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    /* ── Button mockups ── */
+    .btn-demo {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-mute { background: #e8253a; color: #fff; }
+    .btn-solo { background: #f59e0b; color: #fff; }
+    .btn-inactive { background: #2a2b30; color: #666; border: 1px solid #444; }
+
+    /* ── Key pill ── */
+    kbd {
+      display: inline-block;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      padding: 2px 8px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    /* ── Table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+
+    th {
+      background: #f3f4f6;
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #f0f0f0;
+      color: #333;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    /* ── Divider ── */
+    hr { border: none; border-top: 1px solid #e5e7eb; margin: 48px 0; }
+
+    /* ── Footer ── */
+    .footer {
+      background: #0e0f11;
+      color: rgba(255,255,255,0.3);
+      text-align: center;
+      padding: 32px;
+      font-size: 13px;
+    }
+
+    /* ── Print ── */
+    @media print {
+      .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .tip, .warning, .note { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .steps li::before { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .new-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      section { page-break-inside: avoid; }
+    }
+
+    @media (max-width: 600px) {
+      .cover { padding: 48px 28px; }
+      .cover-title { font-size: 38px; }
+      .content { padding: 40px 20px; }
+      .toc ol { columns: 1; }
+      .tab-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="cover-title">JPMixer</div>
+    <div class="cover-subtitle">Live Monitor Mix Controller — User Guide</div>
+    <div class="cover-badge">Beta Release</div>
+    <div class="cover-version">Version 1.0.1-beta.1 &nbsp;·&nbsp; DiGiCo SD / Quantum &nbsp;·&nbsp; Mac &amp; Windows</div>
+  </div>
+
+  <div class="content">
+
+    <!-- Table of Contents -->
+    <div class="toc">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#installation">Installation</a></li>
+        <li><a href="#first-launch">First Launch &amp; Settings</a></li>
+        <li><a href="#connection">Connecting to the Console</a></li>
+        <li><a href="#channels">Setting Up Channels</a></li>
+        <li><a href="#auxes">Setting Up Aux Mixes</a></li>
+        <li><a href="#mixer">Using the Mixer (Musicians)</a></li>
+        <li><a href="#mute-solo">Mute &amp; Solo</a></li>
+        <li><a href="#scenes">Ear Scenes — Save &amp; Recall</a></li>
+        <li><a href="#monitor">Monitor Engineer View</a></li>
+        <li><a href="#ipad">iPad OSC Connections</a></li>
+        <li><a href="#pwa">Installing on iPhone / iPad</a></li>
+        <li><a href="#diagnostics">Diagnostics &amp; Event Log</a></li>
+        <li><a href="#troubleshooting">Troubleshooting</a></li>
+      </ol>
+    </div>
+
+    <!-- 1. Overview -->
+    <section id="overview">
+      <h1>1. Overview</h1>
+      <p>JPMixer is a Mac and Windows application that bridges a DiGiCo SD or Quantum console to any web browser on the same network. Musicians open a webpage on their iPhone, iPad, or any device and control their own monitor mix — no App Store download required.</p>
+      <p>The system works over your stage network using OSC (Open Sound Control). JPMixer runs in the menu bar (Mac) or system tray (Windows) and Dock, serves the mixer page to any connected device, and relays fader moves to the console in real time.</p>
+
+      <h2>What you can do</h2>
+      <ul>
+        <li>Each musician controls their own aux send levels from their phone</li>
+        <li>Mute or solo individual channels per aux mix — server applies it to the console</li>
+        <li>Save "ear scenes" per snapshot so mixes recall automatically with the show</li>
+        <li>Monitor engineer sees every aux mix on one full-screen grid with full control</li>
+        <li>See how many devices are connected at a glance in the Settings header</li>
+        <li>Relay console data to iPad OSC apps (TouchOSC, Lemur, etc.)</li>
+        <li>Install the mixer as a home screen app on iPhone / iPad (PWA)</li>
+      </ul>
+
+      <div class="note">
+        <strong>DiGiCo OSC Limitation</strong>
+        DiGiCo's OSC protocol only exposes aux send levels and pan. Main channel faders and console mutes are not accessible via OSC — this is a DiGiCo hardware limitation, not a JPMixer limitation. JPMixer implements mute and solo by driving aux send levels to –∞ dB via OSC, not by touching the channel mute on the desk.
+      </div>
+    </section>
+
+    <!-- 2. Installation -->
+    <section id="installation">
+      <h1>2. Installation</h1>
+
+      <h2>Which file do I use?</h2>
+      <table>
+        <thead>
+          <tr><th>File</th><th>Use for</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>JPMixer-1.0.1-beta.1-arm64.dmg</strong></td><td>Apple Silicon Macs — M1, M2, M3, M4</td></tr>
+          <tr><td><strong>JPMixer-1.0.1-beta.1.dmg</strong></td><td>Intel Macs</td></tr>
+          <tr><td><strong>JPMixer.Setup.1.0.1-beta.1.exe</strong></td><td>Windows 10 / 11 (64-bit or 32-bit)</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Installing on Mac (DMG)</h2>
+      <ol class="steps">
+        <li>Double-click the <strong>.dmg</strong> file to mount it</li>
+        <li>Drag <strong>JPMixer</strong> into the <strong>Applications</strong> shortcut</li>
+        <li>Eject the DMG and open JPMixer from Applications or Spotlight</li>
+      </ol>
+
+      <div class="warning">
+        <strong>Mac Gatekeeper Warning</strong>
+        Because JPMixer is not signed with an Apple Developer certificate, macOS may block it on first open. To allow it: right-click (or Control-click) the app in Finder → <strong>Open</strong> → <strong>Open Anyway</strong>. You only need to do this once. Alternatively go to System Settings → Privacy &amp; Security → scroll down → <strong>Open Anyway</strong>.
+      </div>
+
+      <h2>Installing on Windows (EXE installer)</h2>
+      <ol class="steps">
+        <li>Double-click the <strong>.exe</strong> installer</li>
+        <li>If Windows SmartScreen appears, click <strong>More info</strong> → <strong>Run anyway</strong></li>
+        <li>Choose whether to install for all users or just yourself, then follow the prompts</li>
+        <li>JPMixer launches automatically when installation completes</li>
+      </ol>
+
+      <div class="warning">
+        <strong>Windows SmartScreen Warning</strong>
+        Because JPMixer is not signed with a commercial code-signing certificate, Windows SmartScreen will flag it on first run. Click <strong>More info</strong> then <strong>Run anyway</strong> — this prompt only appears once. JPMixer is open source and the code is publicly available at github.com/JPMixing-inc/jpmixer.
+      </div>
+    </section>
+
+    <!-- 3. First Launch -->
+    <section id="first-launch">
+      <h1>3. First Launch &amp; Settings</h1>
+
+      <p>When JPMixer launches it appears in two places:</p>
+      <ul>
+        <li><strong>Menu bar / System Tray</strong> — on Mac the JPMixer icon sits in the top-right menu bar; on Windows it appears in the system tray (bottom-right). Click it for a quick menu to start/stop the server, open views, and access settings</li>
+        <li><strong>Dock (Mac) / Taskbar (Windows)</strong> — the app appears while running so it can be force-quit if it ever becomes unresponsive</li>
+      </ul>
+
+      <h2>Opening Settings</h2>
+      <p>Click the menu bar icon → <strong>Settings…</strong></p>
+
+      <h2>Tray Menu Options</h2>
+      <ul>
+        <li><strong>Start / Stop Server</strong> — toggle the web server on or off</li>
+        <li><strong>Open Mixer in Browser</strong> — opens the mixer page on this computer</li>
+        <li><strong>Open Monitor Engineer View</strong> — opens the full monitor grid in a window</li>
+        <li><strong>Settings…</strong> — opens the Settings panel</li>
+        <li><strong>Check for Updates…</strong> — manually check GitHub for a newer version of JPMixer</li>
+        <li><strong>Quit JPMixer</strong> — stops the server and exits</li>
+      </ul>
+      <p>JPMixer also checks for updates automatically 3 seconds after launch. If a newer version is available a dialog appears with a Download button that opens the releases page.</p>
+
+      <h2>Settings Header</h2>
+      <p>The top-right of the Settings window shows two status indicators:</p>
+      <ul>
+        <li><strong>Device count badge</strong> — shows how many browsers are currently connected to the mixer (e.g. "3 devices"). Updates live as people connect and disconnect.</li>
+        <li><strong>Status pill</strong> — green "Running" or grey "Stopped" for the web server</li>
+      </ul>
+
+      <h2>Settings Tabs</h2>
+      <div class="tab-grid">
+        <div class="tab-card">
+          <h3>Connection</h3>
+          <p>Start/stop the server, enter console IP and OSC ports, view this computer's IP address, enable port 80 forwarding.</p>
+        </div>
+        <div class="tab-card">
+          <h3>Channels</h3>
+          <p>Create channel groups, assign instrument icons, add label overrides, and control which channels appear in the mixer.</p>
+        </div>
+        <div class="tab-card">
+          <h3>Auxes</h3>
+          <p>Name each aux bus, assign a colour, and toggle visibility. Hidden auxes don't appear in the musician's mix picker.</p>
+        </div>
+        <div class="tab-card">
+          <h3>iPad OSC</h3>
+          <p>Add iPad connections for relaying console OSC data to TouchOSC, Lemur, or similar apps.</p>
+        </div>
+        <div class="tab-card">
+          <h3>Monitor</h3>
+          <p>Open the Monitor Engineer View and see the direct browser link for the full-screen grid.</p>
+        </div>
+        <div class="tab-card">
+          <h3>General</h3>
+          <p>Console type, channel/aux counts, auto-start server on launch, and ear scene recall toggle.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Connection -->
+    <section id="connection">
+      <h1>4. Connecting to the Console</h1>
+
+      <h2>Network Setup</h2>
+      <p>JPMixer, the DiGiCo console, and all musician devices must be on the <strong>same network</strong>. This is typically your dedicated stage WiFi or wired LAN. The computer running JPMixer should have a static IP or a DHCP reservation so the address doesn't change between shows.</p>
+
+      <h2>Required Settings</h2>
+      <ol class="steps">
+        <li>Open Settings → <strong>Connection</strong> tab</li>
+        <li>Enter the console's IP address in <strong>Console IP Address</strong></li>
+        <li>Set <strong>Send Port</strong> — the OSC port JPMixer sends commands to the desk (typically 8000)</li>
+        <li>Set <strong>Listen Port</strong> — the OSC port JPMixer receives data from the desk (typically 9000)</li>
+        <li>Set your <strong>Server Port</strong> — the port musicians use to open the mixer in their browser (default 8080)</li>
+        <li>Click <strong>Save &amp; Apply</strong></li>
+        <li>Click <strong>Start</strong> — the status dot turns green when the console responds to OSC</li>
+      </ol>
+
+      <div class="tip">
+        <strong>Sharing the URL with Musicians</strong>
+        Your computer's IP is shown in the Connection tab under "This Mac's IP." Musicians open <strong>http://[server-ip]:8080</strong> in Safari on their phone. If you enable port 80 (see below) they can just type the IP with no port number.
+      </div>
+
+      <h2>Use Port 80 (Optional)</h2>
+      <p>Click <strong>Use Port 80</strong> to install a background service that forwards port 80 to your server port. Musicians can then open the mixer by typing just the IP address with no colon or number — much easier to hand out on the night. This requires an admin password and installs a persistent service that survives reboots. <em>(Mac only — this feature is not currently available on Windows.)</em></p>
+
+      <h2>Auto-Start on Launch</h2>
+      <p>In Settings → <strong>General</strong>, enable <strong>Start server automatically on launch</strong>. JPMixer will start the web server and connect to the console as soon as the app opens — no manual click needed.</p>
+    </section>
+
+    <!-- 5. Channels -->
+    <section id="channels">
+      <h1>5. Setting Up Channels</h1>
+
+      <h2>Channel Groups</h2>
+      <p>Groups organise channels into labelled sections in the mixer (e.g. Drums, Guitars, Keys, Vocals). Click <strong>+ Add Group</strong>, give it a name and colour, then assign channels to it. Groups appear as section headers in the musician's mixer view.</p>
+
+      <h2>Channel Settings</h2>
+      <p>In the <strong>Channels</strong> tab, each row is one input channel. You can configure:</p>
+      <ul>
+        <li><strong>Icon</strong> — pick from a library of instrument icons (drum, guitar, vocal, keys, brass, strings, and more) to identify the channel at a glance</li>
+        <li><strong>Label Override</strong> — rename the channel in the mixer (the console name is used by default)</li>
+        <li><strong>Group</strong> — assign to a group for section ordering</li>
+        <li><strong>On/Off toggle</strong> — hide a channel completely from the mixer and monitor view</li>
+      </ul>
+
+      <div class="tip">
+        <strong>Tip</strong>
+        Channel names are pulled automatically from the console when the server starts. You only need a label override if you want a different name from what's on the desk.
+      </div>
+    </section>
+
+    <!-- 6. Auxes -->
+    <section id="auxes">
+      <h1>6. Setting Up Aux Mixes</h1>
+      <p>Each aux bus becomes one selectable "mix" in the musician's browser. In the <strong>Auxes</strong> tab:</p>
+      <ul>
+        <li><strong>Name</strong> — rename the aux (e.g. "Drums IEM", "Sarah — Wedge", "FOH Reference")</li>
+        <li><strong>Color</strong> — choose a colour shown in the mixer header when that aux is selected; helps musicians identify their mix quickly</li>
+        <li><strong>Show toggle</strong> — hide unused auxes so they don't clutter the picker</li>
+      </ul>
+      <p>Click <strong>Save &amp; Apply</strong> after making changes. The server restarts automatically and all connected devices update within seconds.</p>
+    </section>
+
+    <!-- 7. Mixer -->
+    <section id="mixer">
+      <h1>7. Using the Mixer — Musicians</h1>
+
+      <h2>Opening the Mixer</h2>
+      <ol class="steps">
+        <li>Connect your phone or tablet to the stage WiFi</li>
+        <li>Open <strong>Safari</strong> (strongly recommended on iPhone/iPad)</li>
+        <li>Type the server computer's IP address and port: <strong>http://192.168.x.x:8080</strong></li>
+        <li>The mixer loads — tap your aux name at the top to select your mix</li>
+        <li>Your last-used mix is remembered — next time you open it you go straight in</li>
+      </ol>
+
+      <h2>Mixer Controls</h2>
+      <ul>
+        <li><strong>Aux bar (top centre)</strong> — shows your current mix name; tap to switch to a different aux</li>
+        <li><strong>Faders</strong> — drag up to increase a channel's level in your mix, drag down to reduce</li>
+        <li><strong>M button</strong> — mutes that channel in your mix (fader drives to –∞ dB on the console)</li>
+        <li><strong>S button</strong> — solos that channel (all other channels go to –∞ dB, solo channel stays)</li>
+        <li><strong>PAN toggle (top right)</strong> — shows pan knobs alongside each fader for stereo positioning</li>
+        <li><strong>Connection dot (top right)</strong> — green = live, pulsing grey = reconnecting</li>
+        <li><strong>Save button (💾)</strong> — saves your current mix as an ear scene for the active snapshot</li>
+      </ul>
+
+      <h2>Reconnection Behaviour</h2>
+      <p>If WiFi drops or the phone goes to sleep, JPMixer reconnects automatically when the connection is restored. Your previously selected aux is remembered — you don't need to re-select your mix. The "Reconnecting…" overlay appears only after 2.5 seconds of no connection, so brief interruptions don't cause a visible flash.</p>
+
+      <div class="tip">
+        <strong>Best Experience on iOS</strong>
+        Add the mixer to your home screen (see Section 12) for a full-screen experience that works like a native app. The connection stays alive even when your phone screen locks — native WebSocket ping frames keep the session open regardless of whether JavaScript is running.
+      </div>
+    </section>
+
+    <!-- 8. Mute & Solo -->
+    <section id="mute-solo">
+      <h1>8. Mute &amp; Solo</h1>
+      <p>Every channel row in both the musician mixer and the monitor engineer view has two small buttons: <span class="btn-demo btn-inactive">M</span> and <span class="btn-demo btn-inactive">S</span>.</p>
+
+      <h2>How Mute Works</h2>
+      <p>Tapping <span class="btn-demo btn-mute">M</span> mutes that channel in your aux mix. JPMixer drives the channel's aux send level to –∞ dB on the console. The channel row dims to show it is muted. The button lights red while active.</p>
+      <p>When you unmute, JPMixer restores the fader to exactly where it was before you muted — including any adjustments made while it was muted. Your levels are never lost.</p>
+
+      <h2>How Solo Works</h2>
+      <p>Tapping <span class="btn-demo btn-solo">S</span> solos that channel. Every <em>other</em> channel in the aux mix is silenced — only the soloed channel is heard. The button lights amber while active. You can solo multiple channels at once; all soloed channels play, everything else is silent.</p>
+      <p>Clearing all solos restores every channel to its previous level instantly.</p>
+
+      <h2>Mute + Solo Together</h2>
+      <p>Mute and solo work independently. A channel that is both muted and soloed stays silent (mute takes priority). Removing the mute on a soloed channel causes it to be heard.</p>
+
+      <h2>Scope</h2>
+      <p>Mute and solo are <strong>per-aux</strong> — muting a channel in your drum IEM mix has no effect on anyone else's mix. Each musician's mute/solo state is completely independent.</p>
+
+      <h2>Monitor Engineer Control</h2>
+      <p>The monitor engineer can mute and solo any channel on any aux from the monitor view. Changes are reflected immediately on the musician's mixer for that aux, and vice versa — both views stay in sync.</p>
+
+      <div class="note">
+        <strong>Note</strong>
+        Because DiGiCo OSC does not provide access to console channel mutes, JPMixer implements mute and solo entirely by adjusting aux send levels. This means it works within your IEM or wedge mix only — it does not mute the channel at FOH or on other auxes.
+      </div>
+    </section>
+
+    <!-- 9. Ear Scenes -->
+    <section id="scenes">
+      <h1>9. Ear Scenes — Save &amp; Recall</h1>
+      <p>An <strong>ear scene</strong> is a saved snapshot of your entire aux mix for a specific console snapshot. When a snapshot fires, JPMixer instantly pushes your saved mix to the console and moves all faders on the musician's screen — so each song has exactly the right monitor mix without anyone touching their phone.</p>
+
+      <div class="warning">
+        <strong>Auto-recall is OFF by default</strong>
+        Ear scenes won't recall automatically until you enable the setting. Go to Settings → <strong>General</strong> → turn on <strong>Auto-recall scenes on snapshot change</strong> → click <strong>Save &amp; Apply</strong>. This must be done once after installing JPMixer.
+      </div>
+
+      <h2>Saving a Scene</h2>
+      <ol class="steps">
+        <li>Fire the console snapshot you want to save a mix for — the snapshot name appears in the mixer header</li>
+        <li>Adjust your mix in the browser to exactly how you want it for that song</li>
+        <li>Tap the <strong>💾</strong> button — a confirmation toast confirms the save with the snapshot name</li>
+      </ol>
+      <p>When a scene is already saved for the current snapshot, the button shows <strong>🗑</strong> — tap it to delete the saved scene for that snapshot and aux.</p>
+
+      <div class="tip">
+        <strong>Check the snapshot name before saving</strong>
+        The snapshot name shown in the mixer header must match the console snapshot name exactly. If the header shows "—" or is blank, JPMixer hasn't received the snapshot name from the console yet — wait for it to populate before saving.
+      </div>
+
+      <h2>Enabling Automatic Recall</h2>
+      <ol class="steps">
+        <li>Open Settings → <strong>General</strong> tab</li>
+        <li>Enable <strong>Auto-recall scenes on snapshot change</strong></li>
+        <li>Click <strong>Save &amp; Apply</strong></li>
+      </ol>
+      <p>Now whenever the console fires a new snapshot, JPMixer checks every aux for a saved scene matching that snapshot name, sends those fader values to the console, and immediately moves faders on every connected musician's screen. Musicians don't need to do anything.</p>
+
+      <h2>How Recall Works</h2>
+      <p>When a snapshot fires JPMixer:</p>
+      <ol>
+        <li>Receives the snapshot number from the console via OSC</li>
+        <li>Requests the snapshot name from the console</li>
+        <li>Looks up saved scenes for that name</li>
+        <li>Sends all saved fader values to the console simultaneously</li>
+        <li>Broadcasts the new levels directly to all connected browsers so faders move instantly</li>
+      </ol>
+      <p>If a channel was muted at the time of recall, its saved scene value is stored as the "pre-mute" level — unmuting will restore to the recalled position, not the position before the recall.</p>
+
+      <h2>Snapshot Name Matching</h2>
+      <p>Scenes are matched by the <strong>exact snapshot name</strong> the console sends via OSC — case-sensitive, including spaces. If a snapshot is renamed on the desk, any scene saved under the old name won't fire. Use the event log at <kbd>/api/events</kbd> to see exactly which snapshot name was received and whether a scene was found for it.</p>
+
+      <div class="note">
+        <strong>Note</strong>
+        Ear scenes are stored per-aux, per-snapshot. Each musician's mix is fully independent — saving a scene for Aux 1 has no effect on Aux 2. Scenes are stored on the computer running JPMixer and persist across power cycles and software restarts.
+      </div>
+    </section>
+
+    <!-- 10. Monitor -->
+    <section id="monitor">
+      <h1>10. Monitor Engineer View</h1>
+      <p>The Monitor Engineer View is a full-screen grid showing <strong>every aux mix at once</strong> — all channels, all faders, fully interactive. Designed for a second screen or a dedicated iPad or laptop at the monitor position.</p>
+
+      <h2>Opening the Monitor View</h2>
+      <ul>
+        <li><strong>From the menu bar:</strong> click the JPMixer icon → <strong>Open Monitor Engineer View</strong></li>
+        <li><strong>From Settings:</strong> Monitor tab → <strong>Open Monitor View</strong></li>
+        <li><strong>From any browser:</strong> open <strong>http://[server-ip]:8080/monitor.html</strong></li>
+      </ul>
+
+      <h2>Monitor View Features</h2>
+      <ul>
+        <li><strong>Column per aux</strong> — scroll horizontally to see all mixes side by side</li>
+        <li><strong>Fully interactive faders</strong> — the monitor engineer can adjust any channel in any mix</li>
+        <li><strong>M and S buttons</strong> — mute and solo any channel on any aux directly from the monitor view</li>
+        <li><strong>Device count</strong> — the header shows how many browser devices are currently connected</li>
+        <li><strong>Snapshot name</strong> — the current console snapshot name is shown in the header</li>
+        <li><strong>Live sync</strong> — all changes sync instantly between the monitor view and the musician's mixer</li>
+      </ul>
+
+      <div class="tip">
+        <strong>Tip</strong>
+        The monitor view works well on a large iPad in landscape mode. Add it to the home screen as a PWA for a full-screen experience with no browser chrome.
+      </div>
+    </section>
+
+    <!-- 11. iPad OSC -->
+    <section id="ipad">
+      <h1>11. iPad OSC Connections</h1>
+      <p>JPMixer can relay DiGiCo OSC data to one or more iPads running OSC apps such as TouchOSC or Lemur. This allows a custom iPad layout to run alongside JPMixer — both receive console data and both can send commands to the console.</p>
+
+      <h2>Adding an iPad</h2>
+      <ol class="steps">
+        <li>Open Settings → <strong>iPad OSC</strong> tab</li>
+        <li>Click <strong>+ Add iPad</strong></li>
+        <li>Enter a name, the iPad's IP address, the send port (JPMixer → iPad), and the listen port (iPad → JPMixer)</li>
+        <li>Toggle the connection <strong>On</strong></li>
+        <li>Click <strong>Save &amp; Apply</strong></li>
+      </ol>
+
+      <p>JPMixer creates a dedicated UDP OSC connection for each enabled iPad. Console messages are forwarded to all connected iPads, and commands from any iPad are forwarded to the console.</p>
+
+      <div class="tip">
+        <strong>Tip</strong>
+        You can add multiple iPads — useful for both a FOH engineer and a monitor engineer having independent OSC controllers on the same session.
+      </div>
+    </section>
+
+    <!-- 12. PWA / Home Screen -->
+    <section id="pwa">
+      <h1>12. Installing on iPhone / iPad</h1>
+      <p>The JPMixer web page can be installed as a home screen app — no App Store required. It opens full-screen with no browser address bar, just like a native app. The JPMixer logo appears on the home screen.</p>
+
+      <h2>Adding to Home Screen (Safari on iOS)</h2>
+      <ol class="steps">
+        <li>Open the mixer URL in <strong>Safari</strong> on your iPhone or iPad</li>
+        <li>Tap the <strong>Share</strong> button (box with arrow at the bottom of the screen)</li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
+        <li>Tap <strong>Add</strong> — the JPMixer icon appears on your home screen</li>
+      </ol>
+      <p>From now on, tap the icon to open the mixer full-screen. Your mix selection is saved, so you go straight to your aux without any tap needed.</p>
+
+      <h2>Connection Stability on iOS</h2>
+      <p>iOS Safari suspends JavaScript when an app goes to the background (phone locks, you switch apps). JPMixer handles this correctly — the server uses native WebSocket ping frames at the protocol level, which iOS responds to automatically even with JavaScript suspended. Your connection stays alive while the screen is off.</p>
+      <p>When you bring the mixer back to the foreground, it reconnects immediately without any interaction needed.</p>
+
+      <div class="note">
+        <strong>Note</strong>
+        This feature requires <strong>Safari on iOS</strong>. Chrome and other browsers on iPhone do not support Add to Home Screen with full PWA behaviour or the same background connection stability.
+      </div>
+    </section>
+
+    <!-- 13. Diagnostics -->
+    <section id="diagnostics">
+      <h1>13. Diagnostics &amp; Event Log</h1>
+      <p>JPMixer keeps a live log of internal server events — connections, disconnections, ping timeouts, session changes, and more. This is useful when diagnosing connection issues or unusual behaviour.</p>
+
+      <h2>Viewing the Event Log</h2>
+      <p>While the server is running, open any browser on the computer running JPMixer and go to:</p>
+      <p><kbd>http://localhost:8080/api/events</kbd></p>
+      <p>The page auto-refreshes every 3 seconds and shows the last 100 events with timestamps and detail. Share a screenshot of this page when reporting issues.</p>
+
+      <h2>Common Event Types</h2>
+      <table>
+        <thead>
+          <tr><th>Event</th><th>What it means</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>ws-connect</td><td>A browser device connected to the mixer</td></tr>
+          <tr><td>ws-disconnect</td><td>A browser device disconnected (includes WebSocket close code)</td></tr>
+          <tr><td>ping-timeout</td><td>A device didn't respond to pings within 75 seconds — connection terminated</td></tr>
+          <tr><td>session-change</td><td>The console sent a session change notification; JPMixer is reloading console metadata</td></tr>
+          <tr><td>session-reload</td><td>Cache cleared and metadata reload started after session change</td></tr>
+          <tr><td>metadata-loaded</td><td>All console metadata loaded; server is fully live</td></tr>
+          <tr><td>console-connect</td><td>OSC connection to the console established</td></tr>
+          <tr><td>console-disconnect</td><td>OSC connection to the console lost</td></tr>
+          <tr><td>scene-save</td><td>A musician saved an ear scene — shows snapshot name and aux number</td></tr>
+          <tr><td>scene-recall</td><td>A scene was found and applied to the console — shows snapshot name</td></tr>
+          <tr><td>scene-skip</td><td>Scene recall was skipped — shows whether recall is disabled or no scene was saved for that snapshot name</td></tr>
+        </tbody>
+      </table>
+
+      <div class="tip">
+        <strong>Diagnosing scene recall issues</strong>
+        If scenes aren't recalling, check the event log. A <strong>scene-skip</strong> entry will tell you exactly why — either auto-recall is disabled, or it will list the snapshot name received and which names are saved. This makes name mismatch easy to spot.
+      </div>
+    </section>
+
+    <!-- 14. Troubleshooting -->
+    <section id="troubleshooting">
+      <h1>14. Troubleshooting</h1>
+
+      <h2>Console status shows Offline</h2>
+      <ul>
+        <li>Check the console IP address is correct in Settings → Connection</li>
+        <li>Confirm the DiGiCo console has OSC enabled and the send/listen ports match both sides</li>
+        <li>Make sure the computer and console are on the same network segment</li>
+        <li>Try stopping and restarting the server from the Connection tab</li>
+        <li>Check that no firewall is blocking the OSC listen port — on Mac: System Settings → Network → Firewall; on Windows: Windows Defender Firewall → Allow an app</li>
+      </ul>
+
+      <h2>Mixer page won't load on iPhone</h2>
+      <ul>
+        <li>Confirm the device is on the same WiFi as the computer running JPMixer</li>
+        <li>Double-check the IP address — find it in Settings → Connection under "This Mac's IP"</li>
+        <li>Make sure the server is running (tray icon should show the port number, e.g. "● Running — port 8080")</li>
+        <li>Try disabling the firewall temporarily to rule it out</li>
+        <li>Try opening the URL in Safari — Chrome on iOS may behave differently</li>
+      </ul>
+
+      <h2>Faders move on screen but don't affect the console</h2>
+      <ul>
+        <li>The Console status dot in Settings must be green</li>
+        <li>Confirm the correct aux numbers in the Auxes tab match your DiGiCo session</li>
+        <li>DiGiCo OSC only controls aux sends — main channel faders cannot be moved via OSC</li>
+        <li>Verify the desk's OSC send port and receive port aren't swapped</li>
+      </ul>
+
+      <h2>Mute or solo doesn't restore faders correctly</h2>
+      <ul>
+        <li>Fader positions are saved the moment you mute/solo — if you moved faders before muting they are restored to those positions</li>
+        <li>If a session change fires while a channel is muted, the mute/solo state is cleared and all levels are restored from the console</li>
+        <li>Check the event log at <kbd>/api/events</kbd> for any session-change events that might explain unexpected resets</li>
+      </ul>
+
+      <h2>Ear scenes not recalling</h2>
+      <ul>
+        <li><strong>First check:</strong> enable <strong>Auto-recall scenes on snapshot change</strong> in Settings → General — it is <strong>off by default</strong></li>
+        <li>Confirm a scene is saved for that snapshot — the 💾 button shows 🗑 when a saved scene exists for the current snapshot and aux</li>
+        <li>Check the snapshot name is showing in the mixer header before you save — if it shows "—" the name hasn't loaded yet</li>
+        <li>Check that the snapshot name matches exactly — names are case-sensitive and must include any spaces or punctuation</li>
+        <li>The console must be connected (green dot) for recall to work</li>
+        <li>Open the event log at <kbd>/api/events</kbd> and look for <strong>scene-skip</strong> entries — they show exactly why recall was skipped and which snapshot names are saved vs what was received</li>
+      </ul>
+
+      <h2>Mixer shows "Reconnecting…" and stays that way</h2>
+      <ul>
+        <li>Check the server is still running from the menu bar icon</li>
+        <li>Check the computer hasn't gone to sleep — on Mac: System Settings → Lock Screen; on Windows: Settings → Power &amp; Sleep</li>
+        <li>If the computer's IP changed (DHCP renewal), reload the mixer page with the new IP</li>
+        <li>View the event log at <kbd>/api/events</kbd> to see what caused the disconnect</li>
+      </ul>
+
+      <h2>Lots of devices disconnecting at the same time</h2>
+      <p>This was a known issue in earlier versions caused by iOS devices not responding to JSON-based heartbeat pings when JavaScript was suspended. This is fixed in v1.0.0-beta.1 — the server now uses native WebSocket ping frames which iOS handles at the protocol level, regardless of JavaScript state. If you still see mass disconnects, check the event log for the exact timing and close codes.</p>
+
+      <h2>App blocked by macOS Gatekeeper</h2>
+      <ul>
+        <li>Right-click the app in Finder → <strong>Open</strong> → <strong>Open Anyway</strong></li>
+        <li>Or: System Settings → Privacy &amp; Security → scroll down → <strong>Open Anyway</strong></li>
+        <li>You only need to do this once</li>
+      </ul>
+
+      <h2>Windows SmartScreen blocks the installer</h2>
+      <ul>
+        <li>Click <strong>More info</strong> on the SmartScreen dialog, then click <strong>Run anyway</strong></li>
+        <li>You only need to do this once — subsequent launches open normally</li>
+        <li>If your organisation's IT policy prevents this, ask your IT admin to whitelist the installer</li>
+      </ul>
+
+      <h2>App won't open after installing a new version over an old one</h2>
+      <ul>
+        <li>Delete the old JPMixer from Applications before installing the new one</li>
+        <li>If the app is currently running, quit it first from the menu bar (click icon → Quit JPMixer)</li>
+        <li>If you can't quit from the menu bar, use the Dock icon: right-click → Force Quit, then delete and reinstall</li>
+      </ul>
+
+      <h2>DMG fails to open / "volume already mounted"</h2>
+      <p>This happens when a previous DMG is still mounted. Open Finder → Locations in the sidebar, eject any "JPMixer" volume, then try opening the DMG again.</p>
+
+    </section>
+
+    <hr />
+
+    <p style="text-align:center; color:#aaa; font-size:13px;">JPMixer v1.0.1-beta.1 &nbsp;·&nbsp; Built for DiGiCo SD / Quantum &nbsp;·&nbsp; Mac &amp; Windows &nbsp;·&nbsp; Last updated May 2026</p>
+
+  </div>
+
+  <div class="footer">
+    JPMixer User Guide &nbsp;·&nbsp; Version 1.0.1-beta.1 &nbsp;·&nbsp; Mac &amp; Windows &nbsp;·&nbsp; Beta Release
+  </div>
+
+</body>
+</html>

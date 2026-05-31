@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JPMixer — Musician Guide</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      color: #1a1a1a;
+      background: #fff;
+    }
+
+    /* ── Cover ── */
+    .cover {
+      background: linear-gradient(135deg, #0e0f11 0%, #1c1e24 60%, #2a0a14 100%);
+      color: #fff;
+      padding: 80px 60px;
+      min-height: 360px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .cover-eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 16px;
+    }
+
+    .cover-title {
+      font-size: 58px;
+      font-weight: 800;
+      letter-spacing: -1.5px;
+      color: #e8253a;
+      text-shadow: 0 2px 24px rgba(232,37,58,0.35);
+      line-height: 1;
+    }
+
+    .cover-subtitle {
+      font-size: 22px;
+      color: rgba(255,255,255,0.55);
+      margin-top: 12px;
+      font-weight: 400;
+    }
+
+    .cover-tagline {
+      margin-top: 28px;
+      font-size: 15px;
+      color: rgba(255,255,255,0.4);
+      max-width: 460px;
+      line-height: 1.6;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      margin-top: 28px;
+      background: rgba(232,37,58,0.15);
+      border: 1px solid rgba(232,37,58,0.35);
+      color: #ff6b7a;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border-radius: 20px;
+      width: fit-content;
+    }
+
+    /* ── Layout ── */
+    .content {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 60px 40px 80px;
+    }
+
+    /* ── TOC ── */
+    .toc {
+      background: #f7f7f8;
+      border-radius: 14px;
+      padding: 28px 32px;
+      margin-bottom: 60px;
+    }
+
+    .toc-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #aaa;
+      margin-bottom: 16px;
+    }
+
+    .toc ol {
+      padding-left: 20px;
+    }
+
+    .toc li { margin: 8px 0; }
+
+    .toc a {
+      color: #e8253a;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .toc a:hover { text-decoration: underline; }
+
+    /* ── Sections ── */
+    section { margin-bottom: 64px; }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      color: #0e0f11;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 3px solid #e8253a;
+      letter-spacing: -0.5px;
+    }
+
+    h2 {
+      font-size: 19px;
+      font-weight: 700;
+      color: #0e0f11;
+      margin: 32px 0 10px;
+    }
+
+    p { margin-bottom: 14px; color: #333; }
+    ul, ol { padding-left: 22px; margin-bottom: 14px; }
+    li { margin: 7px 0; color: #333; }
+    strong { color: #111; }
+
+    /* ── Callouts ── */
+    .tip, .warning, .note {
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 20px 0;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .tip    { background: #edfaf3; border-left: 4px solid #22c55e; color: #14532d; }
+    .warning{ background: #fff7ed; border-left: 4px solid #f97316; color: #7c2d12; }
+    .note   { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e3a8a; }
+
+    .tip strong, .warning strong, .note strong {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.6;
+      margin-bottom: 5px;
+    }
+
+    /* ── Step list ── */
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+      margin: 16px 0;
+    }
+
+    .steps li {
+      counter-increment: step;
+      padding: 16px 16px 16px 62px;
+      position: relative;
+      margin: 10px 0;
+      background: #fafafa;
+      border-radius: 10px;
+      border: 1px solid #ebebeb;
+      color: #222;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      background: #e8253a;
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    /* ── Control reference cards ── */
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .control-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 18px 20px;
+      background: #fafafa;
+    }
+
+    .control-card-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #e8253a;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .control-card p {
+      font-size: 13px;
+      color: #555;
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    /* ── Button mockups ── */
+    .btn-pill {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      vertical-align: middle;
+    }
+
+    .btn-mute    { background: #e8253a; color: #fff; }
+    .btn-solo    { background: #f59e0b; color: #fff; }
+    .btn-off     { background: #2a2b30; color: #666; border: 1px solid #444; }
+
+    /* ── Big tip box ── */
+    .big-tip {
+      background: linear-gradient(135deg, #0e0f11, #1c1e24);
+      border-radius: 14px;
+      padding: 28px 32px;
+      margin: 24px 0;
+      color: #fff;
+    }
+
+    .big-tip-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #e8253a;
+      margin-bottom: 10px;
+    }
+
+    .big-tip p {
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .big-tip p:last-child { margin-bottom: 0; }
+
+    .big-tip ol {
+      padding-left: 20px;
+      margin: 8px 0 0;
+    }
+
+    .big-tip li {
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      margin: 6px 0;
+    }
+
+    /* ── Divider ── */
+    hr { border: none; border-top: 1px solid #ebebeb; margin: 56px 0; }
+
+    /* ── Footer ── */
+    .footer {
+      background: #0e0f11;
+      color: rgba(255,255,255,0.25);
+      text-align: center;
+      padding: 36px;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Print ── */
+    @media print {
+      .cover, .big-tip { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .tip, .warning, .note { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .steps li::before { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      section { page-break-inside: avoid; }
+    }
+
+    @media (max-width: 600px) {
+      .cover { padding: 48px 28px; }
+      .cover-title { font-size: 40px; }
+      .content { padding: 40px 20px; }
+      .control-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="cover-eyebrow">Musician Guide</div>
+    <div class="cover-title">JPMixer</div>
+    <div class="cover-subtitle">Your Personal Monitor Mix — In Your Hands</div>
+    <div class="cover-tagline">Control your own stage monitor or IEM mix from your iPhone or iPad. No app to download. No cables. Just open Safari and dial in your sound.</div>
+    <div class="cover-badge">v1.0.1-beta.1</div>
+  </div>
+
+  <div class="content">
+
+    <!-- TOC -->
+    <div class="toc">
+      <div class="toc-label">Contents</div>
+      <ol>
+        <li><a href="#connect">Getting Connected</a></li>
+        <li><a href="#homescreen">Installing on Your Home Screen</a></li>
+        <li><a href="#selectmix">Selecting Your Mix</a></li>
+        <li><a href="#faders">Adjusting Your Levels</a></li>
+        <li><a href="#mute-solo">Mute &amp; Solo</a></li>
+        <li><a href="#scenes">Saving Your Mix Per Song</a></li>
+        <li><a href="#reconnect">If You Lose Connection</a></li>
+        <li><a href="#tips">Tips for a Better Experience</a></li>
+        <li><a href="#troubleshooting">Troubleshooting</a></li>
+      </ol>
+    </div>
+
+    <!-- 1. Getting Connected -->
+    <section id="connect">
+      <h1>1. Getting Connected</h1>
+      <p>JPMixer works entirely in your web browser — no app to download from the App Store. All you need is your phone on the right WiFi network.</p>
+
+      <ol class="steps">
+        <li>Connect your phone or tablet to the <strong>stage WiFi network</strong> — ask your monitor engineer for the network name and password</li>
+        <li>Open <strong>Safari</strong> on your iPhone or iPad</li>
+        <li>Type the mixer address into the address bar — your engineer will give you this (it looks like <strong>http://192.168.x.x:8080</strong>)</li>
+        <li>The JPMixer page loads — you're in</li>
+      </ol>
+
+      <div class="tip">
+        <strong>Use Safari</strong>
+        JPMixer is built for Safari on iPhone and iPad. Chrome and other browsers will work but won't give you the best experience — some features like adding to your home screen won't work properly.
+      </div>
+
+      <div class="note">
+        <strong>Can't reach the page?</strong>
+        Make sure your phone is on the <em>stage WiFi</em>, not your mobile data or a different network. The mixer only works on the same local network as the console.
+      </div>
+    </section>
+
+    <!-- 2. Home Screen -->
+    <section id="homescreen">
+      <h1>2. Installing on Your Home Screen</h1>
+      <p>You can save JPMixer to your iPhone home screen so it opens like a real app — full screen, no browser bar, and it remembers your mix. This is the best way to use it.</p>
+
+      <ol class="steps">
+        <li>Open the mixer in <strong>Safari</strong></li>
+        <li>Tap the <strong>Share button</strong> at the bottom of the screen — it looks like a box with an arrow pointing up</li>
+        <li>Scroll down in the share sheet and tap <strong>Add to Home Screen</strong></li>
+        <li>Tap <strong>Add</strong> in the top right corner</li>
+        <li>The JPMixer icon appears on your home screen — tap it any time to open your mix</li>
+      </ol>
+
+      <div class="big-tip">
+        <div class="big-tip-title">Why add it to your home screen?</div>
+        <p>When you open JPMixer from your home screen icon it runs full-screen with no browser chrome — just your mix. More importantly, the connection stays alive even when your phone screen locks or you switch apps. When you come back, it reconnects instantly.</p>
+        <p>If you open it in Safari as a regular tab, iOS may suspend the connection when you switch away. From the home screen icon it behaves like a native app.</p>
+      </div>
+    </section>
+
+    <!-- 3. Selecting Your Mix -->
+    <section id="selectmix">
+      <h1>3. Selecting Your Mix</h1>
+      <p>When you first open JPMixer you'll see the <strong>mix picker</strong> — a list of all the monitor mixes on the show. Each mix is one aux bus on the console (your wedge, your IEM, your side-fill, etc.).</p>
+      <p>Tap your name or your mix name to enter it. Your mix fills the screen and you're ready to go.</p>
+
+      <h2>Switching Mixes</h2>
+      <p>Tap the <strong>mix name bar at the top</strong> of the screen at any time to go back to the picker and choose a different mix. This is useful if you're covering multiple positions or want to check someone else's mix.</p>
+
+      <div class="tip">
+        <strong>Your mix is remembered</strong>
+        Once you've selected a mix, JPMixer remembers it. Next time you open the app — even after closing it or losing WiFi — it goes straight back to your mix without you needing to tap anything.
+      </div>
+    </section>
+
+    <!-- 4. Adjusting Levels -->
+    <section id="faders">
+      <h1>4. Adjusting Your Levels</h1>
+      <p>Each channel in your mix has a fader you can drag to set the level. The channel name and icon are shown at the left of each row.</p>
+
+      <h2>Moving a Fader</h2>
+      <ul>
+        <li><strong>Drag right</strong> to turn a channel up</li>
+        <li><strong>Drag left</strong> to turn a channel down</li>
+        <li>The dB value updates live as you move it</li>
+        <li>Dragging all the way left takes the channel to silence (–∞ dB)</li>
+      </ul>
+
+      <div class="control-grid">
+        <div class="control-card">
+          <div class="control-card-label">Mix Name Bar</div>
+          <p>Shows your current mix name at the top. Tap it to switch to a different mix.</p>
+        </div>
+        <div class="control-card">
+          <div class="control-card-label">Connection Dot</div>
+          <p>Top right corner. Green = live connection to the console. Grey = reconnecting.</p>
+        </div>
+        <div class="control-card">
+          <div class="control-card-label">PAN Button</div>
+          <p>Top right. Tap to reveal pan controls alongside each fader for left/right positioning.</p>
+        </div>
+        <div class="control-card">
+          <div class="control-card-label">Save Button 💾</div>
+          <p>Saves your entire mix for the current song snapshot. See Section 6.</p>
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>Your changes go straight to the console</strong>
+        Every fader move is sent to the DiGiCo console in real time. There is no "apply" button — what you hear is what you set.
+      </div>
+    </section>
+
+    <!-- 5. Mute & Solo -->
+    <section id="mute-solo">
+      <h1>5. Mute &amp; Solo</h1>
+      <p>Every channel row has two small buttons on the right side: <span class="btn-pill btn-off">M</span> and <span class="btn-pill btn-off">S</span>. These let you quickly silence or isolate channels in your mix without moving any faders.</p>
+
+      <h2>Mute — <span class="btn-pill btn-mute">M</span></h2>
+      <p>Tap <span class="btn-pill btn-mute">M</span> to mute a channel. The channel goes to silence and the row dims. The button lights red while active.</p>
+      <p>Tap it again to unmute — the fader snaps back to exactly where it was before you muted. <strong>Your levels are never lost.</strong></p>
+
+      <h2>Solo — <span class="btn-pill btn-solo">S</span></h2>
+      <p>Tap <span class="btn-pill btn-solo">S</span> to solo a channel. Every other channel in your mix goes silent — only the soloed channel plays. The button lights amber. Tap again to release the solo and bring everything back.</p>
+      <p>You can solo multiple channels at once — all soloed channels play, everything else is silent.</p>
+
+      <div class="tip">
+        <strong>Good for dialling in one instrument</strong>
+        Solo is useful when you want to set the level of one specific channel without everything else competing. Solo it, set the level, then release.
+      </div>
+
+      <div class="note">
+        <strong>This only affects your mix</strong>
+        Muting or soloing a channel only affects your own monitor mix. It has no effect on FOH, other musicians' mixes, or the main PA. You can't accidentally mute something for the audience.
+      </div>
+    </section>
+
+    <!-- 6. Saving Your Mix Per Song -->
+    <section id="scenes">
+      <h1>6. Saving Your Mix Per Song</h1>
+      <p>JPMixer can save a snapshot of your entire mix for each song — so when the engineer recalls a snapshot on the console, your mix changes automatically to match what you saved for that song. No tapping needed during the show.</p>
+
+      <h2>How to Save a Mix for a Song</h2>
+      <ol class="steps">
+        <li>Make sure the <strong>song name appears in the bar</strong> just below the mix name — this is the current console snapshot. If it shows "—" wait a moment for it to load</li>
+        <li>Set your mix exactly the way you want it for that song</li>
+        <li>Tap the <strong>💾 Save</strong> button — a confirmation message appears at the bottom of the screen showing which snapshot it was saved for</li>
+        <li>Repeat for each song you want to save a mix for</li>
+      </ol>
+
+      <p>Once saved, the button changes to <strong>🗑</strong> — tap that if you want to delete the saved mix for that song.</p>
+
+      <h2>During the Show</h2>
+      <p>When the engineer fires a snapshot, JPMixer automatically pushes your saved mix to the console and your faders move to the saved positions. You don't need to do anything — just play.</p>
+
+      <div class="warning">
+        <strong>Check with your engineer first</strong>
+        Auto-recall needs to be enabled by the engineer in JPMixer settings. If your mixes aren't recalling automatically during the show, let your monitor engineer know and they can turn it on.
+      </div>
+
+      <div class="tip">
+        <strong>Save during soundcheck</strong>
+        The best time to save your mixes is during soundcheck. Go through each song's snapshot with the engineer, dial in your mix for each one, and save. By showtime your mixes are locked in.
+      </div>
+    </section>
+
+    <!-- 7. Reconnecting -->
+    <section id="reconnect">
+      <h1>7. If You Lose Connection</h1>
+      <p>If your phone loses WiFi or goes to sleep, JPMixer reconnects automatically as soon as the connection is restored. You don't need to refresh the page or re-select your mix — it picks up exactly where it left off.</p>
+
+      <h2>What the Overlays Mean</h2>
+      <ul>
+        <li><strong>"Connecting to console…"</strong> — JPMixer is starting up, wait a few seconds</li>
+        <li><strong>"Reconnecting…"</strong> — brief WiFi drop, reconnecting automatically</li>
+        <li><strong>Grey connection dot</strong> — no connection right now, trying to reconnect</li>
+        <li><strong>Green connection dot</strong> — live and connected</li>
+      </ul>
+
+      <div class="tip">
+        <strong>If it stays on "Reconnecting…" for more than 30 seconds</strong>
+        Check that your phone is still on the stage WiFi — it may have switched to mobile data. Toggle WiFi off and back on in your phone settings and it should reconnect within a few seconds.
+      </div>
+    </section>
+
+    <!-- 8. Tips -->
+    <section id="tips">
+      <h1>8. Tips for a Better Experience</h1>
+
+      <ul>
+        <li><strong>Always use Safari on iPhone/iPad</strong> — Chrome and other iOS browsers don't support all the features JPMixer uses</li>
+        <li><strong>Add it to your home screen</strong> — keeps the connection alive when your screen locks, much more reliable than a browser tab</li>
+        <li><strong>Stay on stage WiFi</strong> — if your phone switches to mobile data the mixer will disconnect. Keep WiFi on and avoid areas with poor WiFi coverage</li>
+        <li><strong>Don't force-close the app mid-show</strong> — if you swipe it away on iOS, it will need to reconnect when you reopen it. Leave it running in the background instead</li>
+        <li><strong>Save your mix before the show, not during</strong> — saving a scene sends data to the console which is fine, but it's cleaner to do it during soundcheck</li>
+        <li><strong>Brightness</strong> — turn your screen brightness up in dim stage lighting so you can read the faders clearly</li>
+      </ul>
+    </section>
+
+    <!-- 9. Troubleshooting -->
+    <section id="troubleshooting">
+      <h1>9. Troubleshooting</h1>
+
+      <h2>The page won't load</h2>
+      <ul>
+        <li>Make sure you're on the stage WiFi, not mobile data</li>
+        <li>Double-check the address your engineer gave you — it needs to be typed exactly including the port number (e.g. <strong>:8080</strong> at the end)</li>
+        <li>Ask your engineer to confirm the server is running — the status in JPMixer Settings should show "Running"</li>
+      </ul>
+
+      <h2>I moved a fader but didn't hear anything change</h2>
+      <ul>
+        <li>Check the green connection dot — if it's grey you're not connected and moves aren't being sent</li>
+        <li>Make sure you have the right mix selected — tap the mix name bar to confirm</li>
+        <li>Ask your engineer to check the console is connected (green dot in their settings)</li>
+      </ul>
+
+      <h2>My saved mixes aren't recalling automatically</h2>
+      <ul>
+        <li>Ask your monitor engineer to enable <strong>Auto-recall scenes on snapshot change</strong> in JPMixer Settings → General</li>
+        <li>Make sure you saved your mix while the correct song name was showing in the snapshot bar — if it showed "—" when you saved, the save may not have attached to the right snapshot</li>
+      </ul>
+
+      <h2>The faders jumped to wrong positions</h2>
+      <ul>
+        <li>This can happen if a snapshot fired and you have a saved mix for it — that's expected behaviour</li>
+        <li>If it happens unexpectedly, check with your engineer whether auto-recall is enabled</li>
+      </ul>
+
+      <h2>The mixer is showing "Reconnecting…" during the show</h2>
+      <ul>
+        <li>Check your WiFi signal — move closer to the access point if possible</li>
+        <li>Toggle WiFi off and back on on your phone</li>
+        <li>If you added JPMixer to your home screen, close and reopen the app — it will reconnect in seconds</li>
+      </ul>
+
+      <h2>I accidentally muted everything</h2>
+      <ul>
+        <li>If you hit Solo on a channel that has no signal, your mix will appear silent — tap the lit <span class="btn-pill btn-solo">S</span> button to release the solo</li>
+        <li>Check for any lit <span class="btn-pill btn-mute">M</span> buttons — tap them to unmute</li>
+      </ul>
+    </section>
+
+    <hr />
+
+    <p style="text-align:center; color:#bbb; font-size:13px;">JPMixer v1.0.1-beta.1 &nbsp;·&nbsp; Musician Guide &nbsp;·&nbsp; For questions speak to your monitor engineer</p>
+
+  </div>
+
+  <div class="footer">
+    JPMixer &nbsp;·&nbsp; Your mix, your hands
+  </div>
+
+</body>
+</html>
