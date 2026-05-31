@@ -10,7 +10,7 @@ const GITHUB_REPO = 'JPMixing-inc/jpmixer';
 function checkForUpdates(silent = false) {
   const options = {
     hostname: 'api.github.com',
-    path: `/repos/${GITHUB_REPO}/releases/latest`,
+    path: `/repos/${GITHUB_REPO}/releases?per_page=1`,
     headers: { 'User-Agent': 'JPMixer-UpdateCheck' }
   };
 
@@ -19,8 +19,9 @@ function checkForUpdates(silent = false) {
     res.on('data', chunk => { data += chunk; });
     res.on('end', () => {
       try {
-        const release = JSON.parse(data);
-        const latest  = (release.tag_name || '').replace(/^v/, '');
+        const releases = JSON.parse(data);
+        const release  = Array.isArray(releases) ? releases[0] : releases;
+        const latest   = (release.tag_name || '').replace(/^v/, '');
         const current = app.getVersion();
         if (latest && latest !== current) {
           dialog.showMessageBox({
