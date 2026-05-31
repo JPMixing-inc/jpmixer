@@ -14,6 +14,7 @@
     "appId": "com.jpmixing.oscmixer",
     "productName": "JPMixer",
     "npmRebuild": false,
+    "publish": "never",
     "files": [
       "main.js",
       "src/**/*",
