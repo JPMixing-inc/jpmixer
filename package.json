@@ -13,6 +13,7 @@
   "build": {
     "appId": "com.jpmixing.oscmixer",
     "productName": "JPMixer",
+    "npmRebuild": false,
     "files": [
       "main.js",
       "src/**/*",
