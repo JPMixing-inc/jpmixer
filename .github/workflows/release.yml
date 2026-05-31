@@ -24,14 +24,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build macOS (DMG)
+      - name: Pre-create PKG placeholder (prevents ENOENT on first CI run)
+        run: mkdir -p dist && touch dist/com.jpmixing.oscmixer.pkg
+
+      - name: Build macOS (DMG + PKG)
         run: npm run build
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mac-artifacts
-          path: dist/*.dmg
+          path: |
+            dist/*.dmg
+            dist/*.pkg
           if-no-files-found: error
 
   build-windows:
@@ -81,6 +86,7 @@ jobs:
         with:
           files: |
             artifacts/mac/*.dmg
+            artifacts/mac/*.pkg
             artifacts/win/*.exe
           draft: false
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
