@@ -95,38 +95,61 @@ html, body {
 }
 .conn-dot.connected { background: var(--green); }
 
-/* ── Layout ── */
+/* ── Tab bar ── */
 
-.con-body {
+.con-tabs {
   display: flex;
-  flex-direction: column;
-  height: calc(100vh - 48px);
-  overflow: hidden;
-}
-
-/* ── Section labels ── */
-
-.section-label {
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--sub);
-  padding: 4px 12px;
-  background: var(--bg);
+  flex-direction: row;
+  height: 36px;
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-/* ── Channel strip area ── */
-
-.input-section {
+.con-tab {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--sub);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
 }
+
+.con-tab.tab-active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.con-tab:hover:not(.tab-active) { color: var(--text); }
+
+/* ── Layout ── */
+
+.con-body {
+  position: relative;
+  height: calc(100vh - 84px);
+  overflow: hidden;
+}
+
+/* ── Section visibility ── */
+
+.input-section,
+.cg-section,
+.aux-section {
+  display: none;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.tab-active {
+  display: flex;
+}
+
+/* ── Channel strip area ── */
 
 .strips-scroll {
   flex: 1;
@@ -137,6 +160,7 @@ html, body {
   gap: 1px;
   background: var(--border);
   min-height: 0;
+  height: 100%;
 }
 
 .strips-scroll::-webkit-scrollbar { height: 4px; }
@@ -296,24 +320,68 @@ html, body {
   padding: 0 2px;
 }
 
-/* ── Aux output section ── */
+/* ── Control Group section ── */
 
-.aux-section {
-  flex-shrink: 0;
-  border-top: 2px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.aux-strips-scroll {
+.cg-scroll {
+  flex: 1;
   display: flex;
   flex-direction: row;
   overflow-x: auto;
   overflow-y: hidden;
   gap: 1px;
   background: var(--border);
-  padding: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.cg-scroll::-webkit-scrollbar { height: 4px; }
+.cg-scroll::-webkit-scrollbar-track { background: var(--bg); }
+.cg-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.cg-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 54px;
+  min-width: 54px;
+  background: #0d1018;
+  padding: 6px 0 4px;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.cg-strip.muted   { background: rgba(255,59,48,0.08); }
+.cg-strip.soloed  { background: rgba(255,159,10,0.1); }
+
+.cg-num {
+  font-size: 9px;
+  font-weight: 700;
+  color: #00c8a0;
+  letter-spacing: 0.5px;
+}
+
+.cg-fader-fill {
+  position: absolute;
+  width: 4px;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #00c8a0;
+  border-radius: 2px;
+  pointer-events: none;
+  transition: height 0.05s;
+}
+
+/* ── Aux output section ── */
+
+.aux-strips-scroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  gap: 1px;
+  background: var(--border);
 }
 
 /* ── Aux strip (horizontal, compact) ── */
@@ -323,9 +391,9 @@ html, body {
   flex-direction: row;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 8px 12px;
   background: #0e1014;
-  min-width: 180px;
+  width: 100%;
   flex-shrink: 0;
 }
 
@@ -339,11 +407,11 @@ html, body {
 }
 
 .aux-name {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text);
-  min-width: 60px;
-  max-width: 80px;
+  min-width: 80px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

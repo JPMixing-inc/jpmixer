@@ -57,6 +57,9 @@ const consoleMutes  = {}; // ch  → bool
 const consoleSolos  = {}; // ch  → bool
 const auxFaders     = {}; // aux → dB
 const auxMutes      = {}; // aux → bool
+const cgFaders      = {}; // cg  → dB
+const cgMutes       = {}; // cg  → bool
+const cgSolos       = {}; // cg  → bool
 
 // Snapshot tracking
 let currentSnapshotName = '';
@@ -255,10 +258,22 @@ function buildConfig() {
     });
   });
 
+  const cgCount = cache.has('/Console/Control_Groups')
+    ? cache.get('/Console/Control_Groups').args[0]
+    : 8;
+  const controlGroups = [];
+  for (let i = 1; i <= cgCount; i++) {
+    const name = cache.has(`/Control_Groups/${i}/Channel_Input/name`)
+      ? cache.get(`/Control_Groups/${i}/Channel_Input/name`).args[0]
+      : `CG ${i}`;
+    controlGroups.push({ channel: i, label: name });
+  }
+
   return JSON.stringify({
     config: {
       channels,
       aux: auxilaries,
+      controlGroups,
       snapshot: currentSnapshotName,
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
       scenes: scenes.getAll(),
@@ -273,8 +288,10 @@ function buildConfig() {
 const CACHE_PATTERNS = [
   /^\/Console\/Input_Channels$/,
   /^\/Console\/Aux_Outputs\/modes$/,
+  /^\/Console\/Control_Groups$/,
   /^\/Aux_Outputs\/\d+\/Buss_Trim\/name$/,
   /^\/Input_Channels\/\d+\/Channel_Input\/name$/,
+  /^\/Control_Groups\/\d+\/Channel_Input\/name$/,
   /^\/Input_Channels\/\d+\/Aux_Send\/\d+\/send_level$/,
   /^\/Input_Channels\/\d+\/Aux_Send\/\d+\/send_pan$/,
 ];
@@ -530,11 +547,19 @@ function startWebSocketServer() {
             ws.send(JSON.stringify({ address: `/Aux_Outputs/${aux}/fader`, args: [db] }));
           for (const [aux, m] of Object.entries(auxMutes))
             ws.send(JSON.stringify({ address: `/Aux_Outputs/${aux}/mute`, args: [m ? 1.0 : 0.0] }));
+          for (const [cg, db] of Object.entries(cgFaders))
+            ws.send(JSON.stringify({ address: `/Control_Groups/${cg}/fader`, args: [db] }));
+          for (const [cg, m] of Object.entries(cgMutes))
+            ws.send(JSON.stringify({ address: `/Control_Groups/${cg}/mute`, args: [m ? 1.0 : 0.0] }));
+          for (const [cg, s] of Object.entries(cgSolos))
+            ws.send(JSON.stringify({ address: `/Control_Groups/${cg}/solo`, args: [s ? 1.0 : 0.0] }));
           // Poll the desk for current values — responses come back via OSC and broadcast to all clients
           const chCount  = cache.has('/Console/Input_Channels')
             ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
           const auxCount = cache.has('/Console/Aux_Outputs/modes')
             ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
+          const cgPollCount = cache.has('/Console/Control_Groups')
+            ? cache.get('/Console/Control_Groups').args[0] : 8;
           for (let i = 1; i <= chCount; i++) {
             sendToDesk(`/Input_Channels/${i}/fader/?`, []);
             sendToDesk(`/Input_Channels/${i}/mute/?`, []);
@@ -542,6 +567,12 @@ function startWebSocketServer() {
           for (let i = 1; i <= auxCount; i++) {
             sendToDesk(`/Aux_Outputs/${i}/fader/?`, []);
             sendToDesk(`/Aux_Outputs/${i}/mute/?`, []);
+          }
+          for (let i = 1; i <= cgPollCount; i++) {
+            sendToDesk(`/Control_Groups/${i}/fader/?`, []);
+            sendToDesk(`/Control_Groups/${i}/mute/?`, []);
+            sendToDesk(`/Control_Groups/${i}/solo/?`, []);
+            sendToDesk(`/Control_Groups/${i}/Channel_Input/name/?`, []);
           }
           return;
         }
@@ -586,6 +617,32 @@ function startWebSocketServer() {
           sendToDesk(`/Aux_Outputs/${msg.aux}/mute`, [val]);
           auxMutes[msg.aux] = msg.muted;
           broadcastToClients({ address: `/Aux_Outputs/${msg.aux}/mute`, args: [val] });
+          return;
+        }
+
+        // Console page — control group fader
+        if (msg.type === 'cg-fader') {
+          sendToDesk(`/Control_Groups/${msg.cg}/fader`, [msg.db]);
+          cgFaders[msg.cg] = msg.db;
+          broadcastToClients({ address: `/Control_Groups/${msg.cg}/fader`, args: [msg.db] });
+          return;
+        }
+
+        // Console page — control group mute
+        if (msg.type === 'cg-mute') {
+          const val = msg.muted ? 1.0 : 0.0;
+          sendToDesk(`/Control_Groups/${msg.cg}/mute`, [val]);
+          cgMutes[msg.cg] = msg.muted;
+          broadcastToClients({ address: `/Control_Groups/${msg.cg}/mute`, args: [val] });
+          return;
+        }
+
+        // Console page — control group solo
+        if (msg.type === 'cg-solo') {
+          const val = msg.soloed ? 1.0 : 0.0;
+          sendToDesk(`/Control_Groups/${msg.cg}/solo`, [val]);
+          cgSolos[msg.cg] = msg.soloed;
+          broadcastToClients({ address: `/Control_Groups/${msg.cg}/solo`, args: [val] });
           return;
         }
 
@@ -776,6 +833,15 @@ function start(cfg) {
 
     const auxMuteM = oscMsg.address.match(/^\/Aux_Outputs\/(\d+)\/mute$/);
     if (auxMuteM) { auxMutes[parseInt(auxMuteM[1])] = !!oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
+
+    const cgFaderM = oscMsg.address.match(/^\/Control_Groups\/(\d+)\/fader$/);
+    if (cgFaderM) { cgFaders[parseInt(cgFaderM[1])] = oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
+
+    const cgMuteM = oscMsg.address.match(/^\/Control_Groups\/(\d+)\/mute$/);
+    if (cgMuteM) { cgMutes[parseInt(cgMuteM[1])] = !!oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
+
+    const cgSoloM = oscMsg.address.match(/^\/Control_Groups\/(\d+)\/solo$/);
+    if (cgSoloM) { cgSolos[parseInt(cgSoloM[1])] = !!oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
 
     broadcast(oscMsg, info.address);
   });

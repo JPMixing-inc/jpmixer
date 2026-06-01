@@ -21,13 +21,20 @@
     <span class="conn-dot" id="connDot"></span>
   </header>
 
+  <nav class="con-tabs">
+    <button class="con-tab tab-active" data-tab="inputs">Inputs</button>
+    <button class="con-tab" data-tab="cg">Control Groups</button>
+    <button class="con-tab" data-tab="aux">Aux Outputs</button>
+  </nav>
+
   <div class="con-body">
-    <div class="input-section">
-      <div class="section-label">Input Channels</div>
+    <div class="input-section tab-active" id="tabInputs">
       <div class="strips-scroll" id="inputStrips"></div>
     </div>
-    <div class="aux-section">
-      <div class="section-label">Aux Outputs</div>
+    <div class="cg-section" id="tabCG">
+      <div class="cg-scroll" id="cgStrips"></div>
+    </div>
+    <div class="aux-section" id="tabAux">
       <div class="aux-strips-scroll" id="auxStrips"></div>
     </div>
   </div>

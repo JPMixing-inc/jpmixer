@@ -22,11 +22,15 @@ function formatDb(db) {
 let ws             = null;
 let chConfig       = [];  // [{channel, label, enabled, ...}]
 let auxConfig      = [];  // [{channel, label, colour, enabled, ...}]
+let cgConfig       = [];  // [{channel, label}]
 let consoleFaders  = {};  // ch → dB
 let consoleMutes   = {};  // ch → bool
 let consoleSolos   = {};  // ch → bool
 let auxFaders      = {};  // aux → dB
 let auxMutes       = {};  // aux → bool
+let cgFaders       = {};  // cg → dB
+let cgMutes        = {};  // cg → bool
+let cgSolos        = {};  // cg → bool
 let heartbeatTimer = null;
 let hasConnected   = false;
 let disconnectTimer = null;
@@ -77,9 +81,11 @@ function connect() {
 function onMessage(json) {
   if (json.config) {
     chConfig  = json.config.channels || [];
-    auxConfig = (json.config.aux || []);
+    auxConfig = json.config.aux || [];
+    cgConfig  = json.config.controlGroups || [];
     document.getElementById('conSnapshot').textContent = json.config.snapshot || '—';
     buildInputStrips();
+    buildCGStrips();
     buildAuxStrips();
     return;
   }
@@ -141,6 +147,33 @@ function onMessage(json) {
     const aux = parseInt(auxMuteM[1]);
     auxMutes[aux] = !!args[0];
     updateAuxMute(aux, !!args[0]);
+    return;
+  }
+
+  // Control group fader
+  const cgFaderM = address.match(/^\/Control_Groups\/(\d+)\/fader$/);
+  if (cgFaderM) {
+    const cg = parseInt(cgFaderM[1]);
+    cgFaders[cg] = args[0];
+    updateCGFader(cg, args[0]);
+    return;
+  }
+
+  // Control group mute
+  const cgMuteM = address.match(/^\/Control_Groups\/(\d+)\/mute$/);
+  if (cgMuteM) {
+    const cg = parseInt(cgMuteM[1]);
+    cgMutes[cg] = !!args[0];
+    updateCGMute(cg, !!args[0]);
+    return;
+  }
+
+  // Control group solo
+  const cgSoloM = address.match(/^\/Control_Groups\/(\d+)\/solo$/);
+  if (cgSoloM) {
+    const cg = parseInt(cgSoloM[1]);
+    cgSolos[cg] = !!args[0];
+    updateCGSolo(cg, !!args[0]);
     return;
   }
 }
@@ -298,6 +331,85 @@ function buildAuxStrip(aux) {
   return strip;
 }
 
+function buildCGStrips() {
+  const grid = document.getElementById('cgStrips');
+  grid.innerHTML = '';
+  for (const cg of cgConfig) {
+    grid.appendChild(buildCGStrip(cg));
+  }
+}
+
+function buildCGStrip(cg) {
+  const db     = cgFaders[cg.channel] ?? -90;
+  const muted  = !!cgMutes[cg.channel];
+  const soloed = !!cgSolos[cg.channel];
+  const sliderVal = dbToSlider(db);
+
+  const strip = document.createElement('div');
+  strip.className = 'cg-strip' + (muted ? ' muted' : '') + (soloed ? ' soloed' : '');
+  strip.dataset.cg = cg.channel;
+
+  const num = document.createElement('div');
+  num.className = 'cg-num';
+  num.textContent = `G${cg.channel}`;
+
+  const faderWrap = document.createElement('div');
+  faderWrap.className = 'ch-fader-wrap';
+
+  const track = document.createElement('div');
+  track.className = 'ch-fader-track';
+
+  const fill = document.createElement('div');
+  fill.className = 'cg-fader-fill';
+  fill.style.height = `calc((100% - 12px) * ${sliderVal})`;
+
+  const fader = document.createElement('input');
+  fader.type = 'range';
+  fader.className = 'ch-fader';
+  fader.min = '0'; fader.max = '1'; fader.step = '0.001';
+  fader.value = String(sliderVal);
+  fader.addEventListener('input', () => {
+    const newDb = sliderToDb(parseFloat(fader.value));
+    fill.style.height = `calc((100% - 12px) * ${fader.value})`;
+    dbEl.textContent = formatDb(newDb);
+    cgFaders[cg.channel] = newDb;
+    send({ type: 'cg-fader', cg: cg.channel, db: newDb });
+  });
+
+  faderWrap.append(track, fill, fader);
+
+  const dbEl = document.createElement('div');
+  dbEl.className = 'ch-db';
+  dbEl.textContent = formatDb(db);
+
+  const btns = document.createElement('div');
+  btns.className = 'ch-btns';
+
+  const muteBtn = document.createElement('button');
+  muteBtn.className = 'ch-btn mute-btn' + (muted ? ' active' : '');
+  muteBtn.textContent = 'M';
+  muteBtn.addEventListener('click', () => {
+    send({ type: 'cg-mute', cg: cg.channel, muted: !muteBtn.classList.contains('active') });
+  });
+
+  const soloBtn = document.createElement('button');
+  soloBtn.className = 'ch-btn solo-btn' + (soloed ? ' active' : '');
+  soloBtn.textContent = 'S';
+  soloBtn.addEventListener('click', () => {
+    send({ type: 'cg-solo', cg: cg.channel, soloed: !soloBtn.classList.contains('active') });
+  });
+
+  btns.append(muteBtn, soloBtn);
+
+  const name = document.createElement('div');
+  name.className = 'ch-name';
+  name.textContent = cg.label || `CG ${cg.channel}`;
+  name.title = cg.label || `CG ${cg.channel}`;
+
+  strip.append(num, faderWrap, dbEl, btns, name);
+  return strip;
+}
+
 // ── UI updaters ───────────────────────────────────────────────────────────
 
 function updateChFader(ch, db) {
@@ -343,6 +455,26 @@ function updateAuxMute(aux, muted) {
   document.querySelectorAll(`.aux-strip[data-aux="${aux}"] .aux-btn`).forEach(b => b.classList.toggle('active', muted));
 }
 
+function updateCGFader(cg, db) {
+  const sliderVal = dbToSlider(db);
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .ch-fader`).forEach(f => {
+    f.value = sliderVal;
+    const fill = f.closest('.ch-fader-wrap').querySelector('.cg-fader-fill');
+    if (fill) fill.style.height = `calc((100% - 12px) * ${sliderVal})`;
+  });
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .ch-db`).forEach(el => { el.textContent = formatDb(db); });
+}
+
+function updateCGMute(cg, muted) {
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"]`).forEach(s => s.classList.toggle('muted', muted));
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .mute-btn`).forEach(b => b.classList.toggle('active', muted));
+}
+
+function updateCGSolo(cg, soloed) {
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"]`).forEach(s => s.classList.toggle('soloed', soloed));
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .solo-btn`).forEach(b => b.classList.toggle('active', soloed));
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function send(msg) {
@@ -350,6 +482,17 @@ function send(msg) {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  document.querySelectorAll('.con-tab').forEach(t => t.classList.toggle('tab-active', t.dataset.tab === name));
+  document.getElementById('tabInputs').classList.toggle('tab-active', name === 'inputs');
+  document.getElementById('tabCG').classList.toggle('tab-active', name === 'cg');
+  document.getElementById('tabAux').classList.toggle('tab-active', name === 'aux');
+}
+
+document.querySelectorAll('.con-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
 
 connect();
 
