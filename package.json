@@ -47,7 +47,7 @@
       "uninstallerIcon": "assets/icon.ico"
     },
     "dmg": {
-      "title": "JPMixer ${version}",
+      "title": "JPMixer-${version}",
       "icon": "assets/icon.icns",
       "window": {
         "width": 660,
