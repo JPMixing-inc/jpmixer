@@ -1,6 +1,6 @@
 {
   "name": "jpmixer",
-  "version": "1.0.1-beta.10",
+  "version": "1.0.1-beta.11",
   "description": "JPMixer — browser-based monitor mix control for DiGiCo consoles",
   "main": "main.js",
   "scripts": {
@@ -49,10 +49,6 @@
     "dmg": {
       "title": "JPMixer-${version}",
       "icon": "assets/icon.icns",
-      "window": {
-        "width": 660,
-        "height": 400
-      },
       "contents": [
         {
           "x": 180,
