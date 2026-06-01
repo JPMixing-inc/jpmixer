@@ -263,9 +263,11 @@ function buildConfig() {
     : 8;
   const controlGroups = [];
   for (let i = 1; i <= cgCount; i++) {
-    const name = cache.has(`/Control_Groups/${i}/Channel_Input/name`)
-      ? cache.get(`/Control_Groups/${i}/Channel_Input/name`).args[0]
-      : `CG ${i}`;
+    const name = cache.has(`/Control_Groups/${i}/name`)
+      ? cache.get(`/Control_Groups/${i}/name`).args[0]
+      : cache.has(`/Control_Groups/${i}/Channel_Input/name`)
+        ? cache.get(`/Control_Groups/${i}/Channel_Input/name`).args[0]
+        : `CG ${i}`;
     controlGroups.push({ channel: i, label: name });
   }
 
@@ -292,6 +294,7 @@ const CACHE_PATTERNS = [
   /^\/Aux_Outputs\/\d+\/Buss_Trim\/name$/,
   /^\/Input_Channels\/\d+\/Channel_Input\/name$/,
   /^\/Control_Groups\/\d+\/Channel_Input\/name$/,
+  /^\/Control_Groups\/\d+\/name$/,
   /^\/Input_Channels\/\d+\/Aux_Send\/\d+\/send_level$/,
   /^\/Input_Channels\/\d+\/Aux_Send\/\d+\/send_pan$/,
 ];
@@ -572,6 +575,7 @@ function startWebSocketServer() {
             sendToDesk(`/Control_Groups/${i}/fader/?`, []);
             sendToDesk(`/Control_Groups/${i}/mute/?`, []);
             sendToDesk(`/Control_Groups/${i}/solo/?`, []);
+            sendToDesk(`/Control_Groups/${i}/name/?`, []);
             sendToDesk(`/Control_Groups/${i}/Channel_Input/name/?`, []);
           }
           return;
@@ -842,6 +846,10 @@ function start(cfg) {
 
     const cgSoloM = oscMsg.address.match(/^\/Control_Groups\/(\d+)\/solo$/);
     if (cgSoloM) { cgSolos[parseInt(cgSoloM[1])] = !!oscMsg.args[0]; broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
+
+    // CG name — either path the desk uses; broadcast so console page can update label
+    const cgNameM = oscMsg.address.match(/^\/Control_Groups\/(\d+)\/(?:Channel_Input\/)?name$/);
+    if (cgNameM) { broadcastToClients({ address: oscMsg.address, args: oscMsg.args }); return; }
 
     broadcast(oscMsg, info.address);
   });

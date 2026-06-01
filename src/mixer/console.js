@@ -177,8 +177,8 @@ function onMessage(json) {
     return;
   }
 
-  // Control group name — arrives after strips are built, update in place
-  const cgNameM = address.match(/^\/Control_Groups\/(\d+)\/Channel_Input\/name$/);
+  // Control group name — desk may use /name or /Channel_Input/name; handle both
+  const cgNameM = address.match(/^\/Control_Groups\/(\d+)\/(?:Channel_Input\/)?name$/);
   if (cgNameM) {
     const cg = parseInt(cgNameM[1]);
     const label = args[0] || `CG ${cg}`;
