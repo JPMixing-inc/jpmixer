@@ -192,6 +192,20 @@ function onMessage(json) {
   }
 }
 
+// ── Fader helpers ─────────────────────────────────────────────────────────
+
+// Require the user to grab the thumb knob — block click-to-jump on the track.
+// Works for vertical faders (writing-mode:vertical-lr + direction:rtl):
+//   value=1 → thumb at top (low clientY), value=0 → thumb at bottom (high clientY).
+function lockToThumb(fader) {
+  fader.addEventListener('pointerdown', (e) => {
+    const rect  = fader.getBoundingClientRect();
+    const val   = parseFloat(fader.value);
+    const thumbY = rect.top + (1 - val) * (rect.height - 10);
+    if (Math.abs(e.clientY - thumbY) > 30) e.preventDefault();
+  }, { passive: false });
+}
+
 // ── Grid builders ─────────────────────────────────────────────────────────
 
 function buildInputStrips() {
@@ -242,6 +256,7 @@ function buildChStrip(ch) {
     consoleFaders[ch.channel] = newDb;
     send({ type: 'console-fader', ch: ch.channel, db: newDb });
   });
+  lockToThumb(fader);
 
   faderWrap.append(track, fill, fader);
 
@@ -389,6 +404,7 @@ function buildCGStrip(cg) {
     cgFaders[cg.channel] = newDb;
     send({ type: 'cg-fader', cg: cg.channel, db: newDb });
   });
+  lockToThumb(fader);
 
   faderWrap.append(track, fill, fader);
 
