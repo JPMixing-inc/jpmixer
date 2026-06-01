@@ -225,12 +225,19 @@ function buildGrid() {
     const hdrLabel = document.createElement('span');
     hdrLabel.textContent = aux.label || `AUX ${aux.channel}`;
 
+    const cutBtn = document.createElement('button');
+    cutBtn.className = 'boost-btn';
+    cutBtn.textContent = '−0.5';
+    cutBtn.title = 'Cut entire mix −0.5 dB';
+    cutBtn.addEventListener('click', () => boostAux(aux.channel, -0.5));
+
     const boostBtn = document.createElement('button');
     boostBtn.className = 'boost-btn';
     boostBtn.textContent = '+0.5';
     boostBtn.title = 'Boost entire mix +0.5 dB';
     boostBtn.addEventListener('click', () => boostAux(aux.channel, 0.5));
 
+    hdr.appendChild(cutBtn);
     hdr.appendChild(hdrLabel);
     hdr.appendChild(boostBtn);
     col.appendChild(hdr);
