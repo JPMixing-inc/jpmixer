@@ -176,6 +176,20 @@ function onMessage(json) {
     updateCGSolo(cg, !!args[0]);
     return;
   }
+
+  // Control group name — arrives after strips are built, update in place
+  const cgNameM = address.match(/^\/Control_Groups\/(\d+)\/Channel_Input\/name$/);
+  if (cgNameM) {
+    const cg = parseInt(cgNameM[1]);
+    const label = args[0] || `CG ${cg}`;
+    const cfg = cgConfig.find(c => c.channel === cg);
+    if (cfg) cfg.label = label;
+    document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .ch-name`).forEach(el => {
+      el.textContent = label;
+      el.title = label;
+    });
+    return;
+  }
 }
 
 // ── Grid builders ─────────────────────────────────────────────────────────

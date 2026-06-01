@@ -143,9 +143,12 @@ html, body {
   flex-direction: column;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
-.tab-active {
+.input-section.tab-active,
+.cg-section.tab-active,
+.aux-section.tab-active {
   display: flex;
 }
 
