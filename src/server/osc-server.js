@@ -872,10 +872,14 @@ function start(cfg) {
   for (const conn of (cfg.ipadConnections || [])) {
     if (!conn.enabled || !conn.ip || !conn.listenPort) continue;
     const iPort = new osc.UDPPort({ localAddress: '0.0.0.0', localPort: conn.listenPort });
-    iPort.on('message', (oscMsg) => {
+    iPort.on('message', (oscMsg, timeTag, info) => {
+      console.log(`[JPMixer] iPad "${conn.name}" ← ${oscMsg.address} (from ${info.address})`);
       sendToDesk(oscMsg.address, oscMsg.args);
       maybeCacheResponse(oscMsg);
       broadcastToClients(oscMsg);
+    });
+    iPort.on('ready', () => {
+      console.log(`[JPMixer] iPad "${conn.name}" UDP port ${conn.listenPort} open and ready`);
     });
     iPort.on('error', (err) => {
       console.warn(`[JPMixer] iPad "${conn.name}" error:`, err.message);

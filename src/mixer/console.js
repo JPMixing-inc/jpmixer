@@ -197,10 +197,9 @@ function onMessage(json) {
 // Thumb-only fader control via transparent pointer-capture overlay.
 // The range input is made non-interactive (pointer-events:none); all
 // interaction is handled manually so only grabbing the white handle works.
-function lockToThumb(fader) {
+function lockToThumb(fader, wrap) {
   fader.style.pointerEvents = 'none';
 
-  const wrap    = fader.parentElement;
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:absolute;inset:0;z-index:2;touch-action:none;cursor:default;';
   wrap.appendChild(overlay);
@@ -289,7 +288,7 @@ function buildChStrip(ch) {
     consoleFaders[ch.channel] = newDb;
     send({ type: 'console-fader', ch: ch.channel, db: newDb });
   });
-  lockToThumb(fader);
+  lockToThumb(fader, faderWrap);
 
   faderWrap.append(track, fill, fader);
 
@@ -437,7 +436,7 @@ function buildCGStrip(cg) {
     cgFaders[cg.channel] = newDb;
     send({ type: 'cg-fader', cg: cg.channel, db: newDb });
   });
-  lockToThumb(fader);
+  lockToThumb(fader, faderWrap);
 
   faderWrap.append(track, fill, fader);
 
