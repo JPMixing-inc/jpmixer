@@ -195,15 +195,36 @@ function onMessage(json) {
 // ── Fader helpers ─────────────────────────────────────────────────────────
 
 // Require the user to grab the thumb knob — block click-to-jump on the track.
-// Works for vertical faders (writing-mode:vertical-lr + direction:rtl):
-//   value=1 → thumb at top (low clientY), value=0 → thumb at bottom (high clientY).
+// Uses two layers: preventDefault on pointerdown (works on most browsers) +
+// capture-phase input interception as a fallback (catches iOS Safari edge cases).
 function lockToThumb(fader) {
+  let blocked = false;
+  let savedVal = fader.value;
+
   fader.addEventListener('pointerdown', (e) => {
-    const rect  = fader.getBoundingClientRect();
-    const val   = parseFloat(fader.value);
-    const thumbY = rect.top + (1 - val) * (rect.height - 10);
-    if (Math.abs(e.clientY - thumbY) > 30) e.preventDefault();
+    const rect = fader.getBoundingClientRect();
+    const val  = parseFloat(fader.value);
+    // Thumb center Y: thumb is 10px tall, travels from rect.top to rect.bottom-10
+    const thumbCenterY = rect.top + 5 + (1 - val) * (rect.height - 10);
+    if (Math.abs(e.clientY - thumbCenterY) > 28) {
+      blocked  = true;
+      savedVal = fader.value;
+      e.preventDefault();
+    } else {
+      blocked = false;
+    }
   }, { passive: false });
+
+  // Capture phase fires before the fader's own input listener — prevents OSC being sent
+  fader.addEventListener('input', (e) => {
+    if (blocked) {
+      e.stopImmediatePropagation();
+      fader.value = savedVal;
+    }
+  }, true);
+
+  fader.addEventListener('pointerup',     () => { blocked = false; });
+  fader.addEventListener('pointercancel', () => { blocked = false; });
 }
 
 // ── Grid builders ─────────────────────────────────────────────────────────
