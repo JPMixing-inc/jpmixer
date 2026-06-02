@@ -810,6 +810,9 @@ function start(cfg) {
     processSnapshotMsg(oscMsg);
     maybeCacheResponse(oscMsg);
 
+    // Relay all desk messages to every configured iPad regardless of address
+    sendToAllIpads(oscMsg.address, oscMsg.args, null);
+
     if (!loaded) {
       loadNextRequiredParameter();
       return;
