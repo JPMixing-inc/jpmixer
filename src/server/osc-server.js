@@ -10,7 +10,7 @@ const scenes   = require('./scenes');
 let httpServer    = null;
 let wss           = null;
 let udpPort       = null;
-let ipadPorts     = []; // [{ id, ip, sendPort, udpPort }]
+let ipadPorts     = []; // [{ id, name, ip, sendPort }] — send via main udpPort, keyed by IP
 let serverCfg     = {};
 
 // Ring buffer of recent server events for /api/events diagnostics
@@ -320,10 +320,10 @@ function sendToDesk(address, args) {
 }
 
 function sendToAllIpads(address, args, excludeIp) {
-  for (const { ip, sendPort, udpPort: iPort } of ipadPorts) {
+  for (const { ip, sendPort } of ipadPorts) {
     if (ip === excludeIp) continue;
     try {
-      iPort.send({ address, args: args || [] }, ip, sendPort);
+      udpPort.send({ address, args: args || [] }, ip, sendPort);
     } catch (e) {}
   }
 }
@@ -791,6 +791,16 @@ function start(cfg) {
   udpPort.on('message', (oscMsg, timeTag, info) => {
     allSeenAddresses.set(oscMsg.address, oscMsg.args);
 
+    // Message from a configured iPad — forward to desk and browser clients, skip desk handling
+    const fromIpad = ipadPorts.find(p => p.ip === info.address);
+    if (fromIpad) {
+      console.log(`[JPMixer] iPad "${fromIpad.name}" ← ${oscMsg.address}`);
+      sendToDesk(oscMsg.address, oscMsg.args);
+      maybeCacheResponse(oscMsg);
+      broadcastToClients(oscMsg);
+      return;
+    }
+
     // Session change — reload data without dropping clients
     if (oscMsg.address === '/Console/Session/!') {
       logEvent('session-change', 'debouncing 500ms');
@@ -868,25 +878,12 @@ function start(cfg) {
   udpPort.on('ready', fetchValues);
   udpPort.open();
 
-  // iPad OSC bridges
+  // iPad OSC relay — shares the main UDP port. iPads send to JPMixer's main listen port;
+  // messages are routed by source IP. JPMixer sends replies to each iPad's sendPort.
   for (const conn of (cfg.ipadConnections || [])) {
-    if (!conn.enabled || !conn.ip || !conn.listenPort) continue;
-    const iPort = new osc.UDPPort({ localAddress: '0.0.0.0', localPort: conn.listenPort });
-    iPort.on('message', (oscMsg, timeTag, info) => {
-      console.log(`[JPMixer] iPad "${conn.name}" ← ${oscMsg.address} (from ${info.address})`);
-      sendToDesk(oscMsg.address, oscMsg.args);
-      maybeCacheResponse(oscMsg);
-      broadcastToClients(oscMsg);
-    });
-    iPort.on('ready', () => {
-      console.log(`[JPMixer] iPad "${conn.name}" UDP port ${conn.listenPort} open and ready`);
-    });
-    iPort.on('error', (err) => {
-      console.warn(`[JPMixer] iPad "${conn.name}" error:`, err.message);
-    });
-    iPort.open();
-    ipadPorts.push({ id: conn.id, ip: conn.ip, sendPort: conn.sendPort, udpPort: iPort });
-    console.log(`[JPMixer] iPad "${conn.name}" → ${conn.ip}:${conn.sendPort} (listen :${conn.listenPort})`);
+    if (!conn.enabled || !conn.ip) continue;
+    ipadPorts.push({ id: conn.id, name: conn.name || 'iPad', ip: conn.ip, sendPort: conn.sendPort });
+    console.log(`[JPMixer] iPad "${conn.name}" registered → ${conn.ip}:${conn.sendPort} (receives from main port)`);
   }
 }
 
@@ -896,7 +893,6 @@ function stop() {
   if (sessionReloadTimer)  { clearTimeout(sessionReloadTimer);    sessionReloadTimer  = null; }
   clearMuteSolo();
   if (udpPort) { try { udpPort.close(); } catch (_) {} udpPort = null; }
-  for (const { udpPort: iPort } of ipadPorts) { try { iPort.close(); } catch (_) {} }
   ipadPorts = [];
   if (wss)         { wss.close();                               wss         = null; }
   if (httpServer)  { httpServer.close();                        httpServer  = null; }

@@ -219,12 +219,8 @@ function renderIpadConnections() {
           <input type="text" class="ipad-ip ch-label-input" placeholder="192.168.1.x" value="${escHtml(conn.ip)}" data-id="${conn.id}" />
         </div>
         <div>
-          <label>Send Port <span class="sub">(Mac→iPad)</span></label>
+          <label>Send Port <span class="sub">(port the iPad app listens on)</span></label>
           <input type="number" class="ipad-send-port ch-label-input" min="1" max="65535" value="${conn.sendPort}" data-id="${conn.id}" />
-        </div>
-        <div>
-          <label>Listen Port <span class="sub">(iPad→Mac)</span></label>
-          <input type="number" class="ipad-listen-port ch-label-input" min="1" max="65535" value="${conn.listenPort}" data-id="${conn.id}" />
         </div>
       </div>
     `;
