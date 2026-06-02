@@ -1,7 +1,5 @@
 node_modules/
-dist/*
-!dist/Final Application/
-!dist/Final Application/*.html
+dist/
 *.log
 .DS_Store
 .claude/
