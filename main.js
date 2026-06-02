@@ -219,6 +219,7 @@ function openSettings() {
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 
 ipcMain.handle('get-config', () => config.getAll());
+ipcMain.handle('get-version', () => app.getVersion());
 ipcMain.handle('get-server-status', () => ({ running: serverRunning }));
 ipcMain.handle('get-local-ip', () => getLocalIP());
 ipcMain.handle('get-channel-names',   () => serverRunning ? server.getChannelNames()     : {});

@@ -194,37 +194,49 @@ function onMessage(json) {
 
 // ── Fader helpers ─────────────────────────────────────────────────────────
 
-// Require the user to grab the thumb knob — block click-to-jump on the track.
-// Uses two layers: preventDefault on pointerdown (works on most browsers) +
-// capture-phase input interception as a fallback (catches iOS Safari edge cases).
+// Thumb-only fader control via transparent pointer-capture overlay.
+// The range input is made non-interactive (pointer-events:none); all
+// interaction is handled manually so only grabbing the white handle works.
 function lockToThumb(fader) {
-  let blocked = false;
-  let savedVal = fader.value;
+  fader.style.pointerEvents = 'none';
 
-  fader.addEventListener('pointerdown', (e) => {
+  const wrap    = fader.parentElement;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:2;touch-action:none;cursor:default;';
+  wrap.appendChild(overlay);
+
+  let dragging = false;
+  let startY   = 0;
+  let startVal = 0;
+
+  function thumbCenterY(rect, val) {
+    return rect.top + 5 + (1 - val) * (rect.height - 10);
+  }
+
+  overlay.addEventListener('pointerdown', (e) => {
     const rect = fader.getBoundingClientRect();
     const val  = parseFloat(fader.value);
-    // Thumb center Y: thumb is 10px tall, travels from rect.top to rect.bottom-10
-    const thumbCenterY = rect.top + 5 + (1 - val) * (rect.height - 10);
-    if (Math.abs(e.clientY - thumbCenterY) > 28) {
-      blocked  = true;
-      savedVal = fader.value;
-      e.preventDefault();
-    } else {
-      blocked = false;
-    }
+    if (Math.abs(e.clientY - thumbCenterY(rect, val)) > 28) return;
+    dragging = true;
+    startY   = e.clientY;
+    startVal = val;
+    overlay.setPointerCapture(e.pointerId);
+    overlay.style.cursor = 'grabbing';
+    e.preventDefault();
   }, { passive: false });
 
-  // Capture phase fires before the fader's own input listener — prevents OSC being sent
-  fader.addEventListener('input', (e) => {
-    if (blocked) {
-      e.stopImmediatePropagation();
-      fader.value = savedVal;
-    }
-  }, true);
+  overlay.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const rect   = fader.getBoundingClientRect();
+    const travel = rect.height - 10;
+    const newVal = Math.max(0, Math.min(1, startVal - (e.clientY - startY) / travel));
+    fader.value  = String(newVal);
+    fader.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 
-  fader.addEventListener('pointerup',     () => { blocked = false; });
-  fader.addEventListener('pointercancel', () => { blocked = false; });
+  function endDrag() { dragging = false; overlay.style.cursor = 'default'; }
+  overlay.addEventListener('pointerup',     endDrag);
+  overlay.addEventListener('pointercancel', endDrag);
 }
 
 // ── Grid builders ─────────────────────────────────────────────────────────

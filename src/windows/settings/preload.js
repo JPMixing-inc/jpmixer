@@ -17,5 +17,6 @@ contextBridge.exposeInMainWorld('jpm', {
   openMonitor:            ()   => ipcRenderer.invoke('open-monitor'),
   openConsole:            ()   => ipcRenderer.invoke('open-console'),
   getConnectionCount:     ()   => ipcRenderer.invoke('get-connection-count'),
-  onConnectionCount:      (cb) => ipcRenderer.on('connection-count', (_, data) => cb(data))
+  onConnectionCount:      (cb) => ipcRenderer.on('connection-count', (_, data) => cb(data)),
+  getVersion:             ()   => ipcRenderer.invoke('get-version')
 });

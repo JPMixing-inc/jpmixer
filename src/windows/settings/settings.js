@@ -706,7 +706,7 @@ function escHtml(str) {
 // ── Init ──────────────────────────────────────────────────────────────────
 
 async function init() {
-  const [cfg, status, ip, names, anames, consoleStatus, iconPaths] = await Promise.all([
+  const [cfg, status, ip, names, anames, consoleStatus, iconPaths, version] = await Promise.all([
     window.jpm.getConfig(),
     window.jpm.getStatus(),
     window.jpm.getLocalIP(),
@@ -714,7 +714,10 @@ async function init() {
     window.jpm.getAuxNames(),
     window.jpm.getConsoleStatus(),
     window.jpm.getInstrumentIconPaths(),
+    window.jpm.getVersion(),
   ]);
+  const vEl = document.querySelector('.version');
+  if (vEl && version) vEl.textContent = `v${version}`;
   localIP      = ip;
   consoleNames = names  || {};
   auxNames     = anames || {};
