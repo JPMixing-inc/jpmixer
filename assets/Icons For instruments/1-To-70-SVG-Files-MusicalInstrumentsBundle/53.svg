@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 23.0.2, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+	<!ENTITY ns_extend "http://ns.adobe.com/Extensibility/1.0/">
+	<!ENTITY ns_ai "http://ns.adobe.com/AdobeIllustrator/10.0/">
+	<!ENTITY ns_graphs "http://ns.adobe.com/Graphs/1.0/">
+	<!ENTITY ns_vars "http://ns.adobe.com/Variables/1.0/">
+	<!ENTITY ns_imrep "http://ns.adobe.com/ImageReplacement/1.0/">
+	<!ENTITY ns_sfw "http://ns.adobe.com/SaveForWeb/1.0/">
+	<!ENTITY ns_custom "http://ns.adobe.com/GenericCustomNamespace/1.0/">
+	<!ENTITY ns_adobe_xpath "http://ns.adobe.com/XPath/1.0/">
+]>
+<svg version="1.1" id="Layer_1" xmlns:x="&ns_extend;" xmlns:i="&ns_ai;" xmlns:graph="&ns_graphs;"
+	 xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 720 720"
+	 style="enable-background:new 0 0 720 720;" xml:space="preserve">
+<style type="text/css">
+	.Drop_x0020_Shadow{fill:none;}
+	.Round_x0020_Corners_x0020_2_x0020_pt{fill:#FFFFFF;stroke:#231F20;stroke-miterlimit:10;}
+	.Live_x0020_Reflect_x0020_X{fill:none;}
+	.Bevel_x0020_Soft{fill:url(#SVGID_1_);}
+	.Dusk{fill:#FFFFFF;}
+	.Foliage_GS{fill:#FFDD00;}
+	.Pompadour_GS{fill-rule:evenodd;clip-rule:evenodd;fill:#44ADE2;}
+	.st0{fill:#FFFFFF;}
+</style>
+<metadata>
+	<sfw  xmlns="&ns_sfw;">
+		<slices></slices>
+		<sliceSourceBounds  bottomLeftOrigin="true" height="720" width="720" x="0" y="-720"></sliceSourceBounds>
+	</sfw>
+</metadata>
+<linearGradient id="SVGID_1_" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0.7071" y2="0.7071">
+	<stop  offset="0" style="stop-color:#DEDFE3"/>
+	<stop  offset="0.1783" style="stop-color:#DADBDF"/>
+	<stop  offset="0.3611" style="stop-color:#CECFD3"/>
+	<stop  offset="0.546" style="stop-color:#B9BCBF"/>
+	<stop  offset="0.7324" style="stop-color:#9CA0A2"/>
+	<stop  offset="0.9181" style="stop-color:#787D7E"/>
+	<stop  offset="1" style="stop-color:#656B6C"/>
+</linearGradient>
+<g id="_x35_3">
+	<g>
+		<ellipse transform="matrix(0.7071 -0.7071 0.7071 0.7071 -149.117 360.0002)" cx="360" cy="360" rx="353.1" ry="353.1"/>
+		<path d="M360,720c-96.2,0-186.6-37.4-254.6-105.4C37.4,546.6,0,456.2,0,360s37.4-186.6,105.4-254.6C173.4,37.4,263.8,0,360,0
+			c96.2,0,186.6,37.4,254.6,105.4c68,68,105.4,158.4,105.4,254.6s-37.4,186.6-105.4,254.6S456.2,720,360,720z M360,13.8
+			C169.1,13.8,13.8,169.1,13.8,360c0,190.9,155.3,346.2,346.2,346.2c190.9,0,346.2-155.3,346.2-346.2
+			C706.2,169.1,550.9,13.8,360,13.8z"/>
+	</g>
+	<g>
+		
+			<ellipse transform="matrix(0.7071 -0.7071 0.7071 0.7071 -150.6405 356.322)" class="st0" cx="354.8" cy="360" rx="134.6" ry="134.6"/>
+		<path d="M354.8,501.5c-78,0-141.5-63.5-141.5-141.5c0-78,63.5-141.5,141.5-141.5c78,0,141.5,63.5,141.5,141.5
+			C496.3,438,432.8,501.5,354.8,501.5z M354.8,232.3c-70.4,0-127.7,57.3-127.7,127.7s57.3,127.7,127.7,127.7
+			c70.4,0,127.7-57.3,127.7-127.7S425.2,232.3,354.8,232.3z"/>
+	</g>
+	<g>
+		<path class="st0" d="M434.1,224.1l132.1-117c0,0-108.5-106.1-279.2-75.2l54.7,175.6C341.6,207.5,406.8,206,434.1,224.1z"/>
+		<path d="M434.7,232.8l-4.4-2.9c-17.2-11.4-55.1-15.5-84.9-15.5c-2.2,0-3.5,0-3.5,0l-5.2,0.1l-58.6-188l7.7-1.4
+			c21.1-3.8,42.4-5.8,63.3-5.8c70.9,0,127.4,22.4,162.3,41.2c37.9,20.4,58.8,40.7,59.7,41.5l5.3,5.2L434.7,232.8z M346.7,200.5
+			c16,0.1,61.1,1.6,86.5,15L555.7,107c-8.4-7.1-26.1-20.9-51.5-34.5c-33.4-17.9-87.5-39.3-155.3-39.3c-17.5,0-35.3,1.4-53.1,4.2
+			L346.7,200.5z"/>
+	</g>
+	<g>
+		<path d="M377.6,360c0,12.6-10.2,22.8-22.8,22.8c-12.6,0-22.8-10.2-22.8-22.8s10.2-22.8,22.8-22.8
+			C367.4,337.2,377.6,347.4,377.6,360z"/>
+		<path d="M354.8,389.7c-16.4,0-29.7-13.3-29.7-29.7c0-16.4,13.3-29.7,29.7-29.7c16.4,0,29.7,13.3,29.7,29.7
+			C384.5,376.4,371.2,389.7,354.8,389.7z M354.8,344.2c-8.7,0-15.8,7.1-15.8,15.8c0,8.7,7.1,15.8,15.8,15.8
+			c8.7,0,15.8-7.1,15.8-15.8C370.6,351.3,363.5,344.2,354.8,344.2z"/>
+	</g>
+</g>
+</svg>

@@ -3,4 +3,5 @@ dist/
 *.log
 .DS_Store
 .claude/
-assets/Icons For instruments/
+assets/Icons For instruments/*.zip
+assets/Icons For instruments/120-PNG-Images-MusicalInstrumentsBundle/

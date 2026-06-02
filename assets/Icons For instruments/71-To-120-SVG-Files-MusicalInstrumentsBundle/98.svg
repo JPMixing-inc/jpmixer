@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 23.0.2, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+	<!ENTITY ns_extend "http://ns.adobe.com/Extensibility/1.0/">
+	<!ENTITY ns_ai "http://ns.adobe.com/AdobeIllustrator/10.0/">
+	<!ENTITY ns_graphs "http://ns.adobe.com/Graphs/1.0/">
+	<!ENTITY ns_vars "http://ns.adobe.com/Variables/1.0/">
+	<!ENTITY ns_imrep "http://ns.adobe.com/ImageReplacement/1.0/">
+	<!ENTITY ns_sfw "http://ns.adobe.com/SaveForWeb/1.0/">
+	<!ENTITY ns_custom "http://ns.adobe.com/GenericCustomNamespace/1.0/">
+	<!ENTITY ns_adobe_xpath "http://ns.adobe.com/XPath/1.0/">
+]>
+<svg version="1.1" id="Layer_1" xmlns:x="&ns_extend;" xmlns:i="&ns_ai;" xmlns:graph="&ns_graphs;"
+	 xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 720 720"
+	 style="enable-background:new 0 0 720 720;" xml:space="preserve">
+<style type="text/css">
+	.Drop_x0020_Shadow{fill:none;}
+	.Round_x0020_Corners_x0020_2_x0020_pt{fill:#FFFFFF;stroke:#231F20;stroke-miterlimit:10;}
+	.Live_x0020_Reflect_x0020_X{fill:none;}
+	.Bevel_x0020_Soft{fill:url(#SVGID_1_);}
+	.Dusk{fill:#FFFFFF;}
+	.Foliage_GS{fill:#FFDD00;}
+	.Pompadour_GS{fill-rule:evenodd;clip-rule:evenodd;fill:#44ADE2;}
+</style>
+<metadata>
+	<sfw  xmlns="&ns_sfw;">
+		<slices></slices>
+		<sliceSourceBounds  bottomLeftOrigin="true" height="720" width="261.2" x="229.4" y="-720"></sliceSourceBounds>
+	</sfw>
+</metadata>
+<linearGradient id="SVGID_1_" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0.7071" y2="0.7071">
+	<stop  offset="0" style="stop-color:#DEDFE3"/>
+	<stop  offset="0.1783" style="stop-color:#DADBDF"/>
+	<stop  offset="0.3611" style="stop-color:#CECFD3"/>
+	<stop  offset="0.546" style="stop-color:#B9BCBF"/>
+	<stop  offset="0.7324" style="stop-color:#9CA0A2"/>
+	<stop  offset="0.9181" style="stop-color:#787D7E"/>
+	<stop  offset="1" style="stop-color:#656B6C"/>
+</linearGradient>
+<path id="_x39_8" d="M388.5,24c-25,35.3-33.3,66.7-32.7,130.8l0.6,52.6l-39.1,30.1C232.1,304.2,207,392.1,250,477.4
+	c23.7,46.8,50.7,63.5,112.9,71.2l35.3,3.8l5.8,50c3.8,35.9,3.2,54.5-2.6,69.3c-10.3,24.4-40.4,40.4-66.1,35.3
+	c-34.6-7.1-50-29.5-20.5-29.5c38.5,0,45.5-60.3,8.3-73.1c-27.6-9.6-50,9-50,41.7c0,68,78.9,99.4,126.3,49.4c18-18.6,18-19.9,16-85.9
+	c-1.3-55.2,0-66.7,7.7-66.7c14.8,0,49.4-32.7,59-55.8c17.3-40.4,7.1-93.6-22.4-119.9c-7.1-7.1-26.9-15.4-43.6-19.9l-30.8-7.7
+	l-3.8-37.8c-3.2-37.2-3.2-37.8,23.7-67.3c34.6-37.8,45.5-59.6,52.6-104.5c7.1-43,1.9-77.6-16-107.1C424.5-8.1,411.6-7.4,388.5,24z
+	 M438.6,63.1c18,18,3.2,66.1-34,107.1c-13.5,14.8-26.3,26.3-29.5,26.3s-5.8-16-5.8-35.3C369.3,91.3,409.7,34.2,438.6,63.1z
+	 M371.2,306.8c1.3,18.6,1.3,34.6-1.3,35.9c-62.2,24.4-82.7,89.8-41.7,134c12.8,14.8,14.8,15.4,9.6,3.8c-18-35.9,0-85.3,30.1-85.3
+	c10.3,0,12.8,9,19.2,60.3c4.5,33.3,7.7,65.4,7.7,70.5c0,13.5-37.2,13.5-68.6,0.6c-68.6-28.9-91.7-100.7-53.2-167.4
+	c18-32.1,73.1-85.9,87.2-85.9C364.2,273.5,369.3,288.2,371.2,306.8z M441.8,415.2c23.7,25.7,24.4,66.7,0.6,94.9
+	c-30.8,36.6-36.6,27.6-44.9-72.5l-4.5-50l15.4,4.5C416.8,394,431.5,404.9,441.8,415.2z"/>
+</svg>
