@@ -4,7 +4,7 @@
 
 JPMixer is a Mac and Windows desktop app that runs a local web server, letting musicians control their own in-ear monitor (IEM) or wedge mixes from any phone, tablet, or laptop on the same network — without touching the front-of-house console.
 
-> **Beta** — v1.1.6-beta.1
+> **v1.7.0**
 
 ---
 
@@ -30,24 +30,30 @@ JPMixer is a Mac and Windows desktop app that runs a local web server, letting m
 - **Real-time faders** — instant OSC control of DiGiCo aux send levels with zero noticeable lag
 - **Mute & solo** — per-channel, per-aux mute and solo from the browser UI
 - **Pan control** — left/right pan per channel per aux for stereo IEM users
-- **Ear scene recall** — save a full mix per DiGiCo snapshot; mix is pushed to the console and all screens automatically when the snapshot fires
+- **Ear scene recall** — save a full mix per DiGiCo snapshot; it's pushed to the console and every screen automatically when the snapshot fires. Once saved, faders lock to protect against accidental bumps — tap the status banner to unlock, edit, or revert to the saved mix
+- **My Mixes** — musicians can also save personal named mixes anytime, independent of any snapshot; backed up per-device on JPMixer's side in case local storage gets cleared
+- **Built-in aux EQ** — optional 8-band parametric EQ per aux, adjustable right from the performer's phone
 - **Works on any device** — iOS, Android, Mac, Windows — any browser on the same WiFi, no app download required
 - **Add to home screen (PWA)** — installs as a full-screen app on iPhone/iPad; connection stays alive when the screen locks
 
 ### Monitor Engineer
 - **Monitor Engineer View** — full-screen grid of every aux mix side by side, fully interactive
 - **±0.5 dB aux buttons** — trim an entire mix up or down by half a dB with one tap
+- **Live presence indicators** — see at a glance how many performers currently have each aux mix open
 - **Snapshot fire controls** — ⏮ ⏭ buttons to fire previous/next snapshot directly from the monitor view
 
-### Console Controller *(new in v1.1.0)*
+### Console Controller
 - **Input channel strips** — vertical faders for every channel on the desk with mute, solo, and dB readout
 - **Control groups** — DiGiCo control group faders with mute and solo; names pulled live from the desk
 - **Aux output masters** — fader and mute per aux output bus
-- **Thumb-only fader drag** — must grab the handle to move; tapping the track does nothing, preventing accidental jumps on a touchscreen
+- **Thumb-only fader drag** — must grab the handle to move; touching elsewhere scrolls the channel strips instead of jumping the fader
 - **Snapshot fire controls** — ⏮ ⏭ buttons in the console header
 
 ### System
 - **Channel labels & icons** — customisable names and instrument icon library per channel
+- **Demo Mode** — explore the full UI with simulated console data, no desk required
+- **Automatic + manual backups** — config and My Mixes back themselves up on a schedule, plus one-click export/import
+- **OSC Log** — a live terminal view of raw OSC traffic in Settings, with start/stop recording to a text file for troubleshooting
 - **iPad OSC relay** — forwards DiGiCo OSC to one or more iPads running TouchOSC, Lemur, or similar apps
 - **Auto-update check** — notifies when a new release is available on GitHub
 - **Tray app** — runs quietly in the menu bar (Mac) or system tray (Windows)
@@ -86,11 +92,13 @@ sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
 
 1. Open JPMixer — it appears in the menu bar / system tray
 2. Click the icon → **Settings**
-3. **Connection tab** — enter the DiGiCo console's IP address and OSC ports (send: `8000`, listen: `9000` by default)
+3. **Setup tab** — enter the DiGiCo console's IP address and OSC ports (send: `8000`, listen: `8001` by default)
 4. **Channels tab** — assign icons and labels; set channel/aux counts to match your patch
-5. **Auxes tab** — name each aux bus and assign colours
+5. **Auxes tab** — name each aux bus, assign colours, and turn on EQ per aux if you want musicians to have it
 6. Click **Save & Apply** — the server starts automatically
-7. Share the URL shown in the Connection tab with your musicians (e.g. `http://192.168.1.10:8080`)
+7. Share the URL shown in the Setup tab with your musicians (e.g. `http://192.168.1.10:8080`)
+
+No console handy yet? Turn on **Demo Mode** in the Setup tab to explore the full UI with simulated data first.
 
 For the full engineer setup guide and musician handout guide, see the [Releases page](https://github.com/JPMixing-inc/jpmixer/releases/latest).
 
@@ -104,7 +112,9 @@ JPMixer runs an Express web server and a WebSocket bridge inside an Electron she
 - The console echoes confirmed values back over OSC, which JPMixer caches and broadcasts to all connected browsers to keep every screen in sync.
 - Musician mute and solo are implemented by driving aux send levels to –∞ dB, so they operate within each mix independently without touching the channel mute on the desk.
 - The Console Controller uses the DiGiCo Pad external control OSC protocol, which exposes main channel faders, mutes, solos, and control groups in addition to aux sends.
-- Ear scenes are stored as JSON on disk, matched to DiGiCo snapshot names, and replayed automatically when a matching snapshot fires.
+- Ear scenes are stored as JSON on disk, matched to DiGiCo snapshot names, and replayed automatically when a matching snapshot fires. They're intentionally session-only and don't persist across an app restart.
+- My Mixes are stored per device (levels + pan, no snapshot needed), with a server-side backup copy so they survive a cleared browser cache.
+- Browser clients can only send OSC for their own aux sends and EQ — an address allowlist on the server blocks anything else, so a mixer page can't fire snapshots or touch other console parameters.
 
 ---
 
