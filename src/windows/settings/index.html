@@ -23,19 +23,19 @@
   </header>
 
   <nav class="tab-nav">
-    <button class="tab active" data-tab="connection">Connection</button>
+    <button class="tab active" data-tab="setup">Setup</button>
     <button class="tab" data-tab="channels">Channels</button>
     <button class="tab" data-tab="auxes">Auxes</button>
-    <button class="tab" data-tab="ipad">iPad OSC</button>
-    <button class="tab" data-tab="monitor">Monitor</button>
-    <button class="tab" data-tab="console">Console</button>
-    <button class="tab" data-tab="general">General</button>
+    <button class="tab" data-tab="views">Views</button>
+    <button class="tab" data-tab="mixes">My Mixes</button>
+    <button class="tab" data-tab="backup">Backup</button>
+    <button class="tab" data-tab="osclog">OSC Log</button>
   </nav>
 
   <main>
 
-    <!-- ── Connection tab ── -->
-    <div class="tab-panel active" id="tab-connection">
+    <!-- ── Setup tab (server + network + console type + iPad OSC + startup) ── -->
+    <div class="tab-panel active" id="tab-setup">
 
       <section class="card">
         <div class="card-row space-between">
@@ -88,6 +88,65 @@
         </div>
       </section>
 
+      <section class="card">
+        <h2>Console</h2>
+
+        <div class="field-row">
+          <label for="consoleType">Console Type</label>
+          <select id="consoleType">
+            <option value="digico">DiGiCo SD / Quantum</option>
+            <option value="x32">Behringer X32 / Midas M32</option>
+            <option value="yamaha">Yamaha CL / QL</option>
+            <option value="custom">Custom OSC</option>
+          </select>
+        </div>
+
+        <div class="field-row three-col">
+          <div>
+            <label for="channels">Channels</label>
+            <input type="number" id="channels" min="1" max="256" />
+          </div>
+          <div>
+            <label for="auxes">Auxes / Buses</label>
+            <input type="number" id="auxes" min="0" max="64" />
+          </div>
+          <div>
+            <label for="groups">Groups</label>
+            <input type="number" id="groups" min="0" max="64" />
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-row space-between">
+          <h2>iPad OSC Connections</h2>
+          <button class="btn btn-sm" id="addIpadBtn">+ Add iPad</button>
+        </div>
+        <div class="sub" style="margin-bottom:10px">JPMixer relays all console OSC to connected iPads. The iPad app should send to <strong>JPMixer's IP</strong> on the Listen Port above. Set <em>Send Port</em> to the port the iPad app receives on.</div>
+        <div id="ipadList">
+          <div class="empty-hint">No iPads configured — click + Add iPad to add one.</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Startup</h2>
+        <div class="card-row">
+          <label class="toggle-label" for="autoStart">Start server automatically on launch</label>
+          <input type="checkbox" id="autoStart" class="toggle" />
+        </div>
+      </section>
+
+      <section class="card card-demo">
+        <h2>Demo / Simulate</h2>
+        <div class="card-row">
+          <div>
+            <label class="toggle-label" for="demoMode">Simulate console (no desk connection)</label>
+            <div class="sub">Loads a fake channel &amp; aux setup so you can explore the mixer UI without a live console. Nothing is sent to hardware — all fader moves stay local.</div>
+          </div>
+          <input type="checkbox" id="demoMode" class="toggle" />
+        </div>
+      </section>
+
     </div>
 
     <!-- ── Channels tab ── -->
@@ -123,35 +182,20 @@
 
       <section class="card channels-card">
         <h2>Aux / Bus Visibility</h2>
-        <div class="ch-editor-header" style="grid-template-columns: 28px 1fr 32px 28px">
+        <div class="ch-editor-header" style="grid-template-columns: 28px 1fr 32px 28px 28px">
           <span></span>
           <span>Name</span>
           <span>Color</span>
           <span>Show</span>
+          <span>EQ</span>
         </div>
         <div id="auxesList" class="channels-editor"></div>
       </section>
 
     </div>
 
-    <!-- ── iPad OSC tab ── -->
-    <div class="tab-panel" id="tab-ipad">
-
-      <section class="card">
-        <div class="card-row space-between">
-          <h2>iPad OSC Connections</h2>
-          <button class="btn btn-sm" id="addIpadBtn">+ Add iPad</button>
-        </div>
-        <div class="sub" style="margin-bottom:10px">JPMixer relays all console OSC to connected iPads. The iPad app should send to <strong>JPMixer's IP</strong> on the same port JPMixer listens on (Connection tab → Listen Port). Set <em>Send Port</em> to the port the iPad app receives on.</div>
-        <div id="ipadList">
-          <div class="empty-hint">No iPads configured — click + Add iPad to add one.</div>
-        </div>
-      </section>
-
-    </div>
-
-    <!-- ── Monitor tab ── -->
-    <div class="tab-panel" id="tab-monitor">
+    <!-- ── Views tab (Monitor + Console views) ── -->
+    <div class="tab-panel" id="tab-views">
 
       <section class="card">
         <h2>Monitor Engineer View</h2>
@@ -160,20 +204,11 @@
           <button class="btn btn-primary" id="openMonitorBtn">Open Monitor View</button>
           <div class="sub" id="monitorBtnHint">Start the server first to open.</div>
         </div>
-      </section>
-
-      <section class="card">
-        <h2>Direct Link</h2>
-        <div class="sub">Anyone on the same network can open the monitor view in any browser:</div>
-        <div class="ip-row" style="margin-top:8px">
+        <div class="ip-row" style="margin-top:12px">
+          <span class="ip-label">Direct link</span>
           <span class="ip-address" id="monitorUrl">—</span>
         </div>
       </section>
-
-    </div>
-
-    <!-- ── Console tab ── -->
-    <div class="tab-panel" id="tab-console">
 
       <section class="card">
         <h2>Console Controller</h2>
@@ -182,63 +217,29 @@
           <button class="btn btn-primary" id="openConsoleBtn">Open Console View</button>
           <div class="sub" id="consoleBtnHint">Start the server first to open.</div>
         </div>
-      </section>
-
-      <section class="card">
-        <h2>Direct Link</h2>
-        <div class="sub">Anyone on the same network can open the console controller in any browser:</div>
-        <div class="ip-row" style="margin-top:8px">
+        <div class="ip-row" style="margin-top:12px">
+          <span class="ip-label">Direct link</span>
           <span class="ip-address" id="consoleUrl">—</span>
         </div>
-      </section>
-
-      <section class="card">
-        <h2>Note</h2>
-        <div class="sub">The Console Controller sends commands directly to the desk — main faders, mutes, and solos affect the console for <strong>everyone</strong> (FOH included). Restrict access to engineers only.</div>
-        <div class="sub" style="margin-top:8px">If faders don't reflect the desk on first load, the OSC addresses for main faders may differ on your console firmware. Check <strong>http://localhost:[port]/api/osc-all</strong> after moving a fader on the desk to verify.</div>
+        <div class="sub" style="margin-top:12px">The Console Controller sends commands directly to the desk — main faders, mutes, and solos affect the console for <strong>everyone</strong> (FOH included). Restrict access to engineers only.</div>
       </section>
 
     </div>
 
-    <!-- ── General tab ── -->
-    <div class="tab-panel" id="tab-general">
-
+    <!-- ── My Mixes tab ── -->
+    <div class="tab-panel" id="tab-mixes">
       <section class="card">
-        <h2>Console</h2>
-
-        <div class="field-row">
-          <label for="consoleType">Console Type</label>
-          <select id="consoleType">
-            <option value="digico">DiGiCo SD / Quantum</option>
-            <option value="x32">Behringer X32 / Midas M32</option>
-            <option value="yamaha">Yamaha CL / QL</option>
-            <option value="custom">Custom OSC</option>
-          </select>
+        <div class="card-row space-between">
+          <h2>Saved Mixes</h2>
+          <button class="btn btn-sm" id="refreshMixesBtn">Refresh</button>
         </div>
-
-        <div class="field-row three-col">
-          <div>
-            <label for="channels">Channels</label>
-            <input type="number" id="channels" min="1" max="256" />
-          </div>
-          <div>
-            <label for="auxes">Auxes / Buses</label>
-            <input type="number" id="auxes" min="0" max="64" />
-          </div>
-          <div>
-            <label for="groups">Groups</label>
-            <input type="number" id="groups" min="0" max="64" />
-          </div>
-        </div>
+        <div class="sub" style="margin-bottom:12px">All mixes saved by performers, organized by device. You can delete individual mixes from here.</div>
+        <div id="mixesByAux"></div>
       </section>
+    </div>
 
-      <section class="card">
-        <h2>Startup</h2>
-        <div class="card-row">
-          <label class="toggle-label" for="autoStart">Start server automatically on launch</label>
-          <input type="checkbox" id="autoStart" class="toggle" />
-        </div>
-      </section>
+    <!-- ── Backup tab (ear scene recall + backups + reset) ── -->
+    <div class="tab-panel" id="tab-backup">
 
       <section class="card">
         <h2>Ear Scene Recall</h2>
@@ -251,12 +252,90 @@
         </div>
       </section>
 
+      <section class="card">
+        <h2>Automatic Backups</h2>
+        <div class="card-row">
+          <div>
+            <label class="toggle-label" for="autoBackupEnabled">Automatically back up</label>
+            <div class="sub">Saves your console settings, channel/aux setup, and My Mixes on a schedule. Backups older than a month are deleted automatically.</div>
+          </div>
+          <input type="checkbox" id="autoBackupEnabled" class="toggle" />
+        </div>
+        <div class="field-row">
+          <label for="autoBackupInterval">Back up every</label>
+          <select id="autoBackupInterval">
+            <option value="1">Day</option>
+            <option value="3">3 Days</option>
+            <option value="7">Week</option>
+            <option value="14">2 Weeks</option>
+            <option value="30">Month</option>
+          </select>
+        </div>
+        <div class="card-row space-between">
+          <div class="sub" id="autoBackupInfo">—</div>
+          <button class="btn btn-sm" id="showAutoBackupsBtn">Show in Finder</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Export Backup</h2>
+        <div class="sub" style="margin-bottom:16px">Save your console settings, channel/aux setup, and My Mixes to a file. Useful before an app update, or to move everything to a new computer.</div>
+        <div class="card-row">
+          <button class="btn btn-primary" id="exportBackupBtn">Export Backup…</button>
+        </div>
+        <div class="backup-status" id="exportStatus"></div>
+      </section>
+
+      <section class="card">
+        <h2>Import / Restore</h2>
+        <div class="sub" style="margin-bottom:16px">Restore from a previously exported backup file. This <strong>replaces</strong> your current console settings, channel/aux setup, and My Mixes — it does not affect Ear Scenes, which always start fresh on launch.</div>
+        <div class="card-row">
+          <button class="btn" id="importBackupBtn">Choose Backup File…</button>
+        </div>
+        <div class="backup-status" id="importStatus"></div>
+      </section>
+
+      <section class="card">
+        <h2>Reset Layout &amp; Icons</h2>
+        <div class="sub" style="margin-bottom:16px">Clears all channel groups, icon assignments, and label overrides — restoring the Channels tab to its default state. Console network settings, aux visibility, and saved ear mixes are not affected.</div>
+        <div class="card-row">
+          <button class="btn btn-danger" id="resetLayoutBtn">Reset Layout &amp; Icons…</button>
+        </div>
+        <div class="backup-status" id="resetLayoutStatus"></div>
+      </section>
+
+    </div>
+
+    <!-- ── OSC Log tab — live raw OSC traffic between JPMixer and the console ── -->
+    <div class="tab-panel" id="tab-osclog">
+
+      <section class="card osclog-card">
+        <div class="card-row space-between">
+          <h2>OSC Traffic</h2>
+          <div class="osclog-controls">
+            <input type="text" id="oscLogFilter" class="osclog-filter" placeholder="Filter by address…" />
+            <button class="btn btn-sm" id="oscLogPauseBtn">Pause</button>
+            <button class="btn btn-sm" id="oscLogClearBtn">Clear</button>
+          </div>
+        </div>
+        <div class="sub" style="margin-bottom:10px"><span class="osclog-dir-in">← in</span> from the desk, <span class="osclog-dir-out">→ out</span> to the desk. Kept in memory only while this window is open.</div>
+        <div class="osclog-terminal" id="oscLogTerminal"></div>
+
+        <div class="card-row space-between osclog-record-row">
+          <div class="sub" id="oscLogRecordStatus">Not recording.</div>
+          <div class="osclog-controls">
+            <button class="btn btn-sm" id="oscLogShowFolderBtn">Show Logs Folder</button>
+            <button class="btn btn-sm btn-primary" id="oscLogRecordBtn">Start Logging</button>
+          </div>
+        </div>
+      </section>
+
     </div>
 
   </main>
 
   <footer>
-    <span class="version">v1.0.1-beta.8</span>
+    <span class="version">v1.7.0</span>
     <button class="btn btn-primary" id="saveBtn">Save &amp; Apply</button>
   </footer>
 

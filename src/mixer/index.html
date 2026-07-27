@@ -14,22 +14,52 @@
 
   <header class="topbar">
     <div class="brand"><img src="logo.png" class="brand-logo" alt="JPMixer" /></div>
-    <button class="aux-bar" id="auxBar" aria-label="Change mix">
-      <span class="aux-bar-name" id="auxBarName">Select Mix</span>
-      <span class="aux-bar-arrow">▾</span>
-    </button>
+    <div class="topbar-center">
+      <button class="aux-bar" id="auxBar" aria-label="Change mix">
+        <span class="aux-bar-name" id="auxBarName">Select Mix</span>
+        <span class="aux-bar-arrow">▾</span>
+      </button>
+    </div>
     <div class="topbar-right">
       <label class="pan-label" id="panLabel">
         <input type="checkbox" id="panCheckbox" />
         <span class="pan-toggle-btn">PAN</span>
       </label>
+      <button class="menu-btn" id="menuBtn" aria-label="Menu">☰</button>
       <span class="conn-dot" id="connDot"></span>
     </div>
   </header>
 
   <div class="snapshot-bar">
     <span id="snapshotName">—</span>
-    <button class="scene-btn" id="sceneBtn" title="Save ear scene for this snapshot" style="display:none">💾</button>
+    <span class="scene-status" id="sceneStatus" style="display:none"></span>
+  </div>
+
+  <!-- Menu drawer — slides up from bottom when body.menuOpen -->
+  <div class="menu-backdrop" id="menuBackdrop"></div>
+  <div class="menu-drawer" id="menuDrawer">
+    <div class="menu-drawer-handle"></div>
+    <button class="menu-item" id="menuEqItem" style="display:none">
+      <span class="menu-item-icon menu-eq-icon">EQ</span>
+      <span class="menu-item-label">Equalizer</span>
+      <span class="menu-item-arrow">›</span>
+    </button>
+    <button class="menu-item" id="menuSceneItem" style="display:none">
+      <span class="menu-item-icon" id="menuSceneIcon">💾</span>
+      <span class="menu-item-label" id="menuSceneLabel">Save Ear Scene</span>
+    </button>
+    <button class="menu-item" id="menuMixesItem" style="display:none">
+      <span class="menu-item-icon">📁</span>
+      <span class="menu-item-label">My Mixes</span>
+      <span class="menu-item-arrow">›</span>
+    </button>
+    <div class="menu-divider"></div>
+    <div class="menu-section-label">Fader Layout</div>
+    <div class="menu-layout-row">
+      <button class="menu-layout-btn" data-layout="compact">Compact</button>
+      <button class="menu-layout-btn menu-layout-active" data-layout="normal">Normal</button>
+      <button class="menu-layout-btn" data-layout="large">Large</button>
+    </div>
   </div>
   <div class="scene-toast" id="sceneToast"></div>
 
@@ -42,6 +72,86 @@
     <div class="aux-picker-inner">
       <div class="aux-picker-title">Select Your Mix</div>
       <div class="aux-buttons" id="auxButtons"></div>
+    </div>
+  </div>
+
+  <!-- My Mixes overlay — personal named presets per aux, visible when body.mixesOpen -->
+  <div class="mixes-picker" id="mixesPicker">
+    <div class="mixes-picker-inner">
+      <div class="mixes-picker-header">
+        <span class="mixes-picker-title">My Mixes</span>
+        <button class="mixes-close-btn" id="mixesCloseBtn" aria-label="Close">✕</button>
+      </div>
+      <button class="mixes-save-btn" id="mixesSaveBtn">+ Save Current Mix As…</button>
+      <div class="mixes-list" id="mixesList"></div>
+    </div>
+  </div>
+
+  <!-- EQ panel — visible when body.eqOpen -->
+  <div class="eq-panel" id="eqPanel">
+    <div class="eq-panel-inner">
+      <div class="eq-panel-header">
+        <span class="eq-panel-title">EQ</span>
+        <div class="eq-header-right">
+          <button class="eq-close-btn" id="eqCloseBtn">✕</button>
+        </div>
+      </div>
+      <div class="eq-canvas-wrap">
+        <svg class="eq-canvas" id="eqCanvas" viewBox="0 0 380 160" preserveAspectRatio="none" style="touch-action:none"></svg>
+      </div>
+      <div class="eq-band-info" id="eqBandInfo">
+        <span class="eq-band-hint">Tap a band handle to select</span>
+      </div>
+      <div class="eq-controls" id="eqControls" style="display:none">
+        <div class="eq-ctrl-header">
+          <div class="eq-band-badge" id="eqCtrlBadge">B1</div>
+          <span class="eq-ctrl-title" id="eqCtrlTitle">Band 1</span>
+          <button class="eq-reset-btn" id="eqResetBtn">Reset</button>
+        </div>
+        <div class="eq-sliders">
+          <div class="eq-slider-row">
+            <div class="eq-slider-label">FREQ</div>
+            <input type="range" class="eq-ctrl-slider" id="eqCtrlFreq" min="0" max="1000" step="1" />
+            <div class="eq-slider-val" id="eqCtrlFreqVal">—</div>
+          </div>
+          <div class="eq-slider-row">
+            <div class="eq-slider-label">GAIN</div>
+            <input type="range" class="eq-ctrl-slider" id="eqCtrlGain" min="-18" max="18" step="0.1" />
+            <div class="eq-slider-val" id="eqCtrlGainVal">—</div>
+          </div>
+          <div class="eq-slider-row">
+            <div class="eq-slider-label">Q</div>
+            <input type="range" class="eq-ctrl-slider" id="eqCtrlQ" min="0" max="1000" step="1" />
+            <div class="eq-slider-val" id="eqCtrlQVal">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Name-a-mix dialog — visible when body.nameMixOpen -->
+  <div class="name-mix-dialog" id="nameMixDialog">
+    <div class="name-mix-inner">
+      <div class="name-mix-title">Save Mix As</div>
+      <input class="name-mix-input" id="nameMixInput" type="text" placeholder="Type your mix name here" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="64" />
+      <div class="name-mix-btns">
+        <button class="name-mix-cancel" id="nameMixCancel">Cancel</button>
+        <button class="name-mix-confirm" id="nameMixConfirm">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic confirm / value-prompt dialog — visible when body.actionDialogOpen.
+       Replaces window.confirm()/prompt(), which iOS silently no-ops in standalone
+       (home-screen) web apps. -->
+  <div class="action-dialog" id="actionDialog">
+    <div class="name-mix-inner">
+      <div class="name-mix-title" id="actionDialogTitle">Confirm</div>
+      <input class="name-mix-input" id="actionDialogInput" type="text" inputmode="decimal" placeholder="" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="16" style="display:none" />
+      <div class="name-mix-btns">
+        <button class="name-mix-cancel" id="actionDialogCancel">Cancel</button>
+        <button class="name-mix-confirm" id="actionDialogConfirm">OK</button>
+      </div>
     </div>
   </div>
 

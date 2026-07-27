@@ -13,10 +13,21 @@ contextBridge.exposeInMainWorld('jpm', {
   onStatus:         (cb) => ipcRenderer.on('server-status',  (_, data) => cb(data)),
   getConsoleStatus:       ()  => ipcRenderer.invoke('get-console-status'),
   onConsoleStatus:        (cb) => ipcRenderer.on('console-status', (_, data) => cb(data)),
-  getInstrumentIconPaths: ()   => ipcRenderer.invoke('get-instrument-icon-paths'),
   openMonitor:            ()   => ipcRenderer.invoke('open-monitor'),
   openConsole:            ()   => ipcRenderer.invoke('open-console'),
   getConnectionCount:     ()   => ipcRenderer.invoke('get-connection-count'),
   onConnectionCount:      (cb) => ipcRenderer.on('connection-count', (_, data) => cb(data)),
-  getVersion:             ()   => ipcRenderer.invoke('get-version')
+  getVersion:             ()   => ipcRenderer.invoke('get-version'),
+  getPresets:             ()            => ipcRenderer.invoke('get-presets'),
+  deletePreset:           (deviceId, name) => ipcRenderer.invoke('delete-preset', deviceId, name),
+  exportBackup:           ()            => ipcRenderer.invoke('export-backup'),
+  importBackup:           ()   => ipcRenderer.invoke('import-backup'),
+  getAutoBackupStatus:    ()   => ipcRenderer.invoke('get-auto-backup-status'),
+  openAutoBackupsFolder:  ()   => ipcRenderer.invoke('open-auto-backups-folder'),
+  getOscLog:              ()   => ipcRenderer.invoke('get-osc-log'),
+  onOscTraffic:           (cb) => ipcRenderer.on('osc-traffic', (_, batch) => cb(batch)),
+  startOscLogRecording:      ()   => ipcRenderer.invoke('start-osc-log-recording'),
+  stopOscLogRecording:       ()   => ipcRenderer.invoke('stop-osc-log-recording'),
+  getOscLogRecordingStatus:  ()   => ipcRenderer.invoke('get-osc-log-recording-status'),
+  openOscLogsFolder:         ()   => ipcRenderer.invoke('open-osc-logs-folder')
 });

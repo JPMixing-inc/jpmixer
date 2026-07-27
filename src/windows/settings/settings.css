@@ -295,10 +295,20 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .ip-status.ok  { color: var(--green); }
 .ip-status.err { color: var(--red); }
 
+.backup-status {
+  font-size: 12px;
+  white-space: normal;
+  word-break: break-all;
+  margin: 10px 0 0;
+}
+.backup-status.ok  { color: var(--green); }
+.backup-status.err { color: var(--red); }
+
 /* ── Tab nav ── */
 
 .tab-nav {
   display: flex;
+  flex-wrap: wrap;
   padding: 0 24px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -316,6 +326,8 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   font-size: 13px;
   font-weight: 500;
   padding: 10px 16px 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: color 0.15s, border-color 0.15s;
   margin-bottom: -1px;
 }
@@ -620,3 +632,104 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   color: var(--text);
   font-weight: 500;
 }
+
+/* ── My Mixes tab ── */
+
+.mixes-tab-aux {
+  margin-bottom: 18px;
+}
+
+.mixes-tab-aux-header {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--sub);
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.mixes-tab-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  gap: 10px;
+}
+
+.mixes-tab-name {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Demo mode card ── */
+.card-demo {
+  border-color: rgba(255, 159, 10, 0.3);
+  background: rgba(255, 159, 10, 0.05);
+}
+.card-demo h2 {
+  color: rgba(255, 159, 10, 0.9);
+}
+
+/* ── OSC Log terminal ── */
+
+.osclog-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.osclog-filter {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 8px;
+  width: 140px;
+  outline: none;
+}
+.osclog-filter:focus { border-color: var(--accent); }
+
+.osclog-dir-in  { color: #4dabf7; font-weight: 700; }
+.osclog-dir-out { color: #ffa94d; font-weight: 700; }
+
+#oscLogPauseBtn.active {
+  background: rgba(232, 0, 60, 0.15);
+  border-color: rgba(232, 0, 60, 0.4);
+  color: var(--accent);
+}
+
+.osclog-terminal {
+  height: 380px;
+  overflow-y: auto;
+  background: #0a0b0d;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.osclog-terminal::-webkit-scrollbar { width: 6px; }
+.osclog-terminal::-webkit-scrollbar-track { background: transparent; }
+.osclog-terminal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.osclog-line { white-space: pre-wrap; word-break: break-all; }
+.osclog-line.filtered-out { display: none; }
+.osclog-time   { color: var(--sub); }
+.osclog-addr   { color: var(--text); }
+.osclog-args   { color: #7ee787; }
+.osclog-source { color: var(--sub); font-style: italic; }
+
+.osclog-empty { color: var(--sub); font-style: italic; }
+
+.osclog-record-row { margin-top: 10px; }

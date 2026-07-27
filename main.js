@@ -20,7 +20,8 @@ function checkForUpdates(silent = false) {
     res.on('end', () => {
       try {
         const releases = JSON.parse(data);
-        const release  = Array.isArray(releases) ? releases[0] : releases;
+        if (!Array.isArray(releases) || releases.length === 0) throw new Error('No releases');
+        const release  = releases[0];
         const latest   = (release.tag_name || '').replace(/^v/, '');
         const current = app.getVersion();
         if (latest && latest !== current) {
@@ -51,13 +52,25 @@ function checkForUpdates(silent = false) {
   });
 }
 
+function sameSubnet(a, b, mask) {
+  const toNum = ip => ip.split('.').reduce((acc, oct) => ((acc << 8) >>> 0) + parseInt(oct, 10), 0);
+  const m = toNum(mask);
+  return (toNum(a) & m) === (toNum(b) & m);
+}
+
 function getLocalIP() {
+  // Prefer the interface whose subnet contains the configured console IP — avoids
+  // returning a VPN or Ethernet address when the desk is on Wi-Fi (or vice versa).
+  const deskIp = config ? config.get('deskIp') : null;
+  let fallback = null;
   for (const ifaces of Object.values(os.networkInterfaces())) {
     for (const iface of ifaces) {
-      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+      if (iface.family !== 'IPv4' || iface.internal) continue;
+      if (!fallback) fallback = iface.address;
+      if (deskIp && iface.netmask && sameSubnet(iface.address, deskIp, iface.netmask)) return iface.address;
     }
   }
-  return null;
+  return fallback;
 }
 
 let tray = null;
@@ -65,13 +78,18 @@ let settingsWindow = null;
 let serverRunning = false;
 
 // Lazy-require so config uses app.getPath after app is ready
-let config, server;
+let config, server, presets, autoBackup;
 
 app.whenReady().then(() => {
-  config = require('./src/server/config');
-  server = require('./src/server/osc-server');
+  config     = require('./src/server/config');
+  server     = require('./src/server/osc-server');
+  presets    = require('./src/server/presets');
+  autoBackup = require('./src/server/auto-backup');
+  autoBackup.start();
   server.setConsoleStatusCallback(broadcastConsoleStatus);
   server.setConnectionCountCallback(broadcastConnectionCount);
+  server.setServerErrorCallback(handleServerError);
+  server.setOscTrafficCallback(broadcastOscTraffic);
 
   createTray();
 
@@ -190,6 +208,25 @@ function broadcastConnectionCount(count) {
   }
 }
 
+function broadcastOscTraffic(batch) {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send('osc-traffic', batch);
+  }
+}
+
+function handleServerError(err) {
+  serverRunning = false;
+  rebuildTrayMenu();
+  broadcastStatus();
+  dialog.showMessageBox({
+    type: 'error',
+    title: 'Server Error',
+    message: 'JPMixer’s server failed to start.',
+    detail: `${err.message}\n\nCheck that no other app is using this port, then try again from Settings.`,
+    buttons: ['OK']
+  });
+}
+
 // ─── Settings window ──────────────────────────────────────────────────────────
 
 function openSettings() {
@@ -226,6 +263,14 @@ ipcMain.handle('get-channel-names',   () => serverRunning ? server.getChannelNam
 ipcMain.handle('get-aux-names',       () => serverRunning ? server.getAuxNames()         : {});
 ipcMain.handle('get-console-status',      () => ({ connected: server ? server.isConsoleConnected() : false }));
 ipcMain.handle('get-connection-count',    () => ({ count: server ? server.getConnectionCount() : 0 }));
+ipcMain.handle('get-osc-log',             () => server ? server.getOscLog() : []);
+ipcMain.handle('start-osc-log-recording',      () => server ? server.startOscLogRecording()      : { ok: false, error: 'Server not ready' });
+ipcMain.handle('stop-osc-log-recording',       () => server ? server.stopOscLogRecording()       : { ok: false, error: 'Server not ready' });
+ipcMain.handle('get-osc-log-recording-status', () => server ? server.getOscLogRecordingStatus()  : { recording: false });
+ipcMain.handle('open-osc-logs-folder', () => {
+  if (server) shell.openPath(server.oscLogRecordsFolder());
+  return { ok: true };
+});
 
 ipcMain.handle('open-monitor', () => {
   if (!serverRunning) return { error: 'Server not running' };
@@ -249,16 +294,19 @@ ipcMain.handle('open-console', () => {
   win.loadURL(`http://localhost:${cfg.serverPort}/console.html`);
 });
 
-ipcMain.handle('get-instrument-icon-paths', () => ({
-  dir1: path.join(__dirname, 'assets', 'Icons For instruments', '1-To-70-SVG-Files-MusicalInstrumentsBundle'),
-  dir2: path.join(__dirname, 'assets', 'Icons For instruments', '71-To-120-SVG-Files-MusicalInstrumentsBundle'),
-}));
-
 ipcMain.handle('setup-port-80', async (_, serverPort) => {
+  // Validate before embedding in scripts that run as root
+  if (typeof serverPort !== 'number' || !Number.isInteger(serverPort) || serverPort < 1024 || serverPort > 65535) {
+    return { ok: false, error: 'Invalid port number' };
+  }
+
   if (process.platform === 'win32') {
     // Windows: netsh portproxy forwards port 80 → server port at the TCP level.
     // Stored in registry so it survives reboots. Runs elevated via UAC prompt.
-    const scriptPath = path.join(os.tmpdir(), 'jpmixer-port80.ps1');
+    // Use a process-private temp directory to avoid TOCTOU race on shared /tmp.
+    let tmpDir;
+    try { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpmixer-')); } catch (e) { return { ok: false, error: e.message }; }
+    const scriptPath = path.join(tmpDir, 'jpmixer-port80.ps1');
     const script = [
       `netsh interface portproxy delete v4tov4 listenport=80 listenaddress=0.0.0.0 2>$null`,
       `netsh interface portproxy add v4tov4 listenport=80 listenaddress=0.0.0.0 connectport=${serverPort} connectaddress=127.0.0.1`,
@@ -267,20 +315,26 @@ ipcMain.handle('setup-port-80', async (_, serverPort) => {
     ].join('\r\n');
 
     try { fs.writeFileSync(scriptPath, script, 'utf8'); }
-    catch (e) { return { ok: false, error: e.message }; }
+    catch (e) { try { fs.rmSync(tmpDir, { recursive: true }); } catch (_) {} return { ok: false, error: e.message }; }
 
     return new Promise(resolve => {
       const escaped = scriptPath.replace(/\\/g, '\\\\');
       exec(
         `powershell -NoProfile -Command "Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \\"${escaped}\\"' -Verb RunAs -Wait"`,
-        (err, _out, stderr) => resolve({ ok: !err, error: err ? (stderr || err.message) : null })
+        (err, _out, stderr) => {
+          try { fs.rmSync(tmpDir, { recursive: true }); } catch (_) {}
+          resolve({ ok: !err, error: err ? (stderr || err.message) : null });
+        }
       );
     });
   }
 
-  const proxyScript = '/tmp/jpmixing-proxy.py';
-  const plistTmp    = '/tmp/com.jpmixing.port80.plist';
-  const setupTmp    = '/tmp/jpmixing-setup.sh';
+  // Use a process-private temp directory to avoid TOCTOU race on shared /tmp.
+  let macTmpDir;
+  try { macTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpmixer-')); } catch (e) { return { ok: false, error: e.message }; }
+  const proxyScript = path.join(macTmpDir, 'jpmixing-proxy.py');
+  const plistTmp    = path.join(macTmpDir, 'com.jpmixing.port80.plist');
+  const setupTmp    = path.join(macTmpDir, 'jpmixing-setup.sh');
   const proxyDest   = '/usr/local/bin/jpmixing-proxy.py';
   const plistDest   = '/Library/LaunchDaemons/com.jpmixing.port80.plist';
 
@@ -372,6 +426,7 @@ launchctl bootstrap system '${plistDest}' 2>/dev/null || launchctl load -w '${pl
   return new Promise(resolve => {
     const appleScript = `do shell script "${setupTmp}" with administrator privileges`;
     exec(`osascript -e '${appleScript}'`, (err, _stdout, stderr) => {
+      try { fs.rmSync(macTmpDir, { recursive: true }); } catch (_) {}
       resolve({ ok: !err, error: err ? (stderr || err.message) : null });
     });
   });
@@ -389,3 +444,68 @@ ipcMain.handle('save-config', (_, incoming) => {
 
 ipcMain.handle('start-server', () => startServer());
 ipcMain.handle('stop-server', () => stopServer());
+
+ipcMain.handle('get-presets',       () => presets.getAll());
+ipcMain.handle('delete-preset', (_, deviceId, name) => { presets.deletePreset(deviceId, name); return { ok: true }; });
+
+ipcMain.handle('get-auto-backup-status', () => autoBackup.getStatus());
+ipcMain.handle('open-auto-backups-folder', () => {
+  shell.openPath(autoBackup.backupsDir());
+  return { ok: true };
+});
+
+ipcMain.handle('export-backup', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  const defaultName = `JPMixer-Backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: 'Export JPMixer Backup',
+    defaultPath: defaultName,
+    filters: [{ name: 'JPMixer Backup', extensions: ['json'] }]
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+
+  const data = {
+    app: 'JPMixer',
+    type: 'backup',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    appVersion: app.getVersion(),
+    config: config.getAll(),
+    presets: presets.getAll()
+  };
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    return { ok: true, filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('import-backup', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title: 'Import JPMixer Backup',
+    properties: ['openFile'],
+    filters: [{ name: 'JPMixer Backup', extensions: ['json'] }]
+  });
+  if (canceled || !filePaths || !filePaths[0]) return { ok: false, canceled: true };
+
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
+  } catch (e) {
+    return { ok: false, error: 'That file isn’t valid JSON.' };
+  }
+  if (!data || data.app !== "JPMixer" || data.type !== "backup" || !data.config) {
+    return { ok: false, error: "That doesn’t look like a JPMixer backup file." };
+  }
+  if (typeof data.version !== "number" || data.version > 1) {
+    return { ok: false, error: "This backup was created by a newer version of JPMixer (format v" + data.version + "). Please update the app first." };
+  }
+
+  config.save(data.config);
+  if (data.presets) presets.replaceAll(data.presets);
+  if (serverRunning) { stopServer(); startServer(); }
+  rebuildTrayMenu();
+  return { ok: true };
+});

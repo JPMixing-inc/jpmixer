@@ -194,48 +194,95 @@ function onMessage(json) {
 
 // ── Fader helpers ─────────────────────────────────────────────────────────
 
-// Thumb-only fader control via transparent pointer-capture overlay.
-// The range input is made non-interactive (pointer-events:none); all
-// interaction is handled manually so only grabbing the white handle works.
-function lockToThumb(fader, wrap) {
+// Thumb-only vertical fader control via a transparent touch/mouse overlay.
+// A touch that starts away from the thumb passes through to scrolling the
+// strip row; a touch that starts near the thumb defers to its first move to
+// decide drag vs. scroll. Mirrors addFaderOverlay() in mixer.js, with the
+// axes swapped: fader travel is vertical here, the strip row scrolls horizontally.
+function lockToThumb(fader, wrap, scrollSelector) {
+  const THUMB_TOL = 28; // px tolerance around the visual thumb to start a grab
   fader.style.pointerEvents = 'none';
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:absolute;inset:0;z-index:2;touch-action:none;cursor:default;';
   wrap.appendChild(overlay);
 
-  let dragging = false;
-  let startY   = 0;
-  let startVal = 0;
+  const scrollEl = wrap.closest(scrollSelector);
 
   function thumbCenterY(rect, val) {
     return rect.top + 5 + (1 - val) * (rect.height - 10);
   }
 
-  overlay.addEventListener('pointerdown', (e) => {
+  function valueFromY(clientY) {
+    const rect   = fader.getBoundingClientRect();
+    const travel = rect.height - 10;
+    return Math.max(0, Math.min(1, 1 - (clientY - rect.top - 5) / travel));
+  }
+
+  function nearThumb(clientY) {
     const rect = fader.getBoundingClientRect();
-    const val  = parseFloat(fader.value);
-    if (Math.abs(e.clientY - thumbCenterY(rect, val)) > 28) return;
-    dragging = true;
-    startY   = e.clientY;
-    startVal = val;
-    overlay.setPointerCapture(e.pointerId);
-    overlay.style.cursor = 'grabbing';
+    return Math.abs(clientY - thumbCenterY(rect, parseFloat(fader.value))) <= THUMB_TOL;
+  }
+
+  function apply(v) {
+    fader.value = String(v);
+    fader.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  // ── Touch ──────────────────────────────────────────────────────────────
+  let tStartX, tStartY, tLastX, tDecided, tScrolling;
+
+  overlay.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    tStartX = tLastX = t.clientX;
+    tStartY = t.clientY;
+
+    if (!nearThumb(t.clientY)) {
+      tDecided   = true;
+      tScrolling = true;
+      return;
+    }
+    tDecided   = false;
+    tScrolling = false;
     e.preventDefault();
   }, { passive: false });
 
-  overlay.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const rect   = fader.getBoundingClientRect();
-    const travel = rect.height - 10;
-    const newVal = Math.max(0, Math.min(1, startVal - (e.clientY - startY) / travel));
-    fader.value  = String(newVal);
-    fader.dispatchEvent(new Event('input', { bubbles: true }));
+  overlay.addEventListener('touchmove', e => {
+    const t  = e.touches[0];
+    const dx = Math.abs(t.clientX - tStartX);
+    const dy = Math.abs(t.clientY - tStartY);
+
+    if (!tDecided && (dx > 4 || dy > 4)) {
+      tDecided   = true;
+      tScrolling = dx > dy; // horizontal = scroll the strip row, vertical = fader
+    }
+
+    if (tScrolling) {
+      if (scrollEl) scrollEl.scrollLeft += tLastX - t.clientX;
+      tLastX = t.clientX;
+    } else {
+      apply(valueFromY(t.clientY));
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  overlay.addEventListener('touchend', () => {
+    if (!tScrolling) fader.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
-  function endDrag() { dragging = false; overlay.style.cursor = 'default'; }
-  overlay.addEventListener('pointerup',     endDrag);
-  overlay.addEventListener('pointercancel', endDrag);
+  // ── Mouse (desktop) ────────────────────────────────────────────────────
+  overlay.addEventListener('mousedown', e => {
+    if (!nearThumb(e.clientY)) return;
+    const onMove = ev => apply(valueFromY(ev.clientY));
+    const onUp   = ev => {
+      apply(valueFromY(ev.clientY));
+      fader.dispatchEvent(new Event('change', { bubbles: true }));
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
 }
 
 // ── Grid builders ─────────────────────────────────────────────────────────
@@ -243,8 +290,11 @@ function lockToThumb(fader, wrap) {
 function buildInputStrips() {
   const grid = document.getElementById('inputStrips');
   grid.innerHTML = '';
+  // Unlike the musician mixer, the Console Controller isn't a curated view —
+  // it drives the desk directly, so it shows every channel regardless of the
+  // "On" (mixer-visibility) toggle in Settings → Channels. Matches buildAuxStrips(),
+  // which already renders every aux unfiltered.
   for (const ch of chConfig) {
-    if (!ch.enabled) continue;
     grid.appendChild(buildChStrip(ch));
   }
 }
@@ -288,7 +338,7 @@ function buildChStrip(ch) {
     consoleFaders[ch.channel] = newDb;
     send({ type: 'console-fader', ch: ch.channel, db: newDb });
   });
-  lockToThumb(fader, faderWrap);
+  lockToThumb(fader, faderWrap, '.strips-scroll');
 
   faderWrap.append(track, fill, fader);
 
@@ -436,7 +486,7 @@ function buildCGStrip(cg) {
     cgFaders[cg.channel] = newDb;
     send({ type: 'cg-fader', cg: cg.channel, db: newDb });
   });
-  lockToThumb(fader, faderWrap);
+  lockToThumb(fader, faderWrap, '.cg-scroll');
 
   faderWrap.append(track, fill, fader);
 

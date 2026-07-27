@@ -73,22 +73,6 @@ const ICON_LABELS = {
   amp:'Amp', di:'DI Box', percussion:'Percussion', click:'Click Track', playback:'Playback / Backing', fx:'FX Return',
 };
 
-const EMOJIS = [
-  '🎤','🎙','🗣','👤','🎸','🪗','🥁','🪘','🎹','🎺','🎻','🎷',
-  '🪕','🎵','🎶','🎼','🪈','🎧','🔊','📢','🎚','🎛','📻',
-  '⭐','🌟','✨','🔥','💎','🎯','🏆','🥇',
-  '🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪',
-  '🌀','🌊','⚡','❄️','🌙','☀️','🌈','💫',
-  '🔔','🔕','📣','🚨','⚠️','✅','❌','🔁',
-];
-
-function getInstrumentIconSrc(iconValue) {
-  if (!instrumentIconPaths || !iconValue.startsWith('file:')) return '';
-  const n = parseInt(iconValue.slice(5));
-  if (!n) return '';
-  const dir = n <= 70 ? instrumentIconPaths.dir1 : instrumentIconPaths.dir2;
-  return `file://${dir}/${n}.svg`;
-}
 
 function renderIconHTML(icon) {
   if (!icon) return '+';
@@ -98,8 +82,9 @@ function renderIconHTML(icon) {
     return svg ? `<span class="custom-icon">${svg}</span>` : '+';
   }
   if (icon.startsWith('file:')) {
-    const src = getInstrumentIconSrc(icon);
-    return src ? `<img class="instrument-icon" src="${escHtml(src)}" width="18" height="18" />` : '+';
+    const n = parseInt(icon.slice(5));
+    const port = Number($('serverPort').value) || 8080;
+    return `<img class="instrument-icon" src="http://localhost:${port}/instrument-icons/${n}.svg" width="18" height="18" />`;
   }
   return icon; // emoji
 }
@@ -115,12 +100,14 @@ const fields = {
   channels:       { el: $('channels'),       key: 'channels',       parse: Number },
   auxes:          { el: $('auxes'),          key: 'auxes',          parse: Number },
   groups:         { el: $('groups'),         key: 'groups',         parse: Number },
+  autoBackupIntervalDays: { el: $('autoBackupInterval'), key: 'autoBackupIntervalDays', parse: Number },
 };
 
 // ── State ─────────────────────────────────────────────────────────────────
 
 let isRunning          = false;
-let channelGroups      = [];   // [{ id, name, colour }]
+let isDemoMode         = false;
+let channelGroups      = [];   // [{ id, name }]
 let channelOverrides   = {};   // { "1": { label, icon, groupId, order, enabled } }
 let channelOrder       = [];   // ordered list of channel numbers, e.g. [1, 3, 2, ...]
 let consoleNames       = {};   // { "1": "KICK", "2": "SNARE", ... } from server cache
@@ -128,7 +115,6 @@ let auxOverrides       = {};   // { "1": { enabled } }
 let auxNames           = {};   // { "1": "IEM L", ... } from server cache
 let activeIconBtn      = null;
 let dragSrcCh          = null;
-let instrumentIconPaths = null; // { dir1, dir2 } absolute paths to SVG subfolders
 let ipadConnections    = [];   // [{ id, name, enabled, ip, sendPort, listenPort }]
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
@@ -151,6 +137,7 @@ document.querySelectorAll('.tab').forEach(btn => {
         renderAuxes();
       });
     }
+    if (btn.dataset.tab === 'mixes') renderMixesTab();
   });
 });
 
@@ -167,15 +154,18 @@ function renderAuxes() {
     const colour  = ov.colour  || '#e8a020';
     const name    = auxNames[String(i)] || `AUX ${i}`;
 
+    const eqEnabled = ov.eqEnabled === true;
+
     const row = document.createElement('div');
     row.className = 'ch-editor-row';
     row.dataset.aux = i;
-    row.style.gridTemplateColumns = '28px 1fr 32px 28px';
+    row.style.gridTemplateColumns = '28px 1fr 32px 28px 28px';
     row.innerHTML = `
       <span class="ch-editor-num">${i}</span>
       <span class="aux-name-label">${escHtml(name)}</span>
       <input type="color" class="aux-colour colour-input" data-aux="${i}" value="${escHtml(colour)}" title="Button color" />
       <input type="checkbox" class="toggle aux-enabled" data-aux="${i}" ${enabled ? 'checked' : ''} />
+      <input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} title="Show EQ button on mixer page" />
     `;
     list.appendChild(row);
   }
@@ -189,6 +179,8 @@ $('auxesList').addEventListener('change', e => {
     auxOverrides[aux].enabled = e.target.checked;
   } else if (e.target.classList.contains('aux-colour')) {
     auxOverrides[aux].colour = e.target.value;
+  } else if (e.target.classList.contains('aux-eq-enabled')) {
+    auxOverrides[aux].eqEnabled = e.target.checked;
   }
 });
 
@@ -279,7 +271,6 @@ function renderGroups() {
     const row = document.createElement('div');
     row.className = 'group-row';
     row.innerHTML = `
-      <input type="color" class="colour-input" value="${g.colour}" data-id="${g.id}" />
       <input type="text" class="group-name-input" value="${escHtml(g.name)}" placeholder="Group name" data-id="${g.id}" />
       <button class="btn btn-sm btn-danger delete-group" data-id="${g.id}">Remove</button>
     `;
@@ -288,10 +279,7 @@ function renderGroups() {
 }
 
 $('addGroupBtn').addEventListener('click', () => {
-  const palette = ['#e84040','#e87030','#e8c030','#40b860','#3090e8','#6040d8','#c040b0','#e84080'];
-  const used    = new Set(channelGroups.map(g => g.colour));
-  const colour  = palette.find(c => !used.has(c)) || palette[channelGroups.length % palette.length];
-  channelGroups.push({ id: Date.now(), name: 'New Group', colour });
+  channelGroups.push({ id: Date.now(), name: 'New Group' });
   renderGroups();
   refreshGroupDropdowns();
 });
@@ -300,8 +288,7 @@ $('groupsList').addEventListener('input', e => {
   const id = parseInt(e.target.dataset.id);
   const g  = channelGroups.find(g => g.id === id);
   if (!g) return;
-  if (e.target.classList.contains('colour-input'))     { g.colour = e.target.value; refreshGroupDropdowns(); }
-  if (e.target.classList.contains('group-name-input')) { g.name   = e.target.value; refreshGroupDropdowns(); }
+  if (e.target.classList.contains('group-name-input')) { g.name = e.target.value; refreshGroupDropdowns(); }
 });
 
 $('groupsList').addEventListener('click', e => {
@@ -448,41 +435,31 @@ $('channelsList').addEventListener('input', e => {
 const iconPickerEl = $('iconPicker');
 const iconGrid     = iconPickerEl.querySelector('.icon-grid');
 
-// Clear button
+// Clear button — always present
 const clearCell = document.createElement('button');
 clearCell.className = 'icon-cell icon-cell-clear';
 clearCell.textContent = '✕';
 clearCell.title = 'Clear icon';
 iconGrid.appendChild(clearCell);
 
-// Custom icon groups
-for (const group of ICON_GROUPS) {
-  const label = document.createElement('div');
-  label.className = 'icon-group-label';
-  label.textContent = group.label;
-  iconGrid.appendChild(label);
-  for (const key of group.keys) {
+// Instrument icons are built lazily on first open so the server port is populated
+let pickerBuilt = false;
+function buildPickerItems() {
+  if (pickerBuilt) return;
+  pickerBuilt = true;
+  const port = Number($('serverPort').value) || 8080;
+  for (let n = 1; n <= 120; n++) {
     const btn = document.createElement('button');
-    btn.className = 'icon-cell icon-cell-custom';
-    btn.dataset.iconKey = key;
-    btn.title = ICON_LABELS[key] || key;
-    btn.innerHTML = `<span class="custom-icon">${CUSTOM_ICONS[key]}</span>`;
+    btn.className = 'icon-cell';
+    btn.dataset.fileNum = n;
+    const img = document.createElement('img');
+    img.src = `http://localhost:${port}/instrument-icons/${n}.svg`;
+    img.className = 'instrument-icon';
+    img.width = 24;
+    img.height = 24;
+    btn.appendChild(img);
     iconGrid.appendChild(btn);
   }
-}
-
-// Emoji section
-const emojiLabel = document.createElement('div');
-emojiLabel.className = 'icon-group-label';
-emojiLabel.textContent = 'Emoji';
-iconGrid.appendChild(emojiLabel);
-
-for (const ic of EMOJIS) {
-  const btn = document.createElement('button');
-  btn.className = 'icon-cell';
-  btn.dataset.emoji = ic;
-  btn.textContent = ic;
-  iconGrid.appendChild(btn);
 }
 
 iconGrid.addEventListener('click', e => {
@@ -495,20 +472,10 @@ iconGrid.addEventListener('click', e => {
     ov.icon = '';
     activeIconBtn.innerHTML = '+';
     activeIconBtn.classList.remove('has-icon');
-  } else if (cell.dataset.iconKey) {
-    const key = cell.dataset.iconKey;
-    ov.icon = 'img:' + key;
-    activeIconBtn.innerHTML = renderIconHTML('img:' + key);
-    activeIconBtn.classList.add('has-icon');
-  } else if (cell.dataset.iconNum) {
-    const num = cell.dataset.iconNum;
+  } else if (cell.dataset.fileNum) {
+    const num = cell.dataset.fileNum;
     ov.icon = 'file:' + num;
     activeIconBtn.innerHTML = renderIconHTML('file:' + num);
-    activeIconBtn.classList.add('has-icon');
-  } else {
-    const emoji = cell.dataset.emoji || cell.textContent;
-    ov.icon = emoji;
-    activeIconBtn.innerHTML = emoji;
     activeIconBtn.classList.add('has-icon');
   }
   closeIconPicker();
@@ -522,25 +489,9 @@ $('channelsList').addEventListener('click', e => {
   openIconPicker(btn);
 });
 
-function buildInstrumentIconsSection() {
-  if (!instrumentIconPaths) return;
-  const label = document.createElement('div');
-  label.className = 'icon-group-label';
-  label.textContent = 'Instrument Library';
-  iconGrid.appendChild(label);
-  for (let n = 1; n <= 120; n++) {
-    const dir = n <= 70 ? instrumentIconPaths.dir1 : instrumentIconPaths.dir2;
-    const src = `file://${dir}/${n}.svg`;
-    const btn = document.createElement('button');
-    btn.className = 'icon-cell icon-cell-instrument';
-    btn.dataset.iconNum = String(n);
-    btn.title = `Instrument ${n}`;
-    btn.innerHTML = `<img class="instrument-icon" src="${escHtml(src)}" width="24" height="24" />`;
-    iconGrid.appendChild(btn);
-  }
-}
 
 function openIconPicker(btn) {
+  buildPickerItems();
   activeIconBtn = btn;
   iconPickerEl.style.display = 'block';
   const rect = btn.getBoundingClientRect();
@@ -573,6 +524,10 @@ function applyConfig(cfg) {
   }
   $('autoStart').checked          = !!cfg.autoStart;
   $('sceneRecallEnabled').checked = !!cfg.sceneRecallEnabled;
+  $('autoBackupEnabled').checked  = cfg.autoBackupEnabled !== false;
+  isDemoMode = !!cfg.demoMode;
+  $('demoMode').checked = isDemoMode;
+  $('demoMode').addEventListener('change', function () { isDemoMode = this.checked; });
   ipadConnections = Array.isArray(cfg.ipadConnections) ? cfg.ipadConnections : [];
   renderIpadConnections();
 
@@ -595,6 +550,8 @@ function collectConfig() {
   }
   out.autoStart           = $('autoStart').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;
+  out.autoBackupEnabled   = $('autoBackupEnabled').checked;
+  out.demoMode            = $('demoMode').checked;
   out.ipadConnections     = ipadConnections;
   out.channelGroups    = channelGroups;
   saveChannelOrder();
@@ -608,11 +565,11 @@ function collectConfig() {
 let localIP = null;
 
 function setConsoleStatus(connected) {
+  const demo = isDemoMode && connected;
   $('consoleDot').className      = 'dot' + (connected ? ' on' : '');
-  $('consolePillLabel').textContent  = connected ? 'Connected' : 'Offline';
-  $('consoleStatusLabel').textContent = connected
-    ? 'Connected to console'
-    : 'Not connected';
+  $('consolePillLabel').textContent   = demo ? 'Demo' : (connected ? 'Connected' : 'Offline');
+  $('consoleStatusLabel').textContent = demo ? 'Demo mode — simulated console'
+    : (connected ? 'Connected to console' : 'Not connected');
 }
 
 function setDeviceCount(count) {
@@ -678,6 +635,157 @@ $('port80Btn').addEventListener('click', async () => {
   }
 });
 
+async function refreshAutoBackupInfo() {
+  const info = $('autoBackupInfo');
+  try {
+    const status = await window.jpm.getAutoBackupStatus();
+    if (!status.lastBackup) {
+      info.textContent = status.enabled ? 'No automatic backups yet — one will be saved soon.' : 'Automatic backups are off.';
+    } else {
+      const when  = new Date(status.lastBackup).toLocaleString();
+      const count = status.count + (status.count === 1 ? ' backup' : ' backups');
+      info.textContent = `Last backup: ${when} — ${count} stored`;
+    }
+  } catch (e) {
+    info.textContent = '—';
+  }
+}
+
+// ── My Mixes tab ─────────────────────────────────────────────────────────
+
+async function renderMixesTab() {
+  const container = $('mixesByAux');
+  container.innerHTML = '<div class="empty-hint">Loading…</div>';
+
+  const allPresets = await window.jpm.getPresets();
+
+  container.innerHTML = '';
+
+  const deviceIds = Object.keys(allPresets);
+  if (deviceIds.length === 0) {
+    container.innerHTML = '<div class="empty-hint">No mixes saved yet — performers save their mixes from the mixer page.</div>';
+    return;
+  }
+
+  for (const deviceId of deviceIds) {
+    const names = Object.keys(allPresets[deviceId] || {}).sort((a, b) => a.localeCompare(b));
+    if (names.length === 0) continue;
+
+    const section = document.createElement('div');
+    section.className = 'mixes-tab-aux';
+
+    const header = document.createElement('div');
+    header.className = 'mixes-tab-aux-header';
+    header.textContent = `Device ${deviceId.slice(0, 8)}…`;
+    section.appendChild(header);
+
+    for (const name of names) {
+      const row = document.createElement('div');
+      row.className = 'mixes-tab-row';
+
+      const label = document.createElement('span');
+      label.className = 'mixes-tab-name';
+      label.textContent = name;
+
+      const del = document.createElement('button');
+      del.className = 'btn btn-sm btn-danger';
+      del.textContent = 'Delete';
+      del.addEventListener('click', async () => {
+        if (!confirm(`Delete "${name}"?`)) return;
+        await window.jpm.deletePreset(deviceId, name);
+        renderMixesTab();
+      });
+
+      row.append(label, del);
+      section.appendChild(row);
+    }
+
+    container.appendChild(section);
+  }
+}
+
+$('refreshMixesBtn').addEventListener('click', renderMixesTab);
+
+$('showAutoBackupsBtn').addEventListener('click', () => {
+  window.jpm.openAutoBackupsFolder();
+});
+
+$('exportBackupBtn').addEventListener('click', async () => {
+  const btn    = $('exportBackupBtn');
+  const status = $('exportStatus');
+  btn.disabled    = true;
+  btn.textContent = 'Exporting…';
+  status.className   = 'backup-status';
+  status.textContent = '';
+
+  const result = await window.jpm.exportBackup();
+
+  btn.disabled    = false;
+  btn.textContent = 'Export Backup…';
+
+  if (result.canceled) return;
+  if (result.ok) {
+    status.className   = 'backup-status ok';
+    status.textContent = '✓ Saved to ' + result.filePath;
+  } else {
+    status.className   = 'backup-status err';
+    status.textContent = '✕ ' + (result.error || 'Export failed.');
+  }
+});
+
+$('importBackupBtn').addEventListener('click', async () => {
+  const btn    = $('importBackupBtn');
+  const status = $('importStatus');
+
+  if (!confirm('Importing a backup replaces your current console settings, channel/aux setup, and My Mixes. This cannot be undone. Continue?')) return;
+
+  btn.disabled    = true;
+  btn.textContent = 'Importing…';
+  status.className   = 'backup-status';
+  status.textContent = '';
+
+  const result = await window.jpm.importBackup();
+
+  btn.disabled    = false;
+  btn.textContent = 'Choose Backup File…';
+
+  if (result.canceled) return;
+  if (result.ok) {
+    status.className   = 'backup-status ok';
+    status.textContent = '✓ Restored — reloading settings…';
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    status.className   = 'backup-status err';
+    status.textContent = '✕ ' + (result.error || 'Import failed.');
+  }
+});
+
+$('resetLayoutBtn').addEventListener('click', async () => {
+  const btn    = $('resetLayoutBtn');
+  const status = $('resetLayoutStatus');
+
+  if (!confirm('This will clear all channel groups, icon assignments, and label overrides. Console settings and ear mixes are not affected. Continue?')) return;
+
+  channelGroups    = [];
+  channelOverrides = {};
+
+  renderGroups();
+  renderChannels();
+
+  btn.disabled    = true;
+  btn.textContent = 'Resetting…';
+  status.className   = 'backup-status';
+  status.textContent = '';
+
+  await window.jpm.saveConfig(collectConfig());
+
+  btn.disabled    = false;
+  btn.textContent = 'Reset Layout & Icons…';
+  status.className   = 'backup-status ok';
+  status.textContent = '✓ Layout and icons cleared.';
+  setTimeout(() => { status.textContent = ''; }, 3000);
+});
+
 $('saveBtn').addEventListener('click', async () => {
   $('saveBtn').textContent = 'Saving…';
   $('saveBtn').disabled    = true;
@@ -696,20 +804,201 @@ function escHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
 
+// ── OSC Log ───────────────────────────────────────────────────────────────
+// Live view of raw OSC traffic between JPMixer and the console. Lines are
+// built with textContent (never innerHTML) since address/args/source come
+// straight off the wire and must be treated as untrusted text.
+
+const OSCLOG_MAX_LINES = 500;
+let oscLogPaused  = false;
+let oscLogFilter  = '';
+let oscLogLastSeq = 0;
+
+function formatOscArgs(args) {
+  if (!args || args.length === 0) return '';
+  return args.map(a => {
+    if (typeof a === 'number') return Number.isInteger(a) ? String(a) : a.toFixed(3);
+    return JSON.stringify(a);
+  }).join(', ');
+}
+
+function buildOscLogLine(entry) {
+  const d = new Date(entry.t);
+  const time = d.toLocaleTimeString('en-US', { hour12: false }) + '.' + String(entry.t % 1000).padStart(3, '0');
+  const argsText = formatOscArgs(entry.args);
+
+  const line = document.createElement('div');
+  line.className = 'osclog-line';
+  line.dataset.filterText = `${entry.address} ${argsText}`.toLowerCase();
+
+  const timeEl = document.createElement('span');
+  timeEl.className = 'osclog-time';
+  timeEl.textContent = `[${time}] `;
+
+  const dirEl = document.createElement('span');
+  dirEl.className = entry.dir === 'in' ? 'osclog-dir-in' : 'osclog-dir-out';
+  dirEl.textContent = entry.dir === 'in' ? '← ' : '→ ';
+
+  const addrEl = document.createElement('span');
+  addrEl.className = 'osclog-addr';
+  addrEl.textContent = entry.address + ' ';
+
+  const argsEl = document.createElement('span');
+  argsEl.className = 'osclog-args';
+  argsEl.textContent = argsText;
+
+  line.append(timeEl, dirEl, addrEl, argsEl);
+
+  if (entry.source && entry.source !== 'desk') {
+    const srcEl = document.createElement('span');
+    srcEl.className = 'osclog-source';
+    srcEl.textContent = `  (${entry.source})`;
+    line.appendChild(srcEl);
+  }
+
+  if (oscLogFilter && !line.dataset.filterText.includes(oscLogFilter)) {
+    line.classList.add('filtered-out');
+  }
+
+  return line;
+}
+
+function appendOscLogEntries(entries) {
+  const terminal = $('oscLogTerminal');
+  if (!terminal || !entries || entries.length === 0) return;
+
+  // Drop anything already rendered (the initial history fetch and the first
+  // live batch can briefly overlap by a few entries around the seam).
+  const fresh = entries.filter(e => e.seq === undefined || e.seq > oscLogLastSeq);
+  if (fresh.length === 0) return;
+  for (const e of fresh) if (e.seq > oscLogLastSeq) oscLogLastSeq = e.seq;
+
+  const empty = terminal.querySelector('.osclog-empty');
+  if (empty) empty.remove();
+
+  const wasAtBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 30;
+
+  const frag = document.createDocumentFragment();
+  for (const entry of fresh) frag.appendChild(buildOscLogLine(entry));
+  terminal.appendChild(frag);
+
+  while (terminal.children.length > OSCLOG_MAX_LINES) {
+    terminal.removeChild(terminal.firstChild);
+  }
+
+  if (wasAtBottom) terminal.scrollTop = terminal.scrollHeight;
+}
+
+function applyOscLogFilter() {
+  const terminal = $('oscLogTerminal');
+  if (!terminal) return;
+  for (const line of terminal.querySelectorAll('.osclog-line')) {
+    line.classList.toggle('filtered-out', !!oscLogFilter && !line.dataset.filterText.includes(oscLogFilter));
+  }
+}
+
+// ── OSC Log recording — writes every message to a text file, independent of
+// the terminal's own Pause/Clear (those are display-only) ─────────────────
+
+let oscLogRecordActive     = false;
+let oscLogRecordCountLocal = 0;
+let oscLogRecordFileName   = '';
+
+function updateOscLogRecordUI() {
+  const btn = $('oscLogRecordBtn');
+  if (oscLogRecordActive) {
+    btn.textContent = 'Stop Logging';
+    btn.className   = 'btn btn-sm stop';
+    $('oscLogRecordStatus').textContent = `Recording to ${oscLogRecordFileName} — ${oscLogRecordCountLocal} lines`;
+  } else {
+    btn.textContent = 'Start Logging';
+    btn.className   = 'btn btn-sm btn-primary';
+  }
+}
+
+async function refreshOscLogRecordStatus() {
+  const status = await window.jpm.getOscLogRecordingStatus();
+  oscLogRecordActive     = !!status.recording;
+  oscLogRecordCountLocal = status.count || 0;
+  oscLogRecordFileName   = status.filePath ? status.filePath.split(/[\\/]/).pop() : '';
+  updateOscLogRecordUI();
+}
+
+$('oscLogRecordBtn').addEventListener('click', async () => {
+  const btn = $('oscLogRecordBtn');
+  btn.disabled = true;
+  if (oscLogRecordActive) {
+    const result = await window.jpm.stopOscLogRecording();
+    oscLogRecordActive = false;
+    if (result.filePath) {
+      $('oscLogRecordStatus').textContent = `Saved: ${result.filePath.split(/[\\/]/).pop()} (${result.count} lines)`;
+    }
+  } else {
+    const result = await window.jpm.startOscLogRecording();
+    if (result.ok) {
+      oscLogRecordActive     = true;
+      oscLogRecordCountLocal = 0;
+      oscLogRecordFileName   = result.filePath.split(/[\\/]/).pop();
+    } else {
+      $('oscLogRecordStatus').textContent = `✕ ${result.error || 'Failed to start logging.'}`;
+    }
+  }
+  updateOscLogRecordUI();
+  btn.disabled = false;
+});
+
+$('oscLogShowFolderBtn').addEventListener('click', () => {
+  window.jpm.openOscLogsFolder();
+});
+
+async function initOscLog() {
+  const terminal = $('oscLogTerminal');
+  if (!terminal) return;
+  const history = await window.jpm.getOscLog();
+  if (history && history.length) {
+    appendOscLogEntries(history.slice(-OSCLOG_MAX_LINES));
+  } else {
+    terminal.innerHTML = '<div class="osclog-empty">No OSC traffic yet — waiting for the console…</div>';
+  }
+  window.jpm.onOscTraffic(batch => {
+    if (!oscLogPaused) appendOscLogEntries(batch);
+    if (oscLogRecordActive) {
+      oscLogRecordCountLocal += batch.length;
+      updateOscLogRecordUI();
+    }
+  });
+  await refreshOscLogRecordStatus();
+}
+
+$('oscLogFilter').addEventListener('input', e => {
+  oscLogFilter = e.target.value.trim().toLowerCase();
+  applyOscLogFilter();
+});
+
+$('oscLogPauseBtn').addEventListener('click', () => {
+  oscLogPaused = !oscLogPaused;
+  $('oscLogPauseBtn').textContent = oscLogPaused ? 'Resume' : 'Pause';
+  $('oscLogPauseBtn').classList.toggle('active', oscLogPaused);
+});
+
+$('oscLogClearBtn').addEventListener('click', () => {
+  $('oscLogTerminal').innerHTML = '<div class="osclog-empty">Cleared.</div>';
+});
+
 async function init() {
-  const [cfg, status, ip, names, anames, consoleStatus, iconPaths, version] = await Promise.all([
+  const [cfg, status, ip, names, anames, consoleStatus, version] = await Promise.all([
     window.jpm.getConfig(),
     window.jpm.getStatus(),
     window.jpm.getLocalIP(),
     window.jpm.getChannelNames(),
     window.jpm.getAuxNames(),
     window.jpm.getConsoleStatus(),
-    window.jpm.getInstrumentIconPaths(),
     window.jpm.getVersion(),
   ]);
   const vEl = document.querySelector('.version');
@@ -717,8 +1006,6 @@ async function init() {
   localIP      = ip;
   consoleNames = names  || {};
   auxNames     = anames || {};
-  instrumentIconPaths = iconPaths;
-  buildInstrumentIconsSection();
   $('localIp').textContent = ip || 'Not found';
   applyConfig(cfg);
   setStatus(status.running);
@@ -729,6 +1016,9 @@ async function init() {
   const countData = await window.jpm.getConnectionCount();
   setDeviceCount(countData.count);
   window.jpm.onConnectionCount(({ count }) => setDeviceCount(count));
+
+  refreshAutoBackupInfo();
+  initOscLog();
 }
 
 init();

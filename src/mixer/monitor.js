@@ -71,6 +71,13 @@ let monSolos       = {}; // monSolos[aux][ch]
 let heartbeatTimer      = null;
 let hasConnected        = false;
 let disconnectShowTimer = null;
+let activeMixerCounts   = {}; // activeMixerCounts[auxChannel] = number of mixer clients currently on that aux
+
+// Direct element references keyed by "aux-ch" — avoids re-querying the DOM
+// on every level update (this list can run into the hundreds on first load)
+const channelEls   = new Map();
+const monRowCache  = new Map(); // aux → Map(ch → { row, muteBtn, soloBtn })
+const monHdrCache  = new Map(); // aux → badge element
 
 // ── WebSocket ─────────────────────────────────────────────────────────────
 
@@ -131,6 +138,13 @@ function onMessage(json) {
     return;
   }
 
+  if (json.type === 'all-levels') {
+    for (const cached of json.levels || []) {
+      if (cached && cached.address && cached.args) applySendLevel(cached.address, cached.args);
+    }
+    return;
+  }
+
   if (json.type === 'mute-solo-state') {
     applyMonMuteSolo(json.aux, json.mutes, json.solos);
     if (json.levels) {
@@ -156,6 +170,12 @@ function onMessage(json) {
     return;
   }
 
+  if (json.type === 'active-mixers') {
+    activeMixerCounts = json.counts || {};
+    applyActiveMixerCounts();
+    return;
+  }
+
   if (json.type === 'connection-count') {
     const el = document.getElementById('monDeviceCount');
     el.style.display = json.count > 0 ? '' : 'none';
@@ -170,35 +190,39 @@ function onMessage(json) {
 
   const { address, args } = json;
   if (!address || !args) return;
+  applySendLevel(address, args);
+}
 
+// Parses a single "/Input_Channels/N/Aux_Send/M/send_level" OSC message,
+// updates our cached level, and pushes it to the matching fader element.
+// Shared by the live OSC stream and the bulk "all-levels" catch-up dump.
+function applySendLevel(address, args) {
   const m = address.match(/^\/Input_Channels\/(\d+)\/Aux_Send\/(\d+)\/send_level$/);
-  if (m) {
-    const ch  = parseInt(m[1]);
-    const aux = parseInt(m[2]);
-    const val = dbToSlider(args[0]);
-    if (!levels[aux]) levels[aux] = {};
-    levels[aux][ch] = val;
-    updateFaderEl(aux, ch, val);
-  }
+  if (!m) return;
+  const ch  = parseInt(m[1]);
+  const aux = parseInt(m[2]);
+  const val = dbToSlider(args[0]);
+  if (!levels[aux]) levels[aux] = {};
+  levels[aux][ch] = val;
+  updateFaderEl(aux, ch, val);
 }
 
 function applyMonMuteSolo(aux, mutes, solos) {
   monMutes[aux] = mutes;
   monSolos[aux] = solos;
   const anySolo = Object.values(solos || {}).some(v => v);
-  document.querySelectorAll(`.mon-ch-row[data-aux="${aux}"]`).forEach(row => {
-    const ch = row.dataset.ch;
+  const rows = monRowCache.get(aux);
+  if (!rows) return;
+  for (const [ch, els] of rows) {
     const muted   = !!(mutes?.[ch]);
     const soloed  = !!(solos?.[ch]);
     const soloOff = anySolo && !soloed;
-    row.classList.toggle('mon-ch-muted',    muted);
-    row.classList.toggle('mon-ch-solo-off', !muted && soloOff);
-    row.classList.toggle('mon-ch-soloed',   soloed);
-    const muteBtn = row.querySelector('.mon-mute-btn');
-    const soloBtn = row.querySelector('.mon-solo-btn');
-    if (muteBtn) muteBtn.classList.toggle('active', muted);
-    if (soloBtn) soloBtn.classList.toggle('active', soloed);
-  });
+    els.row.classList.toggle('mon-ch-muted',    muted);
+    els.row.classList.toggle('mon-ch-solo-off', !muted && soloOff);
+    els.row.classList.toggle('mon-ch-soloed',   soloed);
+    els.muteBtn.classList.toggle('active', muted);
+    els.soloBtn.classList.toggle('active', soloed);
+  }
 }
 
 function applyConfig(cfg) {
@@ -206,6 +230,23 @@ function applyConfig(cfg) {
   chConfig  =  cfg.channels || [];
   document.getElementById('monSnapshot').textContent = cfg.snapshot || '—';
   buildGrid();
+  applyActiveMixerCounts();
+}
+
+// Shows a small "● N" badge on each aux column header when one or more
+// performers currently have that aux open on their mixer — gives the monitor
+// engineer a live sense of who's actively dialing in their own mix right now.
+function applyActiveMixerCounts() {
+  for (const [auxStr, badge] of monHdrCache) {
+    const n = activeMixerCounts[auxStr] || 0;
+    if (n > 0) {
+      badge.textContent = `● ${n}`;
+      badge.title = n === 1 ? '1 performer mixing this aux right now' : `${n} performers mixing this aux right now`;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
 }
 
 // ── Grid builder ──────────────────────────────────────────────────────────
@@ -213,6 +254,9 @@ function applyConfig(cfg) {
 function buildGrid() {
   const grid = document.getElementById('monGrid');
   grid.innerHTML = '';
+  channelEls.clear();
+  monRowCache.clear();
+  monHdrCache.clear();
 
   for (const aux of auxConfig) {
     const col = document.createElement('div');
@@ -220,10 +264,22 @@ function buildGrid() {
 
     const hdr = document.createElement('div');
     hdr.className = 'aux-col-header';
+    hdr.dataset.aux = aux.channel;
     hdr.style.background = aux.colour || '#444';
 
-    const hdrLabel = document.createElement('span');
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'aux-col-title';
+
+    const hdrLabel = document.createElement('div');
+    hdrLabel.className = 'aux-col-label';
     hdrLabel.textContent = aux.label || `AUX ${aux.channel}`;
+
+    const presenceEl = document.createElement('div');
+    presenceEl.className = 'aux-presence';
+    presenceEl.style.display = 'none';
+    monHdrCache.set(String(aux.channel), presenceEl);
+
+    titleWrap.append(hdrLabel, presenceEl);
 
     const cutBtn = document.createElement('button');
     cutBtn.className = 'boost-btn';
@@ -238,7 +294,7 @@ function buildGrid() {
     boostBtn.addEventListener('click', () => boostAux(aux.channel, 0.5));
 
     hdr.appendChild(cutBtn);
-    hdr.appendChild(hdrLabel);
+    hdr.appendChild(titleWrap);
     hdr.appendChild(boostBtn);
     col.appendChild(hdr);
 
@@ -253,11 +309,17 @@ function buildGrid() {
         const title = document.createElement('div');
         title.className = 'mon-section-title';
         title.textContent = ch.title;
-        if (ch.colour) title.style.borderTopColor = ch.colour;
         chList.appendChild(title);
       }
 
-      chList.appendChild(buildChannelRow(aux.channel, ch));
+      const chRow = buildChannelRow(aux.channel, ch);
+      if (!monRowCache.has(aux.channel)) monRowCache.set(aux.channel, new Map());
+      monRowCache.get(aux.channel).set(String(ch.channel), {
+        row:     chRow,
+        muteBtn: chRow.querySelector('.mon-mute-btn'),
+        soloBtn: chRow.querySelector('.mon-solo-btn')
+      });
+      chList.appendChild(chRow);
     }
 
     col.appendChild(chList);
@@ -280,11 +342,11 @@ function buildChannelRow(auxCh, ch) {
     if (ch.icon.startsWith('img:')) {
       iconEl.innerHTML = CUSTOM_ICONS[ch.icon.slice(4)] || '';
     } else if (ch.icon.startsWith('file:')) {
-      const img = document.createElement('img');
-      img.src = `/instrument-icons/${ch.icon.slice(5)}.svg`;
-      img.className = 'instrument-icon';
-      img.width = 14; img.height = 14;
-      iconEl.appendChild(img);
+      const n = parseInt(ch.icon.slice(5));
+      const imgEl = document.createElement('img');
+      imgEl.src = `/instrument-icons/${n}.svg`;
+      imgEl.className = 'instrument-icon';
+      iconEl.appendChild(imgEl);
     } else {
       iconEl.textContent = ch.icon;
     }
@@ -294,30 +356,11 @@ function buildChannelRow(auxCh, ch) {
   const nameEl = document.createElement('div');
   nameEl.className = 'mon-ch-name';
   nameEl.textContent = ch.label || `Ch ${ch.channel}`;
+  nameEl.title = ch.label || `Ch ${ch.channel}`;
 
-  // Fader
-  const fader = document.createElement('input');
-  fader.type = 'range';
-  fader.className = 'mon-fader';
-  fader.min = '0'; fader.max = '1'; fader.step = '0.001';
-  fader.value = String(currentVal);
-  fader.style.setProperty('--val', currentVal);
-  fader.dataset.aux = auxCh;
-  fader.dataset.ch  = ch.channel;
-
-  fader.addEventListener('input', () => {
-    const val = parseFloat(fader.value);
-    fader.style.setProperty('--val', val);
-    dbEl.textContent = formatDb(val);
-    if (!levels[auxCh]) levels[auxCh] = {};
-    levels[auxCh][ch.channel] = val;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        address: `/Input_Channels/${ch.channel}/Aux_Send/${auxCh}/send_level`,
-        args: [sliderToDb(val)]
-      }));
-    }
-  });
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'mon-ch-namewrap';
+  nameWrap.append(iconEl, nameEl);
 
   // dB
   const dbEl = document.createElement('div');
@@ -347,18 +390,50 @@ function buildChannelRow(auxCh, ch) {
     ws.send(JSON.stringify({ type: 'set-solo', aux: auxCh, ch: ch.channel, soloed }));
   });
 
-  row.append(iconEl, nameEl, fader, dbEl, muteBtn, soloBtn);
+  const metaWrap = document.createElement('div');
+  metaWrap.className = 'mon-ch-meta';
+  metaWrap.append(dbEl, muteBtn, soloBtn);
+
+  const topRow = document.createElement('div');
+  topRow.className = 'mon-ch-top';
+  topRow.append(nameWrap, metaWrap);
+
+  // Fader — full-width, sits below the name so the label always has room to breathe
+  const fader = document.createElement('input');
+  fader.type = 'range';
+  fader.className = 'mon-fader';
+  fader.min = '0'; fader.max = '1'; fader.step = '0.001';
+  fader.value = String(currentVal);
+  fader.style.setProperty('--val', currentVal);
+  fader.dataset.aux = auxCh;
+  fader.dataset.ch  = ch.channel;
+
+  fader.addEventListener('input', () => {
+    const val = parseFloat(fader.value);
+    fader.style.setProperty('--val', val);
+    dbEl.textContent = formatDb(val);
+    if (!levels[auxCh]) levels[auxCh] = {};
+    levels[auxCh][ch.channel] = val;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        address: `/Input_Channels/${ch.channel}/Aux_Send/${auxCh}/send_level`,
+        args: [sliderToDb(val)]
+      }));
+    }
+  });
+
+  channelEls.set(`${auxCh}-${ch.channel}`, { fader, db: dbEl });
+
+  row.append(topRow, fader);
   return row;
 }
 
 function updateFaderEl(aux, ch, val) {
-  document.querySelectorAll(`.mon-fader[data-aux="${aux}"][data-ch="${ch}"]`).forEach(f => {
-    f.value = val;
-    f.style.setProperty('--val', val);
-  });
-  document.querySelectorAll(`.mon-ch-db[data-aux="${aux}"][data-ch="${ch}"]`).forEach(d => {
-    d.textContent = formatDb(val);
-  });
+  const els = channelEls.get(`${aux}-${ch}`);
+  if (!els) return;
+  els.fader.value = val;
+  els.fader.style.setProperty('--val', val);
+  els.db.textContent = formatDb(val);
 }
 
 // ── Boost ─────────────────────────────────────────────────────────────────

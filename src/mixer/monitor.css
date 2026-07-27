@@ -120,6 +120,34 @@ html, body {
 
 .aux-col-header span { flex: 1; text-align: center; }
 
+.aux-col-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.aux-col-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aux-presence {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 20px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+
 .boost-btn {
   flex-shrink: 0;
   background: rgba(255,255,255,0.15);
@@ -182,16 +210,36 @@ html, body {
 /* ── Channel row ── */
 
 .mon-ch-row {
-  display: grid;
-  grid-template-columns: 18px 1fr 72px 34px 14px 14px;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
   border-bottom: 1px solid rgba(40,44,53,0.6);
-  min-height: 28px;
 }
 
 .mon-ch-row:hover { background: rgba(255,255,255,0.03); }
+
+.mon-ch-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.mon-ch-namewrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mon-ch-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
 
 .mon-ch-muted    .mon-fader { opacity: 0.3; }
 .mon-ch-solo-off .mon-fader { opacity: 0.2; }
@@ -229,13 +277,14 @@ html, body {
 .mon-ch-icon .instrument-icon { width: 14px; height: 14px; filter: invert(1); }
 
 .mon-ch-name {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.2;
+  min-width: 0;
 }
 
 /* ── Mini fader ── */
@@ -283,7 +332,6 @@ html, body {
   font-size: 9px;
   font-weight: 700;
   color: var(--sub);
-  text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   letter-spacing: 0.2px;

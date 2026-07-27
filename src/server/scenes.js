@@ -12,11 +12,11 @@ function scenesPath() {
   return _scenesPath;
 }
 
-function load() {
-  try {
-    const p = scenesPath();
-    if (fs.existsSync(p)) _scenes = JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch (e) { _scenes = {}; }
+// Ear scenes start fresh every time the app launches — wipe both the
+// in-memory store and the persisted file so old snapshots' mixes never linger.
+function clearOnStartup() {
+  _scenes = {};
+  // Don't write to disk on startup — the file will be written on the first saveScene() call.
 }
 
 function persist() {
@@ -44,5 +44,5 @@ function getScene(snapshot, aux) {
 
 function getAll() { return _scenes; }
 
-load();
+clearOnStartup();
 module.exports = { saveScene, deleteScene, getScene, getAll };

@@ -17,7 +17,10 @@ const DEFAULTS = {
   channelOverrides: {},
   auxOverrides: {},
   sceneRecallEnabled: false,
-  ipadConnections: []
+  ipadConnections: [],
+  autoBackupEnabled: true,
+  autoBackupIntervalDays: 7,
+  demoMode: false
 };
 
 let _config = { ...DEFAULTS };
