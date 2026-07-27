@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JPMixer Brochure</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  @page {
+    size: Letter;
+    margin: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: #fff;
+    color: #111;
+    width: 8.5in;
+    min-height: 11in;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: #111;
+    color: #fff;
+    padding: 26px 48px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 5px solid #cc0000;
+  }
+
+  .header-left h1 {
+    font-size: 38px;
+    font-weight: 900;
+    letter-spacing: -1px;
+    color: #fff;
+    line-height: 1;
+  }
+
+  .header-left h1 span { color: #cc0000; }
+
+  .header-left .tagline {
+    font-size: 13px;
+    color: #aaa;
+    margin-top: 6px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    text-align: right;
+  }
+
+  .header-right .platform {
+    font-size: 11px;
+    color: #888;
+    margin-top: 8px;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    background: #f7f7f7;
+    padding: 14px 48px;
+    border-bottom: 1px solid #e5e5e5;
+  }
+
+  .hero h2 {
+    font-size: 21px;
+    font-weight: 800;
+    color: #111;
+    line-height: 1.2;
+    max-width: 560px;
+    margin-bottom: 6px;
+  }
+
+  .hero h2 em {
+    font-style: normal;
+    color: #cc0000;
+  }
+
+  .hero p {
+    font-size: 13px;
+    color: #444;
+    max-width: 620px;
+    line-height: 1.45;
+  }
+
+  /* ── Two column body ── */
+  .body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+
+  .col {
+    padding: 16px 40px;
+  }
+
+  .col:first-child {
+    border-right: 1px solid #e5e5e5;
+  }
+
+  .col h3 {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #cc0000;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #cc0000;
+  }
+
+  /* ── Feature list ── */
+  .feature-list {
+    list-style: none;
+    margin-bottom: 28px;
+  }
+
+  .feature-list li {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 8px;
+    align-items: flex-start;
+  }
+
+  .feature-list li .icon {
+    width: 28px;
+    height: 28px;
+    background: #111;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .feature-list li .text strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: #111;
+    margin-bottom: 2px;
+  }
+
+  .feature-list li .text span {
+    font-size: 12px;
+    color: #666;
+    line-height: 1.35;
+  }
+
+  /* ── How it works ── */
+  .steps {
+    list-style: none;
+    margin-bottom: 24px;
+  }
+
+  .steps li {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 10px;
+    align-items: flex-start;
+  }
+
+  .steps li .step-num {
+    width: 26px;
+    height: 26px;
+    background: #cc0000;
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .steps li .step-text strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: #111;
+    margin-bottom: 2px;
+  }
+
+  .steps li .step-text span {
+    font-size: 12px;
+    color: #666;
+    line-height: 1.5;
+  }
+
+  /* ── Requirements box ── */
+  .req-box {
+    background: #f7f7f7;
+    border: 1px solid #e5e5e5;
+    border-left: 4px solid #111;
+    border-radius: 4px;
+    padding: 12px 18px;
+    margin-bottom: 12px;
+  }
+
+  .req-box p {
+    font-size: 12px;
+    color: #444;
+    line-height: 1.45;
+    margin-bottom: 4px;
+  }
+
+  .req-box p:last-child { margin-bottom: 0; }
+
+  .req-box strong { color: #111; }
+
+  /* ── Musician callout ── */
+  .callout {
+    background: #111;
+    color: #fff;
+    border-radius: 8px;
+    padding: 14px 22px;
+    margin-bottom: 12px;
+  }
+
+  .callout h4 {
+    font-size: 13px;
+    font-weight: 800;
+    color: #cc0000;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .callout ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .callout ul li {
+    font-size: 12px;
+    color: #ddd;
+    padding: 2px 0 2px 14px;
+    position: relative;
+    line-height: 1.4;
+  }
+
+  .callout ul li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: #cc0000;
+    font-weight: 700;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    background: #111;
+    color: #888;
+    padding: 12px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 3px solid #cc0000;
+  }
+
+  .footer .left {
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .footer .left strong {
+    color: #fff;
+    display: block;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+
+  .footer .right {
+    text-align: right;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .footer .right strong {
+    color: #fff;
+    display: block;
+    font-size: 13px;
+    margin-bottom: 2px;
+  }
+
+  .footer .disclaimer {
+    font-size: 9px;
+    color: #555;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <img src="../assets/design/JPMixer Logo.png" alt="JPMixer" style="height: 52px; width: auto; display: block; margin-bottom: 6px;" />
+      <div class="tagline">Browser-Based Monitor Mix Control for DiGiCo Consoles</div>
+    </div>
+    <div class="header-right">
+      <div class="platform">Mac &amp; Windows</div>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h2>Give Every Musician Control of Their Own Mix — <em>From Their Phone</em></h2>
+    <p>JPMixer connects to your DiGiCo console and lets musicians dial in their own in-ear monitor or wedge mix in real time from any smartphone, tablet, or laptop. No extra hardware. No app to download. Just WiFi and a browser.</p>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+
+    <!-- Left column -->
+    <div class="col">
+      <h3>For the Engineer</h3>
+
+      <ul class="feature-list">
+        <li>
+          <div class="icon">🎚</div>
+          <div class="text">
+            <strong>Real-Time Fader Control</strong>
+            <span>Every aux send level goes directly to the DiGiCo console via OSC with no noticeable lag.</span>
+          </div>
+        </li>
+        <li>
+          <div class="icon">📋</div>
+          <div class="text">
+            <strong>Monitor Engineer View</strong>
+            <span>Full-screen grid of every aux mix side by side — all channels, all faders, fully interactive.</span>
+          </div>
+        </li>
+        <li>
+          <div class="icon">💾</div>
+          <div class="text">
+            <strong>Ear Scene Recall</strong>
+            <span>Save a full mix per DiGiCo snapshot. Mixes push automatically when the snapshot fires — no action needed during the show.</span>
+          </div>
+        </li>
+        <li>
+          <div class="icon">🎛</div>
+          <div class="text">
+            <strong>Console Controller</strong>
+            <span>Full input strip faders, control groups, and aux output masters — controllable from any browser on the network.</span>
+          </div>
+        </li>
+        <li>
+          <div class="icon">📁</div>
+          <div class="text">
+            <strong>My Mixes &amp; Built-In EQ</strong>
+            <span>Performers save personal named mixes anytime, and shape their own tone with an 8-band aux EQ — all from their phone.</span>
+          </div>
+        </li>
+        <li>
+          <div class="icon">📱</div>
+          <div class="text">
+            <strong>iPad OSC Relay</strong>
+            <span>Forwards DiGiCo OSC to iPads running external control apps alongside JPMixer.</span>
+          </div>
+        </li>
+      </ul>
+
+      <div class="req-box">
+        <p><strong>System Requirements</strong></p>
+        <p>DiGiCo SD or Quantum console with OSC / DiGiCo Pad external control enabled</p>
+        <p>Mac or Windows computer on the same network as the console</p>
+        <p>Any phone, tablet, or laptop with a browser</p>
+      </div>
+    </div>
+
+    <!-- Right column -->
+    <div class="col">
+      <h3>For the Musicians</h3>
+
+      <div class="callout">
+        <h4>What musicians can do from their phone</h4>
+        <ul>
+          <li>Adjust any channel in their personal mix in real time</li>
+          <li>Mute or solo individual channels without affecting anyone else</li>
+          <li>Control left/right pan for stereo IEM users</li>
+          <li>Save their mix for each song — recalls automatically during the show</li>
+          <li>Save personal named mixes anytime with My Mixes, and shape their own tone with built-in EQ</li>
+          <li>Add to iPhone home screen — works like a native app, stays connected when screen locks</li>
+          <li>No app download, no account, no setup — just open a link</li>
+        </ul>
+      </div>
+
+      <h3 style="margin-top: 8px;">How It Works</h3>
+
+      <ol class="steps" style="margin-top: 20px;">
+        <li>
+          <div class="step-num">1</div>
+          <div class="step-text">
+            <strong>Install JPMixer on your Mac or Windows computer</strong>
+            <span>The app runs quietly in the menu bar or system tray and starts a local web server automatically.</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">2</div>
+          <div class="step-text">
+            <strong>Enter your DiGiCo console's IP and OSC ports</strong>
+            <span>JPMixer connects to the console and reads all channel names, aux counts, and current levels.</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-num">3</div>
+          <div class="step-text">
+            <strong>Share the link with your musicians</strong>
+            <span>They open it in Safari or Chrome on their phone — no login, no download. Their mix is live instantly.</span>
+          </div>
+        </li>
+      </ol>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="left">
+      <strong>Download JPMixer — Free</strong>
+      <div class="disclaimer">JPMixer is not affiliated with DiGiCo. DiGiCo is a trademark of DiGiCo UK Ltd.</div>
+    </div>
+    <div class="right">
+      <strong>Works with DiGiCo</strong>
+      SD Range · Quantum Range · S Series
+    </div>
+  </div>
+
+</body>
+</html>
