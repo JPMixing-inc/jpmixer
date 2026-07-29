@@ -137,6 +137,11 @@ let onOscTraffic = null;
 // Background cache-priming interval
 let cachePrimeInterval = null;
 
+// Paced EQ-param-loading timers, keyed by aux — prevents two overlapping
+// timers for the same aux (e.g. panel closed/reopened quickly, or a
+// reconnect racing an in-flight load) from doubling the query rate
+const eqPrimeTimers = new Map();
+
 // Connection watchdog — pings clients to detect silent disconnects
 let pingInterval = null;
 
@@ -509,28 +514,27 @@ function loadNextRequiredParameter() {
     return;
   }
 
-  // Request ALL missing aux names in one burst rather than one per OSC cycle.
-  // The desk handles concurrent queries fine; this cuts load time from O(n) round-trips
-  // down to a single tick once aux count is known.
+  // One request at a time, paced by the desk's own reply — this function re-runs
+  // on every incoming OSC message, so the next request only goes out once the
+  // previous one is answered. Matches the v1.1.6 behavior. A later change that
+  // burst all missing names in a single synchronous tick was reverted: it's the
+  // prime suspect for an Access Violation crash in the console's CommandBridge.dll,
+  // which never happened under this slower pacing. Do not re-batch this.
   const auxCount = cache.get('/Console/Aux_Outputs/modes').args.length;
-  let pendingAux = 0;
   for (let i = 1; i <= auxCount; i++) {
     if (!cache.has(`/Aux_Outputs/${i}/Buss_Trim/name`)) {
       sendToDesk(`/Aux_Outputs/${i}/Buss_Trim/name/?`, []);
-      pendingAux++;
+      return;
     }
   }
-  if (pendingAux > 0) return;
 
   const chCount = cache.get('/Console/Input_Channels').args[0];
-  let pendingCh = 0;
   for (let i = 1; i <= chCount; i++) {
     if (!cache.has(`/Input_Channels/${i}/Channel_Input/name`)) {
       sendToDesk(`/Input_Channels/${i}/Channel_Input/name/?`, []);
-      pendingCh++;
+      return;
     }
   }
-  if (pendingCh > 0) return;
 
   // All names loaded — request current snapshot then go live
   sendToDesk('/Snapshots/Current_Snapshot/?', []);
@@ -544,13 +548,15 @@ function loadNextRequiredParameter() {
   cachePrimeInterval = setInterval(primeCache, 100);
 }
 
-// How many cache-priming queries to fire per 100ms tick. A single query per
-// tick took minutes to fully populate a typical rig, leaving the Monitor view
-// sparse until a performer happened to open each aux (which queries it directly,
-// see requestAuxValues in mixer.js). That burst — ~one query per channel sent
-// back-to-back — is handled fine by the console, so batch priming the same way.
-const PRIME_BATCH_SIZE = 12;
-
+// One query per 100ms tick — matches v1.1.6. This was briefly raised to a
+// 12-per-tick batch to speed up priming, but that's the other prime suspect
+// for the CommandBridge.dll Access Violation crash: a real console apparently
+// can't be trusted with that much concurrent query load. The Monitor view
+// takes longer to fully populate in the background as a result, but the
+// mixer/console pages are already usable well before priming finishes, and
+// requestAuxValues() in mixer.js queries a given aux directly the moment a
+// performer opens it anyway. Do not raise this without confirming on real
+// hardware, not just a demo-mode/local test.
 function primeCache() {
   const chCount  = cache.has('/Console/Input_Channels')
     ? cache.get('/Console/Input_Channels').args[0]
@@ -559,16 +565,15 @@ function primeCache() {
     ? cache.get('/Console/Aux_Outputs/modes').args.length
     : (serverCfg.auxes || 16);
 
-  let sent = 0;
   for (let aux = 1; aux <= auxCount; aux++) {
     for (let ch = 1; ch <= chCount; ch++) {
       if (!cache.has(`/Input_Channels/${ch}/Aux_Send/${aux}/send_level`)) {
         sendToDesk(`/Input_Channels/${ch}/Aux_Send/${aux}/send_level/?`, []);
-        if (++sent >= PRIME_BATCH_SIZE) return;
+        return;
       }
       if (!cache.has(`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan`)) {
         sendToDesk(`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan/?`, []);
-        if (++sent >= PRIME_BATCH_SIZE) return;
+        return;
       }
     }
   }
@@ -745,13 +750,32 @@ function startWebSocketServer() {
             if (address.startsWith(prefix)) eq[address.slice(prefix.length)] = cached.args[0];
           }
           ws.send(JSON.stringify({ type: 'aux-eq', aux: msg.aux, eq }));
-          // Query any missing params from desk
+          // Query any missing params from the desk one at a time, paced — not
+          // bursted in a single tick (see the note on primeCache for why).
+          const missingEq = [];
           for (let b = 1; b <= 8; b++) {
             for (const p of [`eq_gain_${b}`, `eq_freq_${b}`, `eq_Q_${b}`]) {
-              if (!cache.has(`${prefix}${p}`)) sendToDesk(`${prefix}${p}/?`, []);
+              if (!cache.has(`${prefix}${p}`)) missingEq.push(`${prefix}${p}/?`);
             }
           }
-          if (!cache.has(`${prefix}eq_in`)) sendToDesk(`${prefix}eq_in/?`, []);
+          if (!cache.has(`${prefix}eq_in`)) missingEq.push(`${prefix}eq_in/?`);
+          if (missingEq.length > 0) {
+            // The EQ panel can send this twice in quick succession (open + a
+            // reconnect racing it) — cancel any timer already loading this
+            // aux instead of letting two run concurrently.
+            const existingEqTimer = eqPrimeTimers.get(msg.aux);
+            if (existingEqTimer) clearInterval(existingEqTimer);
+            let eqIdx = 0;
+            const eqTimer = setInterval(() => {
+              if (eqIdx >= missingEq.length) {
+                clearInterval(eqTimer);
+                eqPrimeTimers.delete(msg.aux);
+                return;
+              }
+              sendToDesk(missingEq[eqIdx++], []);
+            }, 100);
+            eqPrimeTimers.set(msg.aux, eqTimer);
+          }
           return;
         }
 
@@ -1218,6 +1242,8 @@ function stop() {
   if (sessionReloadTimer)  { clearTimeout(sessionReloadTimer);    sessionReloadTimer  = null; }
   if (oscLogFlushTimer)    { clearInterval(oscLogFlushTimer);     oscLogFlushTimer    = null; }
   if (oscLogRecordStream)  { stopOscLogRecording(); }
+  for (const t of eqPrimeTimers.values()) clearInterval(t);
+  eqPrimeTimers.clear();
 
   // Restore real fader levels to the desk for any muted channels so the desk
   // doesn't retain -150 after we stop. Must run before clearMuteSolo() wipes premuteState.
