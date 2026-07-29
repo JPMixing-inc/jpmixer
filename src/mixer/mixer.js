@@ -288,7 +288,14 @@ function markSceneDirty() {
 
 let deviceId = localStorage.getItem('jpm_device_id');
 if (!deviceId) {
-  deviceId = crypto.randomUUID();
+  // crypto.randomUUID() only exists in a secure context (HTTPS, or localhost).
+  // Musicians load this page over plain HTTP from a LAN IP, which isn't secure,
+  // so it's undefined there — fall back to a manually-built id. Not used for
+  // anything security-sensitive, just a stable key for the preset backup.
+  deviceId = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
   localStorage.setItem('jpm_device_id', deviceId);
 }
 

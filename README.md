@@ -4,7 +4,7 @@
 
 JPMixer is a Mac and Windows desktop app that runs a local web server, letting musicians control their own in-ear monitor (IEM) or wedge mixes from any phone, tablet, or laptop on the same network — without touching the front-of-house console.
 
-> **v1.7.0**
+> **v1.7.1**
 
 ---
 
