@@ -4,7 +4,7 @@
 
 JPMixer is a Mac and Windows desktop app that runs a local web server, letting musicians control their own in-ear monitor (IEM) or wedge mixes from any phone, tablet, or laptop on the same network — without touching the front-of-house console.
 
-> **v1.7.2**
+> **v1.7.3**
 
 ---
 
@@ -31,6 +31,7 @@ JPMixer is a Mac and Windows desktop app that runs a local web server, letting m
 - **Mute & solo** — per-channel, per-aux mute and solo from the browser UI
 - **Pan control** — left/right pan per channel per aux for stereo IEM users
 - **Ear scene recall** — save a full mix per DiGiCo snapshot; it's pushed to the console and every screen automatically when the snapshot fires. Once saved, faders lock to protect against accidental bumps — tap the status banner to unlock, edit, or revert to the saved mix
+- **Ear Scenes editor** — browse and edit a saved mix for *any* snapshot, even one the console isn't currently on, without touching the live sound; scenes reset fresh every time JPMixer launches (unlike My Mixes, which are permanent)
 - **My Mixes** — musicians can also save personal named mixes anytime, independent of any snapshot; backed up per-device on JPMixer's side in case local storage gets cleared
 - **Built-in aux EQ** — optional 8-band parametric EQ per aux, adjustable right from the performer's phone
 - **Works on any device** — iOS, Android, Mac, Windows — any browser on the same WiFi, no app download required
@@ -41,6 +42,11 @@ JPMixer is a Mac and Windows desktop app that runs a local web server, letting m
 - **±0.5 dB aux buttons** — trim an entire mix up or down by half a dB with one tap
 - **Live presence indicators** — see at a glance how many performers currently have each aux mix open
 - **Snapshot fire controls** — ⏮ ⏭ buttons to fire previous/next snapshot directly from the monitor view
+
+### Devices View
+- **Live device grid** — one card per connected musician device, showing which aux mix they've currently got selected
+- **Activity indicator** — a dot lights up the moment someone moves a fader or pan, alongside a short description of what changed (e.g. "Turned up Kick", "Panned Vocal left", "Saved mix \"Soundcheck\"", "Saved Ear Scene")
+- **Last active & connection quality** — see how recently each device did something, and whether its connection is solid, weak, or reconnecting
 
 ### Console Controller
 - **Input channel strips** — vertical faders for every channel on the desk with mute, solo, and dB readout
@@ -115,6 +121,7 @@ JPMixer runs an Express web server and a WebSocket bridge inside an Electron she
 - Ear scenes are stored as JSON on disk, matched to DiGiCo snapshot names, and replayed automatically when a matching snapshot fires. They're intentionally session-only and don't persist across an app restart.
 - My Mixes are stored per device (levels + pan, no snapshot needed), with a server-side backup copy so they survive a cleared browser cache.
 - Browser clients can only send OSC for their own aux sends and EQ — an address allowlist on the server blocks anything else, so a mixer page can't fire snapshots or touch other console parameters.
+- The Devices view is a pure browser-to-browser notice over the existing WebSocket hub — it never sends anything to the console, so it adds zero extra OSC load on the desk.
 
 ---
 
