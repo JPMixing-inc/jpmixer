@@ -1,0 +1,249 @@
+:root {
+  --bg:      #0e0f11;
+  --surface: #17191d;
+  --strip:   #1c1e23;
+  --border:  #282c35;
+  --accent:  #e8003c;
+  --text:    #e0e2e8;
+  --sub:     #5a5f6e;
+  --green:   #34c759;
+  --amber:   #d4860a;
+  --red:     #ff453a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── Header ── */
+
+.mon-header {
+  height: 48px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+.brand-logo {
+  height: 26px;
+  width: auto;
+  mix-blend-mode: screen;
+}
+
+.mon-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.mon-snapshot {
+  font-size: 11px;
+  color: var(--sub);
+  flex: 1;
+}
+
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.conn-dot.connected { background: var(--green); }
+
+/* ── Grid ── */
+
+.dev-grid {
+  height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.dev-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--sub);
+  font-size: 13px;
+  padding: 40px 0;
+}
+
+/* ── Device card ── */
+
+.dev-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dev-card-aux {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--strip);
+}
+
+.dev-card-aux.dev-no-aux {
+  color: var(--sub);
+  text-shadow: none;
+  font-style: italic;
+  text-transform: none;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.dev-card-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dev-card-tag {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.dev-card-sub {
+  font-size: 10px;
+  color: var(--sub);
+  margin-top: 2px;
+}
+
+/* ── Last-active / connection quality ── */
+
+.dev-card-meta {
+  padding: 0 14px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.dev-last-active {
+  color: var(--sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dev-quality {
+  flex-shrink: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dev-quality::before {
+  content: '●';
+  margin-right: 4px;
+  font-size: 8px;
+}
+
+.dev-quality-good { color: var(--green); }
+.dev-quality-fair { color: var(--amber); }
+.dev-quality-poor { color: var(--red); }
+
+/* ── Last-action description ── */
+
+.dev-card-action {
+  min-height: 30px;
+  padding: 0 14px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dev-card-action.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Activity dot ── */
+
+.dev-activity {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--strip);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  transition: background-color 0.4s ease-out, box-shadow 0.4s ease-out, border-color 0.4s ease-out;
+}
+
+.dev-activity.lit {
+  background: var(--green);
+  border-color: var(--green);
+  box-shadow: 0 0 14px 4px rgba(52,199,89,0.85);
+  transition: none;
+}
+
+/* ── Disconnected overlay ── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(14,15,17,0.95);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+body.disconnected .overlay { display: flex; }
+
+.overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--sub);
+  font-size: 13px;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

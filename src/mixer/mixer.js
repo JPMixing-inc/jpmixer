@@ -126,6 +126,8 @@ function onOpen() {
   document.body.classList.remove('disconnected');
   document.getElementById('connDot').classList.add('connected');
   resetHeartbeat();
+  // Let the server (and any Devices view) know which device this is
+  ws.send(JSON.stringify({ type: 'identify', deviceId }));
   // Request all cached levels so faders fill in immediately after reconnect,
   // and re-announce our active aux (the server's per-connection state is fresh)
   if (selectedAux !== null) {
@@ -280,6 +282,184 @@ function markSceneDirty() {
   if (sceneDirty || !hasSavedScene()) return;
   sceneDirty = true;
   updateSceneUI();
+}
+
+// ── Ear Scenes — view/edit/delete saved mixes across every snapshot for the
+// current aux, including ones the console isn't currently on. Editing a
+// non-live snapshot never sends OSC to the desk — see openSnapshotEditor().
+// ─────────────────────────────────────────────────────────────────────────
+
+function earScenesForCurrentAux() {
+  if (selectedAux === null) return [];
+  const names = [];
+  for (const [snapshot, byAux] of Object.entries(allScenes)) {
+    if (byAux && byAux[String(selectedAux)]) names.push(snapshot);
+  }
+  names.sort((a, b) => {
+    if (a === currentSnapshot) return -1;
+    if (b === currentSnapshot) return 1;
+    return a.localeCompare(b);
+  });
+  return names;
+}
+
+function renderEarScenesList() {
+  const list = document.getElementById('earScenesList');
+  if (!list) return;
+  list.innerHTML = '';
+
+  const names = earScenesForCurrentAux();
+
+  if (names.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'mixes-empty';
+    empty.textContent = 'No saved Ear Scenes yet for this mix.\nUse the menu to save one for the current snapshot.';
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const name of names) {
+    const isLive = name === currentSnapshot;
+    const row = document.createElement('div');
+    row.className = 'mixes-row';
+
+    const nameBtn = document.createElement('button');
+    nameBtn.className = 'mixes-row-name';
+    nameBtn.textContent = name;
+    if (isLive) {
+      const badge = document.createElement('span');
+      badge.className = 'earscene-live-badge';
+      badge.textContent = 'LIVE';
+      nameBtn.appendChild(badge);
+    }
+    nameBtn.title = isLive
+      ? 'Console is on this snapshot right now'
+      : "Tap to edit this saved mix — won't affect the live sound";
+    nameBtn.addEventListener('click', () => {
+      closeEarScenesPicker();
+      if (isLive) return; // already live — the normal faders are that mix
+      openSnapshotEditor(name);
+    });
+    row.appendChild(nameBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'mixes-row-del';
+    delBtn.textContent = '🗑';
+    delBtn.title = 'Delete this saved mix';
+    delBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await showActionDialog({ title: `Delete the saved mix for "${name}"?`, confirmLabel: 'Delete' });
+      if (!ok) return;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: 'delete-scene', aux: selectedAux, snapshot: name }));
+    });
+    row.appendChild(delBtn);
+
+    list.appendChild(row);
+  }
+}
+
+function openEarScenesPicker() {
+  if (selectedAux === null) return;
+  renderEarScenesList();
+  document.body.classList.add('earScenesOpen');
+}
+
+function closeEarScenesPicker() {
+  document.body.classList.remove('earScenesOpen');
+}
+
+// ── Offline Ear Scene editor ────────────────────────────────────────────
+
+let snapshotEditName   = null; // snapshot currently being edited, or null when closed
+let snapshotEditValues = {};   // ch (number) -> slider value, local only until Save
+
+function buildSnapshotEditRow(ch, initialVal) {
+  const row = document.createElement('div');
+  row.className = 'snapshot-edit-row';
+
+  const info = document.createElement('div');
+  info.className = 'ch-info';
+  const num = document.createElement('div');
+  num.className = 'ch-num';
+  num.textContent = ch.channel;
+  const name = document.createElement('div');
+  name.className = 'ch-name';
+  name.textContent = ch.label || '';
+  info.append(num, name);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'fader-wrap';
+  wrap.style.flex = '1';
+
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.className = 'fader-h';
+  slider.min = 0; slider.max = 1; slider.step = 0.001;
+  slider.value = initialVal;
+  setFaderVar(slider, initialVal);
+
+  const dbEl = document.createElement('span');
+  dbEl.className = 'fader-db';
+  dbEl.textContent = formatDb(initialVal);
+
+  // Deliberately no sendOSC() anywhere in here — this only ever updates the
+  // local snapshotEditValues map. Nothing reaches the desk until Save, and
+  // even Save only ever persists to the scenes store, never to the console.
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    setFaderVar(slider, v);
+    dbEl.textContent = formatDb(v);
+    snapshotEditValues[ch.channel] = v;
+  });
+
+  wrap.append(slider, dbEl);
+
+  addFaderOverlay(slider, () => {
+    slider.value = 0;
+    setFaderVar(slider, 0);
+    dbEl.textContent = '-∞';
+    snapshotEditValues[ch.channel] = 0;
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+  }, false, '.snapshot-edit-list');
+
+  row.append(info, wrap);
+  return row;
+}
+
+function renderSnapshotEditRows(values) {
+  const list = document.getElementById('snapshotEditList');
+  if (!list) return;
+  list.innerHTML = '';
+  snapshotEditValues = {};
+  for (const ch of channelConfig) {
+    if (!ch.enabled) continue;
+    const v = values[String(ch.channel)] !== undefined ? values[String(ch.channel)] : 0;
+    snapshotEditValues[ch.channel] = v;
+    list.appendChild(buildSnapshotEditRow(ch, v));
+  }
+}
+
+function openSnapshotEditor(snapshotName) {
+  if (selectedAux === null) return;
+  snapshotEditName = snapshotName;
+  document.getElementById('snapshotEditName').textContent = snapshotName;
+
+  const list = document.getElementById('snapshotEditList');
+  document.body.classList.add('snapshotEditOpen');
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    list.innerHTML = '<div class="mixes-empty">Not connected — try again once reconnected.</div>';
+    return;
+  }
+  list.innerHTML = '<div class="mixes-empty">Loading…</div>';
+  ws.send(JSON.stringify({ type: 'request-scene', aux: selectedAux, snapshot: snapshotName }));
+}
+
+function closeSnapshotEditor() {
+  document.body.classList.remove('snapshotEditOpen');
+  snapshotEditName   = null;
+  snapshotEditValues = {};
 }
 
 // ── My Mixes — personal named presets, stored per-device, aux-agnostic ───
@@ -438,24 +618,34 @@ function onMessage(e) {
 
   // Scene events
   if (json.type === 'scene-saved') {
-    if (json.snapshot === currentSnapshot) {
-      if (!allScenes[json.snapshot]) allScenes[json.snapshot] = {};
-      allScenes[json.snapshot][String(json.aux)] = true;
-      if (String(json.aux) === String(selectedAux)) { sceneDirty = false; sceneLocked = true; }
+    // Keep the full snapshot->aux map current regardless of which snapshot this
+    // was for (the Ear Scenes list needs to see saves for non-live snapshots
+    // too) — but only touch the live locked/dirty banner when it's actually
+    // for the snapshot the desk is currently on.
+    if (!allScenes[json.snapshot]) allScenes[json.snapshot] = {};
+    allScenes[json.snapshot][String(json.aux)] = true;
+    if (json.snapshot === currentSnapshot && String(json.aux) === String(selectedAux)) {
+      sceneDirty = false;
+      sceneLocked = true;
       updateSceneUI();
     }
     if (String(json.aux) === String(selectedAux)) {
       showToast('Scene saved: ' + json.snapshot);
     }
+    renderEarScenesList();
     return;
   }
   if (json.type === 'scene-deleted') {
     if (allScenes[json.snapshot]) delete allScenes[json.snapshot][String(json.aux)];
-    if (String(json.aux) === String(selectedAux)) { sceneDirty = false; sceneLocked = false; }
-    updateSceneUI();
-    if (String(json.aux) === String(selectedAux)) {
-      showToast('Scene deleted');
+    if (json.snapshot === currentSnapshot && String(json.aux) === String(selectedAux)) {
+      sceneDirty = false;
+      sceneLocked = false;
+      updateSceneUI();
     }
+    if (String(json.aux) === String(selectedAux)) {
+      showToast('Scene deleted' + (json.snapshot !== currentSnapshot ? ': ' + json.snapshot : ''));
+    }
+    renderEarScenesList();
     return;
   }
   if (json.type === 'mute-solo-state') {
@@ -490,6 +680,14 @@ function onMessage(e) {
       sceneLocked = true;
       updateSceneUI();
       showToast('Scene recalled: ' + json.snapshot);
+    }
+    return;
+  }
+
+  // Response to request-scene, feeding the offline Ear Scene editor
+  if (json.type === 'scene-values') {
+    if (json.snapshot === snapshotEditName && String(json.aux) === String(selectedAux)) {
+      renderSnapshotEditRows(json.values || {});
     }
     return;
   }
@@ -558,6 +756,7 @@ function onMessage(e) {
     document.getElementById('snapshotName').textContent = currentSnapshot;
     sceneDirty = false;
     updateSceneUI();
+    renderEarScenesList(); // keep the LIVE badge/sort current if the list is already open
     return;
   }
 
@@ -709,6 +908,8 @@ function selectAux(auxChannel, requestValues, skipReset) {
   // Show/hide menu items that depend on an aux being selected
   const menuMixesItem = document.getElementById('menuMixesItem');
   if (menuMixesItem) menuMixesItem.style.display = auxChannel !== null ? '' : 'none';
+  const menuEarScenesParentItem = document.getElementById('menuEarScenesParentItem');
+  if (menuEarScenesParentItem) menuEarScenesParentItem.style.display = auxChannel !== null ? '' : 'none';
   const menuEqItem = document.getElementById('menuEqItem');
   if (menuEqItem) menuEqItem.style.display = (auxChannel !== null && opt.eqEnabled) ? '' : 'none';
 
@@ -737,10 +938,14 @@ function selectAux(auxChannel, requestValues, skipReset) {
 
   // When switching to a different aux, clear EQ state so stale data from the
   // previous aux can't be applied to the new one, and close the panel if open.
+  // Also close the Ear Scenes list/editor — both show data scoped to whatever
+  // aux was selected when they were opened.
   if (switching) {
     closeEQPanel();
     eqBands = {};
     eqActive = null;
+    closeEarScenesPicker();
+    closeSnapshotEditor();
   }
 
   // Only reset faders when manually switching aux — not on reconnect/config refresh
@@ -1016,10 +1221,11 @@ function buildChannels(channels) {
 // Vertical gesture → scrolls .channels-wrap. Horizontal → moves fader.
 // Also handles mouse drag and double-tap/dblclick reset.
 
-function addFaderOverlay(slider, onReset, isLockable) {
+function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
   const THUMB = 44;
   const wrap  = slider.parentNode; // .fader-wrap
   wrap.style.position = 'relative';
+  scrollSelector = scrollSelector || '.channels-wrap';
 
   const overlay = document.createElement('div');
   // Cover the full wrap (height varies by layout)
@@ -1083,7 +1289,7 @@ function addFaderOverlay(slider, onReset, isLockable) {
     }
 
     if (tScrolling) {
-      const scrollEl = document.querySelector('.channels-wrap');
+      const scrollEl = document.querySelector(scrollSelector);
       if (scrollEl) scrollEl.scrollTop += tLastY - t.clientY;
       tLastX = t.clientX;
       tLastY = t.clientY;
@@ -1554,6 +1760,20 @@ document.getElementById('eqCloseBtn').addEventListener('click', closeEQPanel);
 document.getElementById('mixesCloseBtn').addEventListener('click', closeMixesPicker);
 document.getElementById('mixesSaveBtn').addEventListener('click', savePresetPrompt);
 
+// ── Ear Scenes — open/close list, open/close/save the offline editor ──────
+
+document.getElementById('earScenesCloseBtn').addEventListener('click', closeEarScenesPicker);
+document.getElementById('snapshotEditCloseBtn').addEventListener('click', closeSnapshotEditor);
+document.getElementById('snapshotEditCancelBtn').addEventListener('click', closeSnapshotEditor);
+document.getElementById('snapshotEditSaveBtn').addEventListener('click', () => {
+  if (!snapshotEditName) { closeSnapshotEditor(); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const values = {};
+  for (const [ch, v] of Object.entries(snapshotEditValues)) values[ch] = v;
+  ws.send(JSON.stringify({ type: 'save-scene', aux: selectedAux, snapshot: snapshotEditName, values }));
+  closeSnapshotEditor();
+});
+
 // ── Tap the scene status banner — revert if dirty, otherwise toggle the lock ──
 
 document.getElementById('sceneStatus').addEventListener('click', () => {
@@ -1569,7 +1789,13 @@ document.getElementById('sceneStatus').addEventListener('click', () => {
 
 // ── Menu drawer ───────────────────────────────────────────────────────────
 
-function openMenu()  { document.body.classList.add('menuOpen'); }
+function showMenuPage(page) {
+  document.getElementById('menuPageMain').style.display      = page === 'main'      ? '' : 'none';
+  document.getElementById('menuPageEarScenes').style.display = page === 'earScenes' ? '' : 'none';
+}
+
+// Always reopen on the main page — don't leave it stuck on a submenu from last time
+function openMenu()  { showMenuPage('main'); document.body.classList.add('menuOpen'); }
 function closeMenu() { document.body.classList.remove('menuOpen'); }
 
 document.getElementById('menuBtn').addEventListener('click', openMenu);
@@ -1583,6 +1809,19 @@ document.getElementById('menuEqItem').addEventListener('click', () => {
 document.getElementById('menuMixesItem').addEventListener('click', () => {
   closeMenu();
   openMixesPicker();
+});
+
+document.getElementById('menuEarScenesParentItem').addEventListener('click', () => {
+  showMenuPage('earScenes');
+});
+
+document.getElementById('menuEarScenesBackBtn').addEventListener('click', () => {
+  showMenuPage('main');
+});
+
+document.getElementById('menuEarScenesItem').addEventListener('click', () => {
+  closeMenu();
+  openEarScenesPicker();
 });
 
 document.getElementById('menuSceneItem').addEventListener('click', () => {

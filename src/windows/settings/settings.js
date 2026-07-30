@@ -126,13 +126,13 @@ document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.add('active');
     $('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'channels') {
-      window.jpm.getChannelNames().then(names => {
+      Promise.all([window.jpm.getChannelNames(), syncLiveCounts()]).then(([names]) => {
         consoleNames = names || {};
         renderChannels();
       });
     }
     if (btn.dataset.tab === 'auxes') {
-      window.jpm.getAuxNames().then(names => {
+      Promise.all([window.jpm.getAuxNames(), syncLiveCounts()]).then(([names]) => {
         auxNames = names || {};
         renderAuxes();
       });
@@ -140,6 +140,25 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (btn.dataset.tab === 'mixes') renderMixesTab();
   });
 });
+
+// If the console reports a channel/aux count that doesn't match the Setup
+// tab's fields, those fields are stale — drifted from the real patch — and
+// the highest-numbered channels/auxes silently have no row to configure here
+// at all, even though the mixer pages still show them (they get their list
+// from the live count reported by the desk, not these fields). Correct the
+// fields to match reality whenever a live count is available to check against.
+async function syncLiveCounts() {
+  const [liveCh, liveAux] = await Promise.all([
+    window.jpm.getChannelCount(),
+    window.jpm.getAuxCount(),
+  ]);
+  if (liveCh !== null && liveCh !== parseInt($('channels').value)) {
+    $('channels').value = liveCh;
+  }
+  if (liveAux !== null && liveAux !== parseInt($('auxes').value)) {
+    $('auxes').value = liveAux;
+  }
+}
 
 // ── Auxes editor ──────────────────────────────────────────────────────────
 
@@ -589,8 +608,10 @@ function setStatus(running) {
   $('serverUrl').textContent = base || 'Not running';
   $('monitorUrl').textContent  = base ? `${base}/monitor.html`  : '— (server not running)';
   $('consoleUrl').textContent  = base ? `${base}/console.html`  : '— (server not running)';
+  $('devicesUrl').textContent  = base ? `${base}/devices.html`  : '— (server not running)';
   $('monitorBtnHint').style.display = running ? 'none' : '';
   $('consoleBtnHint').style.display = running ? 'none' : '';
+  $('devicesBtnHint').style.display = running ? 'none' : '';
   const btn = $('toggleBtn');
   btn.textContent = running ? 'Stop' : 'Start';
   btn.className   = running ? 'btn stop' : 'btn';
@@ -605,6 +626,11 @@ $('openMonitorBtn').addEventListener('click', async () => {
 $('openConsoleBtn').addEventListener('click', async () => {
   const result = await window.jpm.openConsole();
   if (result && result.error) alert('Start the server first, then open the console view.');
+});
+
+$('openDevicesBtn').addEventListener('click', async () => {
+  const result = await window.jpm.openDevices();
+  if (result && result.error) alert('Start the server first, then open the devices view.');
 });
 
 $('toggleBtn').addEventListener('click', async () => {
@@ -1008,6 +1034,9 @@ async function init() {
   auxNames     = anames || {};
   $('localIp').textContent = ip || 'Not found';
   applyConfig(cfg);
+  await syncLiveCounts();
+  renderChannels();
+  renderAuxes();
   setStatus(status.running);
   setConsoleStatus(consoleStatus.connected);
   window.jpm.onStatus(({ running }) => setStatus(running));

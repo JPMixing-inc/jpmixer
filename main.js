@@ -157,6 +157,18 @@ function rebuildTrayMenu() {
         win.loadURL(`http://localhost:${port}/console.html`);
       }
     },
+    {
+      label: 'Open Devices View',
+      enabled: serverRunning,
+      click: () => {
+        const win = new BrowserWindow({
+          width: 1000, height: 700,
+          title: 'Devices — JPMixer',
+          webPreferences: { nodeIntegration: false, contextIsolation: true }
+        });
+        win.loadURL(`http://localhost:${port}/devices.html`);
+      }
+    },
     { type: 'separator' },
     { label: 'Settings…', click: openSettings },
     { label: 'Check for Updates…', click: () => checkForUpdates(false) },
@@ -261,6 +273,8 @@ ipcMain.handle('get-server-status', () => ({ running: serverRunning }));
 ipcMain.handle('get-local-ip', () => getLocalIP());
 ipcMain.handle('get-channel-names',   () => serverRunning ? server.getChannelNames()     : {});
 ipcMain.handle('get-aux-names',       () => serverRunning ? server.getAuxNames()         : {});
+ipcMain.handle('get-channel-count',   () => serverRunning ? server.getChannelCount()      : null);
+ipcMain.handle('get-aux-count',       () => serverRunning ? server.getAuxCount()          : null);
 ipcMain.handle('get-console-status',      () => ({ connected: server ? server.isConsoleConnected() : false }));
 ipcMain.handle('get-connection-count',    () => ({ count: server ? server.getConnectionCount() : 0 }));
 ipcMain.handle('get-osc-log',             () => server ? server.getOscLog() : []);
@@ -292,6 +306,17 @@ ipcMain.handle('open-console', () => {
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   });
   win.loadURL(`http://localhost:${cfg.serverPort}/console.html`);
+});
+
+ipcMain.handle('open-devices', () => {
+  if (!serverRunning) return { error: 'Server not running' };
+  const cfg = config.getAll();
+  const win = new BrowserWindow({
+    width: 1000, height: 700,
+    title: 'Devices — JPMixer',
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+  win.loadURL(`http://localhost:${cfg.serverPort}/devices.html`);
 });
 
 ipcMain.handle('setup-port-80', async (_, serverPort) => {

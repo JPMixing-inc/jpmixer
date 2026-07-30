@@ -224,6 +224,19 @@
         <div class="sub" style="margin-top:12px">The Console Controller sends commands directly to the desk — main faders, mutes, and solos affect the console for <strong>everyone</strong> (FOH included). Restrict access to engineers only.</div>
       </section>
 
+      <section class="card">
+        <h2>Devices View</h2>
+        <div class="sub" style="margin-bottom:16px">A live grid of every connected musician's device — which aux mix they've selected, and a dot that lights up whenever they move a fader or pan. Designed for the sound engineer to keep an eye on who's actively mixing.</div>
+        <div class="card-row">
+          <button class="btn btn-primary" id="openDevicesBtn">Open Devices View</button>
+          <div class="sub" id="devicesBtnHint">Start the server first to open.</div>
+        </div>
+        <div class="ip-row" style="margin-top:12px">
+          <span class="ip-label">Direct link</span>
+          <span class="ip-address" id="devicesUrl">—</span>
+        </div>
+      </section>
+
     </div>
 
     <!-- ── My Mixes tab ── -->

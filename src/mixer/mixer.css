@@ -602,7 +602,11 @@ body.auxPicker .aux-picker { display: flex; align-items: flex-start; justify-con
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-body.mixesOpen .mixes-picker { display: flex; align-items: flex-start; justify-content: center; }
+/* Both the My Mixes and Ear Scenes overlays share .mixes-picker for styling,
+   but are shown independently — scope each to its own id so opening one
+   can't also reveal the other still holding its last-rendered content. */
+body.mixesOpen #mixesPicker,
+body.earScenesOpen #earScenesPicker { display: flex; align-items: flex-start; justify-content: center; }
 
 .mixes-picker-inner {
   width: 100%;
@@ -636,6 +640,151 @@ body.mixesOpen .mixes-picker { display: flex; align-items: flex-start; justify-c
   cursor: pointer;
 }
 .mixes-close-btn:active { background: var(--border); }
+
+.mixes-hint {
+  font-size: 12px;
+  color: var(--sub);
+  line-height: 1.5;
+  margin: -8px 0 14px;
+}
+
+.earscene-live-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: rgba(52,199,89,0.15);
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  vertical-align: middle;
+}
+
+/* ── Ear Scene editor — offline editor for a non-live snapshot's saved mix.
+   Deliberately never wires its faders to sendOSC(); see mixer.js. ── */
+
+.snapshot-edit-panel {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 75;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+body.snapshotEditOpen .snapshot-edit-panel { display: flex; }
+
+.snapshot-edit-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.snapshot-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  flex-shrink: 0;
+}
+
+.snapshot-edit-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.snapshot-edit-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--sub);
+}
+
+.snapshot-edit-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snapshot-edit-close-btn {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--strip);
+  color: var(--sub);
+  font-size: 13px;
+  cursor: pointer;
+}
+.snapshot-edit-close-btn:active { background: var(--border); }
+
+.snapshot-edit-banner {
+  margin: 0 16px 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(77,171,247,0.12);
+  border: 1px solid rgba(77,171,247,0.3);
+  color: #6bb6ff;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.snapshot-edit-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 12px;
+}
+
+.snapshot-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.snapshot-edit-footer {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.snapshot-edit-cancel,
+.snapshot-edit-save {
+  flex: 1;
+  padding: 13px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+.snapshot-edit-cancel {
+  background: var(--strip);
+  color: var(--sub);
+}
+.snapshot-edit-cancel:active { background: var(--border); }
+.snapshot-edit-save {
+  background: rgba(var(--tint), 0.15);
+  border-color: rgba(var(--tint), 0.4);
+  color: rgb(var(--tint));
+}
+.snapshot-edit-save:active { background: rgba(var(--tint), 0.25); }
 
 /* ── EQ button (topbar) ── */
 
@@ -1167,6 +1316,15 @@ body.menuOpen .menu-drawer { transform: translateY(0); }
   font-size: 18px;
   color: var(--sub);
   flex-shrink: 0;
+}
+
+.menu-back-item .menu-item-label {
+  font-weight: 800;
+}
+.menu-back-icon {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--sub);
 }
 
 .menu-divider {

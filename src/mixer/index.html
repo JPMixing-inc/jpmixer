@@ -39,26 +39,49 @@
   <div class="menu-backdrop" id="menuBackdrop"></div>
   <div class="menu-drawer" id="menuDrawer">
     <div class="menu-drawer-handle"></div>
-    <button class="menu-item" id="menuEqItem" style="display:none">
-      <span class="menu-item-icon menu-eq-icon">EQ</span>
-      <span class="menu-item-label">Equalizer</span>
-      <span class="menu-item-arrow">›</span>
-    </button>
-    <button class="menu-item" id="menuSceneItem" style="display:none">
-      <span class="menu-item-icon" id="menuSceneIcon">💾</span>
-      <span class="menu-item-label" id="menuSceneLabel">Save Ear Scene</span>
-    </button>
-    <button class="menu-item" id="menuMixesItem" style="display:none">
-      <span class="menu-item-icon">📁</span>
-      <span class="menu-item-label">My Mixes</span>
-      <span class="menu-item-arrow">›</span>
-    </button>
-    <div class="menu-divider"></div>
-    <div class="menu-section-label">Fader Layout</div>
-    <div class="menu-layout-row">
-      <button class="menu-layout-btn" data-layout="compact">Compact</button>
-      <button class="menu-layout-btn menu-layout-active" data-layout="normal">Normal</button>
-      <button class="menu-layout-btn" data-layout="large">Large</button>
+
+    <!-- Main menu page -->
+    <div class="menu-page" id="menuPageMain">
+      <button class="menu-item" id="menuEqItem" style="display:none">
+        <span class="menu-item-icon menu-eq-icon">EQ</span>
+        <span class="menu-item-label">Equalizer</span>
+        <span class="menu-item-arrow">›</span>
+      </button>
+      <button class="menu-item" id="menuMixesItem" style="display:none">
+        <span class="menu-item-icon">📁</span>
+        <span class="menu-item-label">Save Mix</span>
+        <span class="menu-item-arrow">›</span>
+      </button>
+      <button class="menu-item" id="menuEarScenesParentItem" style="display:none">
+        <span class="menu-item-icon">🎬</span>
+        <span class="menu-item-label">Ear Scenes</span>
+        <span class="menu-item-arrow">›</span>
+      </button>
+      <div class="menu-divider"></div>
+      <div class="menu-section-label">Fader Layout</div>
+      <div class="menu-layout-row">
+        <button class="menu-layout-btn" data-layout="compact">Compact</button>
+        <button class="menu-layout-btn menu-layout-active" data-layout="normal">Normal</button>
+        <button class="menu-layout-btn" data-layout="large">Large</button>
+      </div>
+    </div>
+
+    <!-- Ear Scenes submenu page -->
+    <div class="menu-page" id="menuPageEarScenes" style="display:none">
+      <button class="menu-item menu-back-item" id="menuEarScenesBackBtn">
+        <span class="menu-item-icon menu-back-icon">‹</span>
+        <span class="menu-item-label">Ear Scenes</span>
+      </button>
+      <div class="menu-divider"></div>
+      <button class="menu-item" id="menuSceneItem" style="display:none">
+        <span class="menu-item-icon" id="menuSceneIcon">💾</span>
+        <span class="menu-item-label" id="menuSceneLabel">Save Ear Scene</span>
+      </button>
+      <button class="menu-item" id="menuEarScenesItem">
+        <span class="menu-item-icon">📋</span>
+        <span class="menu-item-label">Browse Ear Scenes</span>
+        <span class="menu-item-arrow">›</span>
+      </button>
     </div>
   </div>
   <div class="scene-toast" id="sceneToast"></div>
@@ -84,6 +107,40 @@
       </div>
       <button class="mixes-save-btn" id="mixesSaveBtn">+ Save Current Mix As…</button>
       <div class="mixes-list" id="mixesList"></div>
+    </div>
+  </div>
+
+  <!-- Ear Scenes overlay — saved mixes across all snapshots for the current
+       aux, visible when body.earScenesOpen -->
+  <div class="mixes-picker" id="earScenesPicker">
+    <div class="mixes-picker-inner">
+      <div class="mixes-picker-header">
+        <span class="mixes-picker-title">Ear Scenes</span>
+        <button class="mixes-close-btn" id="earScenesCloseBtn" aria-label="Close">✕</button>
+      </div>
+      <div class="mixes-hint" id="earScenesHint">Tap a snapshot to edit its saved mix. Editing one the console isn't on right now won't touch the live sound.</div>
+      <div class="mixes-list" id="earScenesList"></div>
+    </div>
+  </div>
+
+  <!-- Ear Scene editor — offline editor for a saved mix on a snapshot the
+       console may not currently be on. Never sends OSC to the console;
+       visible when body.snapshotEditOpen -->
+  <div class="snapshot-edit-panel" id="snapshotEditPanel">
+    <div class="snapshot-edit-inner">
+      <div class="snapshot-edit-header">
+        <div class="snapshot-edit-titles">
+          <span class="snapshot-edit-title">Editing Saved Mix</span>
+          <span class="snapshot-edit-name" id="snapshotEditName">—</span>
+        </div>
+        <button class="snapshot-edit-close-btn" id="snapshotEditCloseBtn" aria-label="Cancel">✕</button>
+      </div>
+      <div class="snapshot-edit-banner">🎬 Not connected to the console — changes here only affect this saved mix, not the live sound.</div>
+      <div class="snapshot-edit-list" id="snapshotEditList"></div>
+      <div class="snapshot-edit-footer">
+        <button class="snapshot-edit-cancel" id="snapshotEditCancelBtn">Cancel</button>
+        <button class="snapshot-edit-save" id="snapshotEditSaveBtn">Save</button>
+      </div>
     </div>
   </div>
 

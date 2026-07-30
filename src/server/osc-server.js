@@ -461,6 +461,28 @@ function getActiveMixerCounts() {
   return counts;
 }
 
+// Per-connection info for the Devices view — only includes clients that have
+// actually identified as a mixer (sent identify and/or set-active-aux), so
+// the Devices/Console/Monitor pages themselves never show up in their own list.
+function getConnectedDevicesInfo() {
+  const devices = [];
+  for (const conn of connections) {
+    if (conn.readyState === WebSocket.OPEN && (conn._deviceId != null || conn._activeAux != null)) {
+      devices.push({
+        deviceId:     conn._deviceId || null,
+        aux:          conn._activeAux ?? null,
+        lastActivity: conn._lastActivityAt || null,
+        lastPong:     conn._lastPong || null
+      });
+    }
+  }
+  return devices;
+}
+
+function broadcastDevicesUpdate() {
+  broadcastToClients({ type: 'devices-update', devices: getConnectedDevicesInfo() });
+}
+
 function broadcastToClients(msg) {
   const payload = typeof msg === 'string' ? msg : JSON.stringify(msg);
   const alive = [];
@@ -632,6 +654,9 @@ function startWebSocketServer() {
       try { client.ping(); } catch (_) {}
       try { client.send(JSON.stringify({ type: 'ping' })); } catch (_) {}
     }
+    // Refresh the Devices view's last-active/connection-quality snapshot on
+    // the same cadence, even when nothing else about the device list changed.
+    broadcastDevicesUpdate();
   }, 25000);
 
   wss.on('connection', (ws) => {
@@ -646,6 +671,7 @@ function startWebSocketServer() {
     try {
       ws.send(buildConfig());
       ws.send(JSON.stringify({ type: 'active-mixers', counts: getActiveMixerCounts() }));
+      ws.send(JSON.stringify({ type: 'devices-update', devices: getConnectedDevicesInfo() }));
     } catch (_) {}
 
     ws.on('message', (raw) => {
@@ -678,16 +704,25 @@ function startWebSocketServer() {
           return;
         }
 
-        // Scene commands from browser
+        // Scene commands from browser. `snapshot` is optional — omitted for the
+        // normal "save what's live right now" flow (defaults to the desk's
+        // current snapshot); the Ear Scenes editor passes it explicitly to
+        // target a different, non-live snapshot without touching the desk.
         if (msg.type === 'save-scene') {
-          logEvent('scene-save', `snapshot:"${currentSnapshotName}" aux:${msg.aux}`);
-          scenes.saveScene(currentSnapshotName, msg.aux, msg.values);
-          broadcastToClients({ type: 'scene-saved', snapshot: currentSnapshotName, aux: msg.aux });
+          const snapshot = (typeof msg.snapshot === 'string' && msg.snapshot) ? msg.snapshot : currentSnapshotName;
+          if (!snapshot) return;
+          logEvent('scene-save', `snapshot:"${snapshot}" aux:${msg.aux}`);
+          scenes.saveScene(snapshot, msg.aux, msg.values);
+          broadcastToClients({ type: 'scene-saved', snapshot, aux: msg.aux });
+          ws._lastActivityAt = Date.now();
+          broadcastToClients({ type: 'device-activity', deviceId: ws._deviceId || null, aux: msg.aux, kind: 'save-scene', snapshot });
           return;
         }
         if (msg.type === 'delete-scene') {
-          scenes.deleteScene(currentSnapshotName, msg.aux);
-          broadcastToClients({ type: 'scene-deleted', snapshot: currentSnapshotName, aux: msg.aux });
+          const snapshot = (typeof msg.snapshot === 'string' && msg.snapshot) ? msg.snapshot : currentSnapshotName;
+          if (!snapshot) return;
+          scenes.deleteScene(snapshot, msg.aux);
+          broadcastToClients({ type: 'scene-deleted', snapshot, aux: msg.aux });
           return;
         }
         // Musician asked to revert their live mix back to the saved scene
@@ -700,12 +735,31 @@ function startWebSocketServer() {
           broadcastToClients({ type: 'scene-recalled', snapshot: currentSnapshotName, levels: { [auxStr]: levels } });
           return;
         }
+        // Ear Scenes editor asking for a saved snapshot's actual stored levels —
+        // read-only, never touches the desk (the client's local allScenes cache
+        // only ever holds a true/false "exists" flag once any save/delete event
+        // has passed through, not the real per-channel values).
+        if (msg.type === 'request-scene') {
+          if (!msg.snapshot) return;
+          const values = scenes.getScene(msg.snapshot, msg.aux) || {};
+          try { ws.send(JSON.stringify({ type: 'scene-values', snapshot: msg.snapshot, aux: msg.aux, values })); } catch (_) {}
+          return;
+        }
 
         // Mixer tells us which aux it's currently viewing/adjusting — lets the
         // Monitor view show a live "who's mixing what" presence indicator.
         if (msg.type === 'set-active-aux') {
           ws._activeAux = (msg.aux === null || msg.aux === undefined) ? null : parseInt(msg.aux, 10);
           broadcastToClients({ type: 'active-mixers', counts: getActiveMixerCounts() });
+          broadcastDevicesUpdate();
+          return;
+        }
+
+        // Mixer announces its device id once after connecting — lets the
+        // Devices view label each connected client's card.
+        if (msg.type === 'identify') {
+          ws._deviceId = msg.deviceId || null;
+          broadcastDevicesUpdate();
           return;
         }
 
@@ -717,6 +771,8 @@ function startWebSocketServer() {
           if (!name || !msg.deviceId) return;
           logEvent('preset-save', `device:${msg.deviceId.slice(0,8)} name:"${name}"`);
           presets.savePreset(msg.deviceId, name, msg.levels, msg.pans);
+          ws._lastActivityAt = Date.now();
+          broadcastToClients({ type: 'device-activity', deviceId: ws._deviceId || null, aux: ws._activeAux ?? null, kind: 'save-mix', name });
           return;
         }
         if (msg.type === 'delete-preset') {
@@ -946,7 +1002,34 @@ function startWebSocketServer() {
 
         if (!ALLOWED_OSC_RE.test(oscMsg.address)) return;
 
+        // Grab the pre-update value so we can tell the Devices view whether
+        // this move raised or lowered the level/pan, before it's overwritten.
+        const prevCached = cache.get(oscMsg.address);
+
         maybeCacheResponse(oscMsg);
+
+        // Flash the sender's activity dot on the Devices view for any fader/pan
+        // move, with a short description of what changed. Purely a browser->browser
+        // notice via the WS hub — never touches sendToDesk, so no console-load implications.
+        const activityMatch = oscMsg.address.match(/^\/Input_Channels\/(\d+)\/Aux_Send\/(\d+)\/send_(level|pan)$/);
+        if (activityMatch) {
+          const [, chStr, auxStr, kind] = activityMatch;
+          const newVal  = Array.isArray(oscMsg.args) ? oscMsg.args[0] : undefined;
+          const prevVal = prevCached && Array.isArray(prevCached.args) ? prevCached.args[0] : undefined;
+          let direction = null;
+          if (typeof newVal === 'number' && typeof prevVal === 'number' && newVal !== prevVal) {
+            direction = newVal > prevVal ? 'up' : 'down';
+          }
+          ws._lastActivityAt = Date.now();
+          broadcastToClients({
+            type: 'device-activity',
+            deviceId: ws._deviceId || null,
+            aux: parseInt(auxStr, 10),
+            channel: parseInt(chStr, 10),
+            kind,
+            direction
+          });
+        }
 
         // If this is a send_level and the channel is muted/solo-off, send -150 to desk
         // but still relay the real value to other browser clients so their UI stays accurate
@@ -983,6 +1066,7 @@ function startWebSocketServer() {
       if (onConnectionCountChange) onConnectionCountChange(connections.length);
       broadcastToClients({ type: 'connection-count', count: connections.length });
       if (ws._activeAux != null) broadcastToClients({ type: 'active-mixers', counts: getActiveMixerCounts() });
+      if (ws._deviceId != null || ws._activeAux != null) broadcastDevicesUpdate();
     });
   });
 }
@@ -1284,6 +1368,17 @@ function getAuxNames() {
   return names;
 }
 
+// Live counts as actually reported by the desk — used so Settings can catch
+// its "Channels"/"Auxes" fields drifting out of sync with the real console
+// (a stale, too-low field silently hides the highest-numbered channels/auxes
+// from being configurable, even though the mixer pages still show them).
+function getChannelCount() {
+  return cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : null;
+}
+function getAuxCount() {
+  return cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : null;
+}
+
 function isConsoleConnected() { return loaded; }
 function setConsoleStatusCallback(cb) { onConsoleStatusChange = cb; }
 
@@ -1295,4 +1390,4 @@ function setServerErrorCallback(cb) { onServerError = cb; }
 function getOscLog() { return oscLog; }
 function setOscTrafficCallback(cb) { onOscTraffic = cb; }
 
-module.exports = { start, stop, getChannelNames, getAuxNames, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder };
+module.exports = { start, stop, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder };
