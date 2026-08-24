@@ -93,6 +93,14 @@ let allMutes           = {}; // allMutes[aux][ch]
 let allSolos           = {}; // allSolos[aux][ch]
 const channelRowCache  = new Map(); // ch number → { row, muteBtn, soloBtn }
 
+// A hidden ("link only") aux never appears in the mix picker — the only way in
+// is a direct link like /?aux=5. Consumed once on the first config after load,
+// then cleared so it doesn't override a later manual mix switch on reconnect.
+let urlAux = (() => {
+  const n = parseInt(new URLSearchParams(location.search).get('aux'), 10);
+  return Number.isInteger(n) ? n : null;
+})();
+
 // ── WebSocket ─────────────────────────────────────────────────────────────
 
 let ws                   = null;
@@ -833,24 +841,37 @@ function applyConfig(config) {
 
   document.getElementById('snapshotName').textContent = currentSnapshot;
 
-  buildAux(auxConfig);
   buildChannels(channelConfig);
 
-  // Try to restore the previously selected aux (handles reconnects + iOS page reloads)
+  // Try to restore the previously selected aux (handles reconnects + iOS page reloads).
+  // A ?aux=N link takes priority on first load — that's how a hidden/link-only
+  // aux gets opened, since it never appears as a button in the picker. Only
+  // consumed once per page load so a later manual mix switch isn't undone by
+  // a WS reconnect re-applying the same config.
   const savedAux = parseInt(localStorage.getItem('aux'));
-  const targetAux = (selectedAux !== null && auxConfig.some(a => a.channel === selectedAux && a.enabled))
+  const targetAux = (urlAux !== null && auxConfig.some(a => a.channel === urlAux && a.enabled))
+    ? urlAux
+    : (selectedAux !== null && auxConfig.some(a => a.channel === selectedAux && a.enabled))
     ? selectedAux
     : (savedAux && auxConfig.some(a => a.channel === savedAux && a.enabled) ? savedAux : null);
+  urlAux = null;
 
   if (targetAux !== null) {
     document.body.classList.remove('auxPicker');
     selectAux(targetAux, true, true); // skipReset=true — don't zero faders on refresh
   } else {
+    document.body.classList.add('auxPicker');
+  }
+
+  // Built after selectAux() above so a link-only aux you're already on still
+  // shows up in your own picker (see buildAux's linkOnly check) — otherwise
+  // tapping the aux bar to look around would leave no way back in.
+  buildAux(auxConfig);
+  if (targetAux === null) {
     const saved = localStorage.getItem('aux');
     document.querySelectorAll('.aux-btn').forEach(btn => {
       btn.classList.toggle('aux-btn-last', btn.dataset.aux === saved);
     });
-    document.body.classList.add('auxPicker');
   }
 }
 
@@ -870,6 +891,10 @@ function buildAux(options) {
 
   for (const opt of options) {
     if (!opt.enabled) continue;
+    // Link-only auxes are hidden from the picker so they never show up for
+    // anyone browsing normally — except the one you're already on, so tapping
+    // the aux bar to look around doesn't strand you with no way back in.
+    if (opt.linkOnly && opt.channel !== selectedAux) continue;
 
     const btn = document.createElement('button');
     btn.className = 'aux-btn';

@@ -101,12 +101,53 @@ const fields = {
   auxes:          { el: $('auxes'),          key: 'auxes',          parse: Number },
   groups:         { el: $('groups'),         key: 'groups',         parse: Number },
   autoBackupIntervalDays: { el: $('autoBackupInterval'), key: 'autoBackupIntervalDays', parse: Number },
+  dliveBaseChannel: { el: $('dliveBaseChannel'), key: 'dliveBaseChannel', parse: Number },
+  dliveMidiPort:    { el: $('dliveMidiPort'),    key: 'dliveMidiPort',    parse: Number },
+  dliveUsername:    { el: $('dliveUsername'),    key: 'dliveUsername',    parse: String },
+  dlivePassword:    { el: $('dlivePassword'),    key: 'dlivePassword',    parse: String },
 };
+
+// Only one console's connection fields are relevant at a time — DiGiCo's
+// send/listen OSC ports vs dLive's base MIDI channel/TLS/auth.
+function updateConsoleTypeFields() {
+  const isDlive = $('consoleType').value === 'dlive';
+  isDliveType = isDlive;
+  $('digicoPortsRow').style.display = isDlive ? 'none' : '';
+  $('dliveFieldsRow').style.display = isDlive ? '' : 'none';
+  $('dliveAuthRow').style.display = (isDlive && $('dliveTlsEnabled').checked) ? '' : 'none';
+  // dLive's protocol has a hard ceiling — 128 input channels, 62 mono aux
+  // sends (this integration doesn't use the separate stereo-aux pool). The
+  // server now degrades gracefully past that rather than crashing, but
+  // catching it here means nobody has to find that out by hitting it.
+  $('channels').max = isDlive ? '128' : '256';
+  $('auxes').max     = isDlive ? '62'  : '64';
+  if (isDlive && Number($('channels').value) > 128) $('channels').value = '128';
+  if (isDlive && Number($('auxes').value) > 62)      $('auxes').value = '62';
+  renderAuxes();
+  setStatus(isRunning);
+}
+$('consoleType').addEventListener('change', updateConsoleTypeFields);
+$('dliveTlsEnabled').addEventListener('change', updateConsoleTypeFields);
+
+// <input min/max> doesn't stop an out-of-range typed/pasted value from
+// sitting in .value — collectConfig() clamps what actually gets saved, but
+// without this the field itself would keep showing the invalid number even
+// after Save & Apply silently used a different, corrected value instead.
+// Clamp visibly, the same way channels/auxes already do above.
+$('dliveBaseChannel').addEventListener('change', () => {
+  const v = Math.max(0, Math.min(11, Number($('dliveBaseChannel').value) || 0));
+  $('dliveBaseChannel').value = v;
+});
+$('dliveMidiPort').addEventListener('change', () => {
+  const raw = Number($('dliveMidiPort').value) || 0;
+  $('dliveMidiPort').value = (raw === 0) ? 0 : Math.max(1, Math.min(65535, raw));
+});
 
 // ── State ─────────────────────────────────────────────────────────────────
 
 let isRunning          = false;
 let isDemoMode         = false;
+let isDliveType        = false;
 let channelGroups      = [];   // [{ id, name }]
 let channelOverrides   = {};   // { "1": { label, icon, groupId, order, enabled } }
 let channelOrder       = [];   // ordered list of channel numbers, e.g. [1, 3, 2, ...]
@@ -166,6 +207,11 @@ function renderAuxes() {
   const list    = $('auxesList');
   list.innerHTML = '';
   const auxCount = parseInt($('auxes').value) || 16;
+  // dLive doesn't implement per-send EQ (see dlive-server.js's buildConfig,
+  // which reports eqEnabled: false for every aux regardless of this
+  // per-aux setting) — disable the toggle so it doesn't look like a live
+  // control that silently does nothing.
+  const eqDisabled = $('consoleType').value === 'dlive';
 
   for (let i = 1; i <= auxCount; i++) {
     const ov      = auxOverrides[String(i)] || {};
@@ -174,20 +220,25 @@ function renderAuxes() {
     const name    = auxNames[String(i)] || `AUX ${i}`;
 
     const eqEnabled = ov.eqEnabled === true;
+    const linkOnly  = ov.linkOnly === true;
+    const eqTitle = eqDisabled ? "Per-send EQ isn't implemented for dLive yet" : 'Show EQ button on mixer page';
 
     const row = document.createElement('div');
     row.className = 'ch-editor-row';
     row.dataset.aux = i;
-    row.style.gridTemplateColumns = '28px 1fr 32px 28px 28px';
+    row.style.gridTemplateColumns = '28px 1fr 32px 28px 28px 28px';
     row.innerHTML = `
       <span class="ch-editor-num">${i}</span>
       <span class="aux-name-label">${escHtml(name)}</span>
       <input type="color" class="aux-colour colour-input" data-aux="${i}" value="${escHtml(colour)}" title="Button color" />
       <input type="checkbox" class="toggle aux-enabled" data-aux="${i}" ${enabled ? 'checked' : ''} />
-      <input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} title="Show EQ button on mixer page" />
+      <input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} ${eqDisabled ? 'disabled' : ''} title="${eqTitle}" />
+      <input type="checkbox" class="toggle aux-link-only" data-aux="${i}" ${linkOnly ? 'checked' : ''} title="Hide from the mix picker — only reachable via its direct link" />
     `;
     list.appendChild(row);
   }
+
+  renderHiddenAuxLinks();
 }
 
 $('auxesList').addEventListener('change', e => {
@@ -200,7 +251,60 @@ $('auxesList').addEventListener('change', e => {
     auxOverrides[aux].colour = e.target.value;
   } else if (e.target.classList.contains('aux-eq-enabled')) {
     auxOverrides[aux].eqEnabled = e.target.checked;
+  } else if (e.target.classList.contains('aux-link-only')) {
+    auxOverrides[aux].linkOnly = e.target.checked;
+    renderHiddenAuxLinks();
   }
+});
+
+// ── Hidden (link-only) aux direct links ────────────────────────────────────
+
+function renderHiddenAuxLinks() {
+  const container = $('hiddenAuxLinks');
+  if (!container) return;
+  const auxCount = parseInt($('auxes').value) || 16;
+  const base = getBaseUrl();
+
+  const hidden = [];
+  for (let i = 1; i <= auxCount; i++) {
+    if ((auxOverrides[String(i)] || {}).linkOnly === true) hidden.push(i);
+  }
+
+  if (hidden.length === 0) {
+    container.innerHTML = '<div class="empty-hint">No hidden auxes — turn on the Link toggle above to add one here.</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  for (const i of hidden) {
+    const name = auxNames[String(i)] || `AUX ${i}`;
+    const colour = (auxOverrides[String(i)] || {}).colour || '#e8a020';
+    const url = base ? `${base}/?aux=${i}` : null;
+
+    const row = document.createElement('div');
+    row.className = 'ip-row';
+    row.style.marginBottom = '8px';
+    row.innerHTML = `
+      <span class="ip-label" style="display:flex;align-items:center;gap:6px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${escHtml(colour)};flex-shrink:0"></span>
+        ${escHtml(name)}
+      </span>
+      <span class="ip-address" style="flex:1">${url ? escHtml(url) : '— (server not running)'}</span>
+      <button class="btn btn-sm hidden-aux-copy-btn" data-url="${url ? escHtml(url) : ''}" ${url ? '' : 'disabled'}>Copy Link</button>
+    `;
+    container.appendChild(row);
+  }
+}
+
+$('hiddenAuxLinks').addEventListener('click', async e => {
+  const btn = e.target.closest('.hidden-aux-copy-btn');
+  if (!btn || !btn.dataset.url) return;
+  try {
+    await navigator.clipboard.writeText(btn.dataset.url);
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  } catch (_) {}
 });
 
 // ── iPad OSC connections ──────────────────────────────────────────────────
@@ -544,6 +648,10 @@ function applyConfig(cfg) {
   $('autoStart').checked          = !!cfg.autoStart;
   $('sceneRecallEnabled').checked = !!cfg.sceneRecallEnabled;
   $('autoBackupEnabled').checked  = cfg.autoBackupEnabled !== false;
+  $('dliveTlsEnabled').checked    = !!cfg.dliveTlsEnabled;
+  $('dliveListenSendLevels').checked = cfg.dliveListenSendLevels !== false;
+  $('dlivePollSendLevels').checked   = cfg.dlivePollSendLevels !== false;
+  updateConsoleTypeFields();
   isDemoMode = !!cfg.demoMode;
   $('demoMode').checked = isDemoMode;
   $('demoMode').addEventListener('change', function () { isDemoMode = this.checked; });
@@ -567,10 +675,25 @@ function collectConfig() {
   for (const { el, key, parse } of Object.values(fields)) {
     out[key] = parse(el.value);
   }
+  // <input min/max> isn't self-enforcing — it doesn't stop a typed-in or
+  // pasted out-of-range value from reaching .value, and the server trusts
+  // this config directly (an out-of-range dliveMidiPort throws synchronously
+  // deep in the TCP/TLS layer; an out-of-range dliveBaseChannel corrupts a
+  // MIDI status byte in scene recall). Clamp here rather than rely solely on
+  // the server-side fallback, so a bad value never gets silently saved.
+  if (!Number.isInteger(out.dliveBaseChannel) || out.dliveBaseChannel < 0 || out.dliveBaseChannel > 11) {
+    out.dliveBaseChannel = Math.max(0, Math.min(11, Number(out.dliveBaseChannel) || 0));
+  }
+  if (out.dliveMidiPort !== 0 && (!Number.isInteger(out.dliveMidiPort) || out.dliveMidiPort < 1 || out.dliveMidiPort > 65535)) {
+    out.dliveMidiPort = 0; // 0 = use the documented default port
+  }
   out.autoStart           = $('autoStart').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;
   out.autoBackupEnabled   = $('autoBackupEnabled').checked;
   out.demoMode            = $('demoMode').checked;
+  out.dliveTlsEnabled     = $('dliveTlsEnabled').checked;
+  out.dliveListenSendLevels = $('dliveListenSendLevels').checked;
+  out.dlivePollSendLevels   = $('dlivePollSendLevels').checked;
   out.ipadConnections     = ipadConnections;
   out.channelGroups    = channelGroups;
   saveChannelOrder();
@@ -597,24 +720,42 @@ function setDeviceCount(count) {
   $('deviceCountLabel').textContent = count === 1 ? '1 device' : `${count} devices`;
 }
 
+function getBaseUrl() {
+  if (!isRunning) return null;
+  const port = Number($('serverPort').value);
+  return localIP ? `http://${localIP}:${port}` : `http://localhost:${port}`;
+}
+
 function setStatus(running) {
   isRunning = running;
   $('statusDot').className = 'dot' + (running ? ' on' : '');
   $('statusLabel').textContent = running ? 'Running' : 'Stopped';
-  const port = Number($('serverPort').value);
-  const base = running
-    ? (localIP ? `http://${localIP}:${port}` : `http://localhost:${port}`)
-    : null;
+  const base = getBaseUrl();
   $('serverUrl').textContent = base || 'Not running';
   $('monitorUrl').textContent  = base ? `${base}/monitor.html`  : '— (server not running)';
   $('consoleUrl').textContent  = base ? `${base}/console.html`  : '— (server not running)';
   $('devicesUrl').textContent  = base ? `${base}/devices.html`  : '— (server not running)';
   $('monitorBtnHint').style.display = running ? 'none' : '';
-  $('consoleBtnHint').style.display = running ? 'none' : '';
   $('devicesBtnHint').style.display = running ? 'none' : '';
+  // The Console Controller (main faders, mutes, solos, control groups) isn't
+  // implemented on the dLive backend yet — dlive-server.js doesn't handle
+  // any of console.js's message types except fire-snapshot, and nothing
+  // ever answers request-console-state. Left open, the page would render
+  // fully interactive-looking strips that silently do nothing on a real
+  // console — worse than just not opening it. Disable the entry point
+  // instead of shipping a page that only pretends to work.
+  $('openConsoleBtn').disabled = isDliveType;
+  if (isDliveType) {
+    $('consoleBtnHint').style.display = '';
+    $('consoleBtnHint').textContent = 'Not available for dLive yet — main faders, mutes, and solos aren’t implemented on this backend.';
+  } else {
+    $('consoleBtnHint').style.display = running ? 'none' : '';
+    $('consoleBtnHint').textContent = 'Start the server first to open.';
+  }
   const btn = $('toggleBtn');
   btn.textContent = running ? 'Stop' : 'Start';
   btn.className   = running ? 'btn stop' : 'btn';
+  renderHiddenAuxLinks();
 }
 
 

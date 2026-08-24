@@ -76,7 +76,7 @@
           <input type="text" id="deskIp" placeholder="192.168.1.100" />
         </div>
 
-        <div class="field-row two-col">
+        <div class="field-row two-col" id="digicoPortsRow">
           <div>
             <label for="deskSendPort">Send Port (to desk)</label>
             <input type="number" id="deskSendPort" min="1" max="65535" />
@@ -84,6 +84,52 @@
           <div>
             <label for="deskListenPort">Listen Port (from desk)</label>
             <input type="number" id="deskListenPort" min="1" max="65535" />
+          </div>
+        </div>
+
+        <div id="dliveFieldsRow" style="display:none">
+          <div class="sub" style="margin-bottom:10px">⚠️ dLive support is new and hasn't been validated on real hardware yet. Aux send levels, mute, and scene recall work; per-send pan, EQ, and the Console Controller are not implemented for dLive.</div>
+          <div class="sub" style="margin-bottom:10px"><strong>On the console:</strong> Utility → Control → MIDI has its own On/Off/Secure Mode switch for MIDI/TCP — it must be turned on there before JPMixer (or anything else) can connect, the same way DiGiCo consoles need DiGiCo Pad enabled. Unlike DiGiCo Pad, though, dLive doesn't limit this to one connection at a time — JPMixer can run alongside Director, MixPad, and other control apps without conflict.</div>
+          <div class="field-row two-col">
+            <div>
+              <label for="dliveBaseChannel">Base MIDI Channel</label>
+              <input type="number" id="dliveBaseChannel" min="0" max="11" />
+            </div>
+            <div>
+              <label class="toggle-label" for="dliveTlsEnabled" style="display:block;margin-bottom:6px">Use TLS/SSL</label>
+              <input type="checkbox" id="dliveTlsEnabled" class="toggle" />
+            </div>
+          </div>
+          <div class="sub" style="margin-bottom:10px">Base MIDI Channel must match the value set on the console under Utility → Control → MIDI (0-11, i.e. MIDI channel 1-12).</div>
+          <div class="field-row">
+            <label for="dliveMidiPort">MIDI/TCP Port Override</label>
+            <input type="number" id="dliveMidiPort" min="0" max="65535" placeholder="Leave 0 for default (51325, or 51327 with TLS)" />
+          </div>
+          <div class="sub" style="margin-bottom:10px">Leave at 0 to use the documented default. If the console doesn't respond, try 51328 (the alternate port some tools use) — see JPMixer's dLive notes for why this isn't fully settled yet.</div>
+          <div class="field-row two-col" id="dliveAuthRow" style="display:none">
+            <div>
+              <label for="dliveUsername">Username</label>
+              <input type="text" id="dliveUsername" autocomplete="off" />
+            </div>
+            <div>
+              <label for="dlivePassword">Password</label>
+              <input type="password" id="dlivePassword" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="card-row" style="margin-top:6px">
+            <div>
+              <label class="toggle-label" for="dliveListenSendLevels">Listen for live send-level updates</label>
+              <div class="sub">Trust the console's own unsolicited updates when a send changes. Should stay on — turn off only if you find it's producing wrong values.</div>
+            </div>
+            <input type="checkbox" id="dliveListenSendLevels" class="toggle" />
+          </div>
+          <div class="card-row">
+            <div>
+              <label class="toggle-label" for="dlivePollSendLevels">Poll send levels as a backup</label>
+              <div class="sub">Actively re-requests each active mix's send levels in the background, in case live updates above aren't actually happening. Safe to leave on; turn off once you've confirmed live updates work to reduce console traffic.</div>
+            </div>
+            <input type="checkbox" id="dlivePollSendLevels" class="toggle" />
           </div>
         </div>
       </section>
@@ -95,6 +141,7 @@
           <label for="consoleType">Console Type</label>
           <select id="consoleType">
             <option value="digico">DiGiCo SD / Quantum</option>
+            <option value="dlive">Allen &amp; Heath dLive</option>
             <option value="x32">Behringer X32 / Midas M32</option>
             <option value="yamaha">Yamaha CL / QL</option>
             <option value="custom">Custom OSC</option>
@@ -182,14 +229,23 @@
 
       <section class="card channels-card">
         <h2>Aux / Bus Visibility</h2>
-        <div class="ch-editor-header" style="grid-template-columns: 28px 1fr 32px 28px 28px">
+        <div class="ch-editor-header" style="grid-template-columns: 28px 1fr 32px 28px 28px 28px">
           <span></span>
           <span>Name</span>
           <span>Color</span>
           <span>Show</span>
           <span>EQ</span>
+          <span title="Hidden from the mix picker — only reachable via its direct link">Link</span>
         </div>
         <div id="auxesList" class="channels-editor"></div>
+      </section>
+
+      <section class="card">
+        <h2>Hidden Aux Channels — Link Only</h2>
+        <div class="sub" style="margin-bottom:12px">Auxes marked <strong>Link</strong> above don't appear in the mix picker musicians see — the only way in is the direct link below. Useful for a private reference mix, a guest, or anyone you don't want cluttering the public picker.</div>
+        <div id="hiddenAuxLinks">
+          <div class="empty-hint">No hidden auxes — turn on the Link toggle above to add one here.</div>
+        </div>
       </section>
 
     </div>

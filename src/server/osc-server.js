@@ -322,6 +322,7 @@ function buildConfig() {
       colour:    ov.colour || generateColour(auxCount, i),
       icon:      '',
       eqEnabled: ov.eqEnabled === true,
+      linkOnly:  ov.linkOnly === true,
     });
   }
 

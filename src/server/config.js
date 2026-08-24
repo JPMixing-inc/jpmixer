@@ -20,7 +20,21 @@ const DEFAULTS = {
   ipadConnections: [],
   autoBackupEnabled: true,
   autoBackupIntervalDays: 7,
-  demoMode: false
+  demoMode: false,
+  // dLive (MIDI over TCP/IP) — only read when consoleType is 'dlive'. Reuses
+  // deskIp above for the console's address, same as the DiGiCo path does.
+  dliveBaseChannel: 0,
+  dliveTlsEnabled: false,
+  dliveUsername: '',
+  dlivePassword: '',
+  // 0 = use the spec-documented default (51325, or 51327 with TLS). Override
+  // if that port doesn't respond on real hardware — see the port note in
+  // dlive-client.js's file header.
+  dliveMidiPort: 0,
+  // How to keep aux send levels in sync — see dlive-server.js's file header.
+  // Both on by default until push is confirmed reliable on real hardware.
+  dliveListenSendLevels: true,
+  dlivePollSendLevels: true
 };
 
 let _config = { ...DEFAULTS };

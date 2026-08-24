@@ -45,4 +45,8 @@ function getScene(snapshot, aux) {
 function getAll() { return _scenes; }
 
 clearOnStartup();
-module.exports = { saveScene, deleteScene, getScene, getAll };
+// Exported (not just internal) so main.js can also call this when the
+// Console Type changes mid-session — DiGiCo keys scenes by snapshot name,
+// dLive by scene number, and this store doesn't otherwise know to clear
+// itself just because the meaning of its keys changed out from under it.
+module.exports = { saveScene, deleteScene, getScene, getAll, clearOnStartup };
