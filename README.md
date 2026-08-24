@@ -4,7 +4,7 @@
 
 JPMixer is a Mac and Windows desktop app that runs a local web server, letting musicians control their own in-ear monitor (IEM) or wedge mixes from any phone, tablet, or laptop on the same network — without touching the front-of-house console.
 
-> **v1.7.5**
+> **v1.7.8**
 
 ---
 
@@ -90,23 +90,25 @@ sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
 
 ## Console Support
 
-| | DiGiCo (SD / Quantum / S series) | Allen & Heath dLive |
-|---|---|---|
-| Connection | OSC / DiGiCo Pad external control | MIDI over TCP/IP |
-| Musician mix control (levels, mute, solo) | ✅ | ✅ |
-| My Mixes / Ear Scenes / Devices View | ✅ | ✅ |
-| Per-send pan | ✅ | ❌ not exposed by dLive's MIDI protocol |
-| Built-in aux EQ | ✅ | ❌ not implemented yet |
-| Console Controller | ✅ | ❌ not implemented yet |
-| Status | Stable | **New — not yet validated on real hardware** |
+| | DiGiCo (SD / Quantum / S series) | Allen & Heath dLive | KLANG (paired with dLive) |
+|---|---|---|---|
+| Connection | OSC / DiGiCo Pad external control | MIDI over TCP/IP | OSC (direct to the KLANG processor) |
+| Musician mix control (levels, mute, solo) | ✅ | ✅ | ✅ — controls KLANG's own mix, not the console |
+| My Mixes / Ear Scenes / Devices View | ✅ | ✅ | ✅ |
+| Per-send pan | ✅ | ❌ not exposed by dLive's MIDI protocol | ✅ — KLANG stereo-mode azimuth |
+| Built-in aux EQ | ✅ | ❌ not implemented yet | ❌ not implemented yet |
+| Console Controller | ✅ | ❌ not implemented yet | ❌ not implemented yet |
+| Status | Stable | **New — not yet validated on real hardware** | **New — not yet validated on real hardware** |
 
 dLive support talks to the MixRack directly over MIDI/TCP (Utility → Control → MIDI must be turned on at the console, the same way DiGiCo consoles need DiGiCo Pad enabled) and runs as a fully separate backend from the DiGiCo path — selecting it in Settings never touches DiGiCo's OSC connection or behavior. If you're trying it on a real console for the first time, start with aux send levels and keep an eye on the OSC-equivalent traffic; see the in-app warning on the Setup tab for the current known gaps.
+
+KLANG support is for rigs running a KLANG 3D in-ear processor alongside a dLive console — it's a third, independent backend that talks directly to the KLANG processor over OSC (KLANG needs its own dedicated audio feed from the console, patched outside of JPMixer entirely). Musicians' faders control their KLANG mix directly, not the console's aux sends; an optional secondary connection to the paired dLive console supplies channel names and drives Ear Scene recall off the console's own snapshot changes. KLANG's own control protocol has no way to confirm back what value it actually applied, so JPMixer trusts its own last-sent value as the mix state — if someone also has the real KLANG:app open on the same mix, JPMixer won't notice the difference. See the in-app warning on the Setup tab.
 
 ---
 
 ## Requirements
 
-- A DiGiCo console with OSC / DiGiCo Pad external control enabled (SD / Quantum / S series), **or** an Allen & Heath dLive MixRack with MIDI/TCP enabled — see [Console Support](#console-support)
+- A DiGiCo console with OSC / DiGiCo Pad external control enabled (SD / Quantum / S series), **or** an Allen & Heath dLive MixRack with MIDI/TCP enabled, **or** a KLANG 3D in-ear processor paired with a dLive console — see [Console Support](#console-support)
 - Mac or Windows computer running JPMixer on the same network as the console
 - Musicians connect via any web browser on the same WiFi — no app install needed
 
@@ -153,4 +155,4 @@ JPMixer runs an Express web server and a WebSocket bridge inside an Electron she
 
 ---
 
-*JPMixer is not affiliated with DiGiCo or Allen & Heath. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen & Heath Limited.*
+*JPMixer is not affiliated with DiGiCo, Allen & Heath, or KLANG:technologies. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen & Heath Limited. KLANG is a trademark of KLANG:technologies GmbH.*
