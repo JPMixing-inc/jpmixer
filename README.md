@@ -1,10 +1,10 @@
 # JPMixer
 
-**Browser-based monitor mix controller for DiGiCo consoles**
+**Browser-based monitor mix controller for DiGiCo and Allen & Heath dLive consoles**
 
 JPMixer is a Mac and Windows desktop app that runs a local web server, letting musicians control their own in-ear monitor (IEM) or wedge mixes from any phone, tablet, or laptop on the same network — without touching the front-of-house console.
 
-> **v1.7.3**
+> **v1.7.5**
 
 ---
 
@@ -33,7 +33,8 @@ JPMixer is a Mac and Windows desktop app that runs a local web server, letting m
 - **Ear scene recall** — save a full mix per DiGiCo snapshot; it's pushed to the console and every screen automatically when the snapshot fires. Once saved, faders lock to protect against accidental bumps — tap the status banner to unlock, edit, or revert to the saved mix
 - **Ear Scenes editor** — browse and edit a saved mix for *any* snapshot, even one the console isn't currently on, without touching the live sound; scenes reset fresh every time JPMixer launches (unlike My Mixes, which are permanent)
 - **My Mixes** — musicians can also save personal named mixes anytime, independent of any snapshot; backed up per-device on JPMixer's side in case local storage gets cleared
-- **Built-in aux EQ** — optional 8-band parametric EQ per aux, adjustable right from the performer's phone
+- **Built-in aux EQ** — optional 8-band parametric EQ per aux, adjustable right from the performer's phone (DiGiCo only — see [Console Support](#console-support))
+- **Hidden, link-only aux mixes** — mark an aux "Link" in Settings to hide it from the public mix picker; it's reachable only via its own direct URL, for a private reference mix, a guest, or a monitor you don't want cluttering the picker
 - **Works on any device** — iOS, Android, Mac, Windows — any browser on the same WiFi, no app download required
 - **Add to home screen (PWA)** — installs as a full-screen app on iPhone/iPad; connection stays alive when the screen locks
 
@@ -49,6 +50,7 @@ JPMixer is a Mac and Windows desktop app that runs a local web server, letting m
 - **Last active & connection quality** — see how recently each device did something, and whether its connection is solid, weak, or reconnecting
 
 ### Console Controller
+*(DiGiCo only — see [Console Support](#console-support))*
 - **Input channel strips** — vertical faders for every channel on the desk with mute, solo, and dB readout
 - **Control groups** — DiGiCo control group faders with mute and solo; names pulled live from the desk
 - **Aux output masters** — fader and mute per aux output bus
@@ -86,9 +88,25 @@ sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
 
 ---
 
+## Console Support
+
+| | DiGiCo (SD / Quantum / S series) | Allen & Heath dLive |
+|---|---|---|
+| Connection | OSC / DiGiCo Pad external control | MIDI over TCP/IP |
+| Musician mix control (levels, mute, solo) | ✅ | ✅ |
+| My Mixes / Ear Scenes / Devices View | ✅ | ✅ |
+| Per-send pan | ✅ | ❌ not exposed by dLive's MIDI protocol |
+| Built-in aux EQ | ✅ | ❌ not implemented yet |
+| Console Controller | ✅ | ❌ not implemented yet |
+| Status | Stable | **New — not yet validated on real hardware** |
+
+dLive support talks to the MixRack directly over MIDI/TCP (Utility → Control → MIDI must be turned on at the console, the same way DiGiCo consoles need DiGiCo Pad enabled) and runs as a fully separate backend from the DiGiCo path — selecting it in Settings never touches DiGiCo's OSC connection or behavior. If you're trying it on a real console for the first time, start with aux send levels and keep an eye on the OSC-equivalent traffic; see the in-app warning on the Setup tab for the current known gaps.
+
+---
+
 ## Requirements
 
-- DiGiCo console with OSC / DiGiCo Pad external control enabled (SD / Quantum / S series)
+- A DiGiCo console with OSC / DiGiCo Pad external control enabled (SD / Quantum / S series), **or** an Allen & Heath dLive MixRack with MIDI/TCP enabled — see [Console Support](#console-support)
 - Mac or Windows computer running JPMixer on the same network as the console
 - Musicians connect via any web browser on the same WiFi — no app install needed
 
@@ -98,9 +116,9 @@ sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
 
 1. Open JPMixer — it appears in the menu bar / system tray
 2. Click the icon → **Settings**
-3. **Setup tab** — enter the DiGiCo console's IP address and OSC ports (send: `8000`, listen: `8001` by default)
+3. **Setup tab** — pick your **Console Type** (DiGiCo or dLive), then enter the console's IP address and connection details (DiGiCo: OSC ports, send `8000` / listen `8001` by default; dLive: Base MIDI Channel and, if enabled, TLS credentials)
 4. **Channels tab** — assign icons and labels; set channel/aux counts to match your patch
-5. **Auxes tab** — name each aux bus, assign colours, and turn on EQ per aux if you want musicians to have it
+5. **Auxes tab** — name each aux bus, assign colours, turn on EQ per aux if you want musicians to have it (DiGiCo only), and mark any aux **Link** to hide it from the public mix picker
 6. Click **Save & Apply** — the server starts automatically
 7. Share the URL shown in the Setup tab with your musicians (e.g. `http://192.168.1.10:8080`)
 
@@ -118,10 +136,11 @@ JPMixer runs an Express web server and a WebSocket bridge inside an Electron she
 - The console echoes confirmed values back over OSC, which JPMixer caches and broadcasts to all connected browsers to keep every screen in sync.
 - Musician mute and solo are implemented by driving aux send levels to –∞ dB, so they operate within each mix independently without touching the channel mute on the desk.
 - The Console Controller uses the DiGiCo Pad external control OSC protocol, which exposes main channel faders, mutes, solos, and control groups in addition to aux sends.
-- Ear scenes are stored as JSON on disk, matched to DiGiCo snapshot names, and replayed automatically when a matching snapshot fires. They're intentionally session-only and don't persist across an app restart.
+- Ear scenes are stored as JSON on disk, matched to DiGiCo snapshot names (or dLive scene numbers, which is all dLive's protocol exposes), and replayed automatically when a matching snapshot/scene fires. They're intentionally session-only and don't persist across an app restart.
 - My Mixes are stored per device (levels + pan, no snapshot needed), with a server-side backup copy so they survive a cleared browser cache.
 - Browser clients can only send OSC for their own aux sends and EQ — an address allowlist on the server blocks anything else, so a mixer page can't fire snapshots or touch other console parameters.
 - The Devices view is a pure browser-to-browser notice over the existing WebSocket hub — it never sends anything to the console, so it adds zero extra OSC load on the desk.
+- dLive support runs as a completely separate backend that speaks MIDI over TCP/IP to the console instead of OSC/UDP, but presents the exact same WebSocket interface to the browser — every screen (musician mixer, monitor view, devices view) works identically regardless of which console type is active, and JPMixer only ever talks to one backend at a time based on the Console Type set in Settings.
 
 ---
 
@@ -134,4 +153,4 @@ JPMixer runs an Express web server and a WebSocket bridge inside an Electron she
 
 ---
 
-*JPMixer is not affiliated with DiGiCo. DiGiCo is a trademark of DiGiCo UK Ltd.*
+*JPMixer is not affiliated with DiGiCo or Allen & Heath. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen & Heath Limited.*
