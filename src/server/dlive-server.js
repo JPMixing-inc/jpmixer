@@ -782,7 +782,12 @@ function stop() {
   stopSendLevelPolling();
   clearMuteSolo();
   if (client) { client.removeAllListeners(); client.disconnect(); client = null; }
-  if (wss) { wss.close(); wss = null; }
+  // wss.close() alone only stops accepting new connections — already-
+  // upgraded sockets are detached from the HTTP server's own tracking (a
+  // known `ws` gotcha) and stay open with their 'message' handler still
+  // referencing this module's shared state. See osc-server.js's stop() for
+  // the same fix, applied there first.
+  if (wss) { for (const c of wss.clients) { try { c.terminate(); } catch (_) {} } wss.close(); wss = null; }
   if (httpServer) { httpServer.close(); httpServer = null; }
   consoleConnected = false;
   if (onConsoleStatusChange) onConsoleStatusChange(false);

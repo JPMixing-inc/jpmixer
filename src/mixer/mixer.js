@@ -117,7 +117,15 @@ function resetHeartbeat() {
 function startWebsocket() {
   ws = new WebSocket('ws://' + document.location.host);
   ws.onopen    = onOpen;
-  ws.onmessage = onMessage;
+  // Wrapped, not assigned directly — monitor.js/console.js/devices.js all
+  // guard their WS message handler the same way; mixer.js's own onMessage()
+  // didn't, so a malformed/unexpected frame (bad JSON, or a shape a future
+  // backend sends that this handler doesn't expect) threw uncaught instead
+  // of just dropping that one message.
+  ws.onmessage = (e) => {
+    try { onMessage(e); }
+    catch (err) { console.error('[JPMixer] onMessage error:', err); }
+  };
   ws.onclose   = noConnection;
   ws.onerror   = noConnection;
 
@@ -145,6 +153,11 @@ function onOpen() {
     if (document.body.classList.contains('eqOpen')) {
       eqBands = {};
       eqActive = null;
+      // A reconnect mid-drag (pointer still captured, eqDragging still set)
+      // would otherwise leave eqDragging pointing at a band eqBands no
+      // longer has an entry for — the next pointermove then throws writing
+      // eqBands[eqDragging].gain on undefined, freezing the drag silently.
+      eqDragging = null;
       renderEQCurve();
       updateEQBandInfo();
       ws.send(JSON.stringify({ type: 'request-aux-eq', aux: selectedAux }));
@@ -849,11 +862,17 @@ function applyConfig(config) {
   // consumed once per page load so a later manual mix switch isn't undone by
   // a WS reconnect re-applying the same config.
   const savedAux = parseInt(localStorage.getItem('aux'));
+  // The savedAux fallback must exclude linkOnly auxes, same as buildAux()'s
+  // own picker-visibility check — otherwise a link-only aux visited once via
+  // ?aux=N gets written to localStorage by selectAux() below, and a later
+  // plain visit (no query string, fresh selectedAux) would silently restore
+  // it as if it were a normal aux, permanently defeating the "hidden, link-
+  // only" guarantee for that device from then on.
   const targetAux = (urlAux !== null && auxConfig.some(a => a.channel === urlAux && a.enabled))
     ? urlAux
     : (selectedAux !== null && auxConfig.some(a => a.channel === selectedAux && a.enabled))
     ? selectedAux
-    : (savedAux && auxConfig.some(a => a.channel === savedAux && a.enabled) ? savedAux : null);
+    : (savedAux && auxConfig.some(a => a.channel === savedAux && a.enabled && !a.linkOnly) ? savedAux : null);
   urlAux = null;
 
   if (targetAux !== null) {
@@ -952,8 +971,12 @@ function selectAux(auxChannel, requestValues, skipReset) {
     ws.send(JSON.stringify({ type: 'set-active-aux', aux: auxChannel }));
   }
 
-  // Persist selection
-  localStorage.setItem('aux', String(auxChannel));
+  // Persist selection — except a link-only aux, which must never be
+  // remembered as the "normal" default (see the matching check on the
+  // read side in applyConfig()). Without this, visiting a hidden ?aux=N
+  // link once would permanently leak that aux back into the picker on
+  // every later plain visit to this device.
+  if (!opt.linkOnly) localStorage.setItem('aux', String(auxChannel));
   if (switching) {
     sceneDirty  = false;
     sceneLocked = hasSavedScene(); // default to locked whenever this aux/snapshot has a saved mix
@@ -1741,7 +1764,10 @@ function closeEQPanel() {
   });
 
   svg.addEventListener('pointermove', e => {
-    if (eqDragging === null) return;
+    // Defensive, matching pointerup's own eqBands[b] check below — a
+    // reconnect mid-drag can otherwise leave eqDragging pointing at a band
+    // eqBands was just reset without (see onOpen()'s reconnect handling).
+    if (eqDragging === null || !eqBands[eqDragging]) return;
     e.preventDefault();
     const { x, y } = clientToSVG(e.clientX, e.clientY);
     eqBands[eqDragging].gain = yToGain(y);

@@ -5,7 +5,12 @@ const path = require('path');
 const { app } = require('electron');
 
 let _scenesPath = null;
-let _scenes = {};  // { snapshotName: { auxChannel: { chNum: sliderValue } } }
+// Object.create(null), not {} — `snapshot` comes straight from a browser
+// client's WS message (save-scene), completely unvalidated. With a normal
+// {} prototype, snapshot: "__proto__" turns `_scenes[snapshot][aux] = values`
+// into `Object.prototype[aux] = values`, polluting every plain object in the
+// process for any client that sends it. See presets.js for the same fix.
+let _scenes = Object.create(null);  // { snapshotName: { auxChannel: { chNum: sliderValue } } }
 
 function scenesPath() {
   if (!_scenesPath) _scenesPath = path.join(app.getPath('userData'), 'scenes.json');
@@ -15,7 +20,10 @@ function scenesPath() {
 // Ear scenes start fresh every time the app launches — wipe both the
 // in-memory store and the persisted file so old snapshots' mixes never linger.
 function clearOnStartup() {
-  _scenes = {};
+  // Object.create(null), not {} — see the note on the initial declaration
+  // above. This runs at every launch and every Console Type switch, so a
+  // plain {} here would silently reintroduce the vulnerability it fixes.
+  _scenes = Object.create(null);
   // Don't write to disk on startup — the file will be written on the first saveScene() call.
 }
 
@@ -26,7 +34,12 @@ function persist() {
 
 function saveScene(snapshot, aux, values) {
   if (!snapshot) return;
-  if (!_scenes[snapshot]) _scenes[snapshot] = {};
+  if (!_scenes[snapshot]) _scenes[snapshot] = Object.create(null);
+  // aux is client-controlled too (save-scene's msg.aux, unvalidated) — a
+  // normal {} here would let aux: "__proto__" silently reassign this one
+  // scene entry's own prototype to attacker data via the __proto__ setter
+  // (distinct from, and in addition to, the snapshot-level pollution fixed
+  // by _scenes itself being null-prototype above).
   _scenes[snapshot][String(aux)] = values;
   persist();
 }
@@ -39,7 +52,9 @@ function deleteScene(snapshot, aux) {
 }
 
 function getScene(snapshot, aux) {
-  return (_scenes[snapshot] || {})[String(aux)] || null;
+  // Same reasoning as presets.js's getPreset(): a plain {} fallback would
+  // let aux: "__proto__" read back a live Object.prototype reference.
+  return (_scenes[snapshot] || Object.create(null))[String(aux)] || null;
 }
 
 function getAll() { return _scenes; }

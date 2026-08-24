@@ -137,6 +137,29 @@ let onOscTraffic = null;
 // Background cache-priming interval
 let cachePrimeInterval = null;
 
+// Paced request-console-state polling — one query per tick, matching
+// primeCache()'s own established-safe pacing below and for the exact same
+// reason (see that function's comment: bursting queries at the console is
+// the prime suspect for a real CommandBridge.dll Access Violation crash).
+// request-console-state fires on every Console Controller page load/
+// reconnect and used to fire ~150-200 sendToDesk() calls synchronously in
+// one tick — this queue+interval replaces that burst.
+let consoleStatePrimeQueue = [];
+let consoleStatePrimeTimer = null;
+function enqueueConsoleStatePrime(fn) { consoleStatePrimeQueue.push(fn); }
+function startConsoleStatePriming() {
+  if (consoleStatePrimeTimer) return; // already draining — new items just extend the same queue
+  consoleStatePrimeTimer = setInterval(() => {
+    const fn = consoleStatePrimeQueue.shift();
+    if (fn) fn();
+    if (consoleStatePrimeQueue.length === 0) stopConsoleStatePriming();
+  }, 100);
+}
+function stopConsoleStatePriming() {
+  if (consoleStatePrimeTimer) { clearInterval(consoleStatePrimeTimer); consoleStatePrimeTimer = null; }
+  consoleStatePrimeQueue = [];
+}
+
 // Paced EQ-param-loading timers, keyed by aux — prevents two overlapping
 // timers for the same aux (e.g. panel closed/reopened quickly, or a
 // reconnect racing an in-flight load) from doubling the query rate
@@ -244,11 +267,19 @@ function sliderToDb(v) {
 function pushSceneValuesToDesk(auxStr, values) {
   const levels = {};
   const aux = parseInt(auxStr);
+  const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
+  // aux/values come straight from client-controlled recall-scene/apply-preset
+  // payloads — an arbitrary object with arbitrary keys/values, not
+  // necessarily produced by mixer.js's own UI. Reject rather than build an
+  // OSC address (and cache key) from an out-of-range or non-finite input —
+  // same lesson as the dLive/KLANG backends' equivalent functions.
+  if (isNaN(aux) || aux < 1 || aux > auxMax) return levels;
   const anySolo = Object.values(soloState[aux] || {}).some(v => v);
   if (!premuteState[aux]) premuteState[aux] = {};
 
   for (const [chStr, sliderVal] of Object.entries(values)) {
     const ch = parseInt(chStr);
+    if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal)) continue;
     const address = `/Input_Channels/${chStr}/Aux_Send/${auxStr}/send_level`;
     const db = sliderToDb(sliderVal);
     const muted    = !!(muteState[aux]?.[ch]);
@@ -784,9 +815,17 @@ function startWebSocketServer() {
         // Client sends levels+pans from localStorage; server pushes them to the desk.
         if (msg.type === 'apply-preset') {
           const auxStr = String(msg.aux);
+          const auxNum = parseInt(auxStr);
+          if (isNaN(auxNum) || auxNum < 1 || auxNum > (serverCfg.auxes || 16)) return;
           const levels = pushSceneValuesToDesk(auxStr, msg.levels || {});
-          for (const [ch, val] of Object.entries(msg.pans || {})) {
-            const addr = `/Input_Channels/${ch}/Aux_Send/${auxStr}/send_pan`;
+          // Same reasoning as pushSceneValuesToDesk — ch/val come straight
+          // from a client-controlled msg.pans object, not the allowlisted
+          // OSC-address path below, so nothing else validates them.
+          const chMax = serverCfg.channels || 48;
+          for (const [chStr, val] of Object.entries(msg.pans || {})) {
+            const ch = parseInt(chStr);
+            if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(val)) continue;
+            const addr = `/Input_Channels/${chStr}/Aux_Send/${auxStr}/send_pan`;
             sendToDesk(addr, [val]);
             cache.set(addr, { address: addr, args: [val] });
           }
@@ -801,6 +840,8 @@ function startWebSocketServer() {
           return;
         }
         if (msg.type === 'request-aux-eq') {
+          const auxNum = parseInt(msg.aux);
+          if (isNaN(auxNum) || auxNum < 1 || auxNum > (serverCfg.auxes || 16)) return;
           const prefix = `/Aux_Outputs/${msg.aux}/EQ/`;
           const eq = {};
           for (const [address, cached] of cache.entries()) {
@@ -856,7 +897,9 @@ function startWebSocketServer() {
             ws.send(JSON.stringify({ address: `/Control_Groups/${cg}/mute`, args: [m ? 1.0 : 0.0] }));
           for (const [cg, s] of Object.entries(cgSolos))
             ws.send(JSON.stringify({ address: `/Control_Groups/${cg}/solo`, args: [s ? 1.0 : 0.0] }));
-          // Poll the desk for current values — responses come back via OSC and broadcast to all clients
+          // Poll the desk for current values — responses come back via OSC
+          // and broadcast to all clients. Paced one query per 100ms tick,
+          // not fired synchronously — see consoleStatePrimeQueue's comment.
           const chCount  = cache.has('/Console/Input_Channels')
             ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
           const auxCount = cache.has('/Console/Aux_Outputs/modes')
@@ -864,89 +907,120 @@ function startWebSocketServer() {
           const cgPollCount = cache.has('/Console/Control_Groups')
             ? cache.get('/Console/Control_Groups').args[0] : 8;
           for (let i = 1; i <= chCount; i++) {
-            sendToDesk(`/Input_Channels/${i}/fader/?`, []);
-            sendToDesk(`/Input_Channels/${i}/mute/?`, []);
+            enqueueConsoleStatePrime(() => sendToDesk(`/Input_Channels/${i}/fader/?`, []));
+            enqueueConsoleStatePrime(() => sendToDesk(`/Input_Channels/${i}/mute/?`, []));
           }
           for (let i = 1; i <= auxCount; i++) {
-            sendToDesk(`/Aux_Outputs/${i}/fader/?`, []);
-            sendToDesk(`/Aux_Outputs/${i}/mute/?`, []);
+            enqueueConsoleStatePrime(() => sendToDesk(`/Aux_Outputs/${i}/fader/?`, []));
+            enqueueConsoleStatePrime(() => sendToDesk(`/Aux_Outputs/${i}/mute/?`, []));
           }
           for (let i = 1; i <= cgPollCount; i++) {
-            sendToDesk(`/Control_Groups/${i}/fader/?`, []);
-            sendToDesk(`/Control_Groups/${i}/mute/?`, []);
-            sendToDesk(`/Control_Groups/${i}/solo/?`, []);
-            sendToDesk(`/Control_Groups/${i}/name/?`, []);
-            sendToDesk(`/Control_Groups/${i}/Channel_Input/name/?`, []);
+            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/fader/?`, []));
+            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/mute/?`, []));
+            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/solo/?`, []));
+            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/name/?`, []));
+            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/Channel_Input/name/?`, []));
           }
+          startConsoleStatePriming();
           return;
         }
 
+        // Console page controls below (console-*/aux-*/cg-*) previously took
+        // ch/aux/cg/db straight from the message with no validation at all —
+        // unlike set-mute/set-solo just above, which bound-check against the
+        // configured/live channel & aux counts. msg.db in particular flowed
+        // straight from Math.log-scaled client input into a real OSC float
+        // sent to the desk with no finiteness check (the same NaN-forwarding
+        // class of bug fixed elsewhere in this pass). These are WS messages,
+        // reachable by anything that opens a connection — not just the
+        // Console Controller page's own UI, since nothing here distinguishes
+        // which HTML page a given connection loaded.
+        const liveChMax  = cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
+        const liveAuxMax = cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
+        const liveCgMax  = cache.has('/Console/Control_Groups') ? cache.get('/Console/Control_Groups').args[0] : (serverCfg.groups || 8);
+
         // Console page — main channel fader
         if (msg.type === 'console-fader') {
-          sendToDesk(`/Input_Channels/${msg.ch}/fader`, [msg.db]);
-          consoleFaders[msg.ch] = msg.db;
-          broadcastToClients({ address: `/Input_Channels/${msg.ch}/fader`, args: [msg.db] });
+          const ch = parseInt(msg.ch);
+          if (isNaN(ch) || ch < 1 || ch > liveChMax || !Number.isFinite(msg.db)) return;
+          sendToDesk(`/Input_Channels/${ch}/fader`, [msg.db]);
+          consoleFaders[ch] = msg.db;
+          broadcastToClients({ address: `/Input_Channels/${ch}/fader`, args: [msg.db] });
           return;
         }
 
         // Console page — main channel mute
         if (msg.type === 'console-mute') {
+          const ch = parseInt(msg.ch);
+          if (isNaN(ch) || ch < 1 || ch > liveChMax) return;
           const val = msg.muted ? 1.0 : 0.0;
-          sendToDesk(`/Input_Channels/${msg.ch}/mute`, [val]);
-          consoleMutes[msg.ch] = msg.muted;
-          broadcastToClients({ address: `/Input_Channels/${msg.ch}/mute`, args: [val] });
+          sendToDesk(`/Input_Channels/${ch}/mute`, [val]);
+          consoleMutes[ch] = msg.muted;
+          broadcastToClients({ address: `/Input_Channels/${ch}/mute`, args: [val] });
           return;
         }
 
         // Console page — main channel solo
         if (msg.type === 'console-solo') {
+          const ch = parseInt(msg.ch);
+          if (isNaN(ch) || ch < 1 || ch > liveChMax) return;
           const val = msg.soloed ? 1.0 : 0.0;
-          sendToDesk(`/Input_Channels/${msg.ch}/solo`, [val]);
-          consoleSolos[msg.ch] = msg.soloed;
-          broadcastToClients({ address: `/Input_Channels/${msg.ch}/solo`, args: [val] });
+          sendToDesk(`/Input_Channels/${ch}/solo`, [val]);
+          consoleSolos[ch] = msg.soloed;
+          broadcastToClients({ address: `/Input_Channels/${ch}/solo`, args: [val] });
           return;
         }
 
         // Console page — aux output fader
         if (msg.type === 'aux-fader') {
-          sendToDesk(`/Aux_Outputs/${msg.aux}/fader`, [msg.db]);
-          auxFaders[msg.aux] = msg.db;
-          broadcastToClients({ address: `/Aux_Outputs/${msg.aux}/fader`, args: [msg.db] });
+          const aux = parseInt(msg.aux);
+          if (isNaN(aux) || aux < 1 || aux > liveAuxMax || !Number.isFinite(msg.db)) return;
+          sendToDesk(`/Aux_Outputs/${aux}/fader`, [msg.db]);
+          auxFaders[aux] = msg.db;
+          broadcastToClients({ address: `/Aux_Outputs/${aux}/fader`, args: [msg.db] });
           return;
         }
 
         // Console page — aux output mute
         if (msg.type === 'aux-mute') {
+          const aux = parseInt(msg.aux);
+          if (isNaN(aux) || aux < 1 || aux > liveAuxMax) return;
           const val = msg.muted ? 1.0 : 0.0;
-          sendToDesk(`/Aux_Outputs/${msg.aux}/mute`, [val]);
-          auxMutes[msg.aux] = msg.muted;
-          broadcastToClients({ address: `/Aux_Outputs/${msg.aux}/mute`, args: [val] });
+          sendToDesk(`/Aux_Outputs/${aux}/mute`, [val]);
+          auxMutes[aux] = msg.muted;
+          broadcastToClients({ address: `/Aux_Outputs/${aux}/mute`, args: [val] });
           return;
         }
 
         // Console page — control group fader
         if (msg.type === 'cg-fader') {
-          sendToDesk(`/Control_Groups/${msg.cg}/fader`, [msg.db]);
-          cgFaders[msg.cg] = msg.db;
-          broadcastToClients({ address: `/Control_Groups/${msg.cg}/fader`, args: [msg.db] });
+          const cg = parseInt(msg.cg);
+          if (isNaN(cg) || cg < 1 || cg > liveCgMax || !Number.isFinite(msg.db)) return;
+          sendToDesk(`/Control_Groups/${cg}/fader`, [msg.db]);
+          cgFaders[cg] = msg.db;
+          broadcastToClients({ address: `/Control_Groups/${cg}/fader`, args: [msg.db] });
           return;
         }
 
         // Console page — control group mute
         if (msg.type === 'cg-mute') {
+          const cg = parseInt(msg.cg);
+          if (isNaN(cg) || cg < 1 || cg > liveCgMax) return;
           const val = msg.muted ? 1.0 : 0.0;
-          sendToDesk(`/Control_Groups/${msg.cg}/mute`, [val]);
-          cgMutes[msg.cg] = msg.muted;
-          broadcastToClients({ address: `/Control_Groups/${msg.cg}/mute`, args: [val] });
+          sendToDesk(`/Control_Groups/${cg}/mute`, [val]);
+          cgMutes[cg] = msg.muted;
+          broadcastToClients({ address: `/Control_Groups/${cg}/mute`, args: [val] });
           return;
         }
 
         // Console page — control group solo
         if (msg.type === 'cg-solo') {
+          const cg = parseInt(msg.cg);
+          if (isNaN(cg) || cg < 1 || cg > liveCgMax) return;
           const val = msg.soloed ? 1.0 : 0.0;
-          sendToDesk(`/Control_Groups/${msg.cg}/solo`, [val]);
-          cgSolos[msg.cg] = msg.soloed;
-          broadcastToClients({ address: `/Control_Groups/${msg.cg}/solo`, args: [val] });
+          sendToDesk(`/Control_Groups/${cg}/solo`, [val]);
+          cgSolos[cg] = msg.soloed;
+          broadcastToClients({ address: `/Control_Groups/${cg}/solo`, args: [val] });
           return;
         }
 
@@ -989,10 +1063,35 @@ function startWebSocketServer() {
         // Rejects snapshot fires, name changes, or other console-level commands.
         const ALLOWED_OSC_RE = /^\/(?:Input_Channels\/\d+\/Aux_Send\/\d+\/send_(?:level|pan)|Aux_Outputs\/\d+\/EQ\/(?:eq_(?:gain|freq|Q)_\d+|eq_in))(\/\?)?$/;
 
+        // The allowlist regex only checks *shape*, not range — \d+ accepts
+        // any digit string, so without this a client can address a channel/
+        // aux number far past what's configured. That both grows `cache`
+        // unboundedly (a bad number never collides with a real one, so
+        // nothing ever evicts it) and sends a fabricated address to the
+        // real console — exactly the kind of malformed/out-of-range traffic
+        // primeCache()'s own comment blames for a real Access Violation
+        // crash. set-mute/set-solo above already bound-check the same way;
+        // this closes the same gap for the raw OSC-address path.
+        function oscAddressWithinConfiguredRange(address) {
+          const chMax  = cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
+          const auxMax = cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
+          const chAux = address.match(/^\/Input_Channels\/(\d+)\/Aux_Send\/(\d+)\/send_(?:level|pan)/);
+          if (chAux) {
+            const ch = parseInt(chAux[1], 10), aux = parseInt(chAux[2], 10);
+            return ch >= 1 && ch <= chMax && aux >= 1 && aux <= auxMax;
+          }
+          const auxEq = address.match(/^\/Aux_Outputs\/(\d+)\/EQ\//);
+          if (auxEq) {
+            const aux = parseInt(auxEq[1], 10);
+            return aux >= 1 && aux <= auxMax;
+          }
+          return false; // shouldn't happen — ALLOWED_OSC_RE already matched one of the two shapes above
+        }
+
         // /? request — respond from cache if available, else relay to desk
         if (oscMsg.address.endsWith('/?')) {
           const key = oscMsg.address.slice(0, -2);
-          if (!ALLOWED_OSC_RE.test(oscMsg.address)) return;
+          if (!ALLOWED_OSC_RE.test(oscMsg.address) || !oscAddressWithinConfiguredRange(key)) return;
           if (cache.has(key)) {
             ws.send(JSON.stringify(cache.get(key)));
           } else {
@@ -1001,7 +1100,12 @@ function startWebSocketServer() {
           return;
         }
 
-        if (!ALLOWED_OSC_RE.test(oscMsg.address)) return;
+        if (!ALLOWED_OSC_RE.test(oscMsg.address) || !oscAddressWithinConfiguredRange(oscMsg.address)) return;
+        // A value-setting message (not a /? query) must carry exactly one
+        // finite number — Math.log-based scaling upstream (sliderToDb) and
+        // this path both feed the console a raw OSC float; NaN/Infinity
+        // would otherwise go out over the wire as a real, malformed value.
+        if (!Array.isArray(oscMsg.args) || oscMsg.args.length !== 1 || !Number.isFinite(oscMsg.args[0])) return;
 
         // Grab the pre-update value so we can tell the Devices view whether
         // this move raised or lowered the level/pan, before it's overwritten.
@@ -1164,8 +1268,13 @@ function start(cfg) {
   // Recent server events — open in browser to diagnose disconnects
   app.get('/api/events', diagOnly, (req, res) => {
     res.setHeader('Content-Type', 'text/html');
+    // e.detail (and, less often, e.type) can carry client-controlled strings
+    // verbatim — a saved preset/scene name, a WS close reason — so this page
+    // isn't safe to build with raw interpolation even though it's gated
+    // localhost-only above.
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const rows = eventLog.slice().reverse().map(e =>
-      `<tr><td>${e.t}</td><td><b>${e.type}</b></td><td>${e.detail}</td></tr>`
+      `<tr><td>${esc(e.t)}</td><td><b>${esc(e.type)}</b></td><td>${esc(e.detail)}</td></tr>`
     ).join('');
     res.send(`<html><head><meta http-equiv="refresh" content="3"><style>
       body{font-family:monospace;font-size:12px;background:#111;color:#eee;padding:12px}
@@ -1303,10 +1412,22 @@ function start(cfg) {
 
   udpPort.on('error', (err) => {
     if (err.code === 'EHOSTDOWN' || err.code === 'EHOSTUNREACH') {
+      // Expected/recoverable — the desk is temporarily unreachable, not a
+      // setup failure. Matches this handler's original behavior.
       console.warn(`[JPMixer] Desk not responding (${err.address})`);
-    } else {
-      console.error('[JPMixer] UDP error:', err.message);
+      return;
     }
+    // A local bind failure (EADDRINUSE/EACCES/EADDRNOTAVAIL on
+    // deskListenPort — the exact scenario the HTTP server's own error
+    // handler above already guards against, e.g. the stop+immediately-
+    // start cycle Save & Apply and Import Backup both do) previously only
+    // logged here, leaving the server "started" but with no working UDP
+    // socket and nothing surfaced to the caller/UI. Bring this in line with
+    // httpServer's error handling.
+    console.error('[JPMixer] UDP error:', err.message || err.code);
+    logEvent('udp-error', `${err.code || err.message} — desk socket failed`);
+    stop();
+    if (onServerError) onServerError(err);
   });
 
   udpPort.on('ready', fetchValues);
@@ -1323,6 +1444,7 @@ function start(cfg) {
 
 function stop() {
   if (cachePrimeInterval)  { clearInterval(cachePrimeInterval);   cachePrimeInterval  = null; }
+  stopConsoleStatePriming();
   if (pingInterval)        { clearInterval(pingInterval);         pingInterval        = null; }
   if (sessionReloadTimer)  { clearTimeout(sessionReloadTimer);    sessionReloadTimer  = null; }
   if (oscLogFlushTimer)    { clearInterval(oscLogFlushTimer);     oscLogFlushTimer    = null; }
@@ -1342,7 +1464,18 @@ function stop() {
   clearMuteSolo();
   if (udpPort) { try { udpPort.close(); } catch (_) {} udpPort = null; }
   ipadPorts.clear();
-  if (wss)         { wss.close();                               wss         = null; }
+  if (wss) {
+    // wss.close() only stops accepting *new* connections — already-upgraded
+    // WebSocket sockets are detached from the HTTP server's own connection
+    // tracking (a known `ws` gotcha) and are left open otherwise. A client
+    // still connected at this exact moment would keep a live socket whose
+    // 'message' handler closure still references this module's shared state
+    // (cache, muteState, etc.), invisible to getConnectedDevicesInfo() but
+    // still able to mutate state after a subsequent start().
+    for (const client of wss.clients) { try { client.terminate(); } catch (_) {} }
+    wss.close();
+    wss = null;
+  }
   if (httpServer)  { httpServer.close();                        httpServer  = null; }
   loaded = false;
   if (onConsoleStatusChange) onConsoleStatusChange(false);

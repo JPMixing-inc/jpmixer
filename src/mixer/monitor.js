@@ -184,7 +184,7 @@ function onMessage(json) {
   }
 
   if (json.address === '/SnapshotName') {
-    document.getElementById('monSnapshot').textContent = json.args[0] || '—';
+    document.getElementById('monSnapshot').textContent = json.args?.[0] || '—';
     return;
   }
 
@@ -443,7 +443,14 @@ function boostAux(auxCh, db) {
   for (const ch of chConfig) {
     if (!ch.enabled) continue;
     const current  = (levels[auxCh] || {})[ch.channel] || 0;
-    const newDb    = Math.min(10, Math.max(-150, sliderToDb(current) + db));
+    // sliderToDb(0) returns the -150 "off" sentinel, not a real dB value —
+    // adding a +0.5 increment on top of literal -150 needs ~120 clicks
+    // before it climbs back past dbToSlider's own -90 "off" cutoff and
+    // produces any audible change at all. Start a boost from the audible
+    // threshold instead of the sentinel so it's never a no-op from silence.
+    const currentDb = sliderToDb(current);
+    const effectiveDb = currentDb <= -90 ? -90 : currentDb;
+    const newDb    = Math.min(10, Math.max(-150, effectiveDb + db));
     const newSlider = dbToSlider(newDb);
     if (!levels[auxCh]) levels[auxCh] = {};
     levels[auxCh][ch.channel] = newSlider;
