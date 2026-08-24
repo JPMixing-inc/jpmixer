@@ -100,9 +100,9 @@ sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
 | Console Controller | ✅ | ❌ not implemented yet | ❌ not implemented yet |
 | Status | Stable | **New — not yet validated on real hardware** | **New — not yet validated on real hardware** |
 
-dLive support talks to the MixRack directly over MIDI/TCP (Utility → Control → MIDI must be turned on at the console, the same way DiGiCo consoles need DiGiCo Pad enabled) and runs as a fully separate backend from the DiGiCo path — selecting it in Settings never touches DiGiCo's OSC connection or behavior. If you're trying it on a real console for the first time, start with aux send levels and keep an eye on the OSC-equivalent traffic; see [Advanced: dLive Setup](#advanced-dlive-setup) for the full walkthrough and the in-app warning on the Setup tab for current known gaps.
+dLive support talks to the MixRack directly over MIDI/TCP (Utility → Control → MIDI must be turned on at the console, the same way DiGiCo consoles need DiGiCo Pad enabled) and runs as a fully separate backend from the DiGiCo path — selecting it in Settings never touches DiGiCo's OSC connection or behavior. If you're trying it on a real console for the first time, start with aux send levels and keep an eye on the OSC-equivalent traffic; see [Advanced: dLive and KLANG Setup](#advanced-dlive-and-klang-setup) for the full walkthrough and the in-app warning on the Setup tab for current known gaps.
 
-KLANG support is for rigs running a KLANG 3D in-ear processor alongside a dLive console — it's a third, independent backend that talks directly to the KLANG processor over OSC (KLANG needs its own dedicated audio feed from the console, patched outside of JPMixer entirely). Musicians' faders control their KLANG mix directly, not the console's aux sends; an optional secondary connection to the paired dLive console supplies channel names and drives Ear Scene recall off the console's own snapshot changes. KLANG's own control protocol has no way to confirm back what value it actually applied, so JPMixer trusts its own last-sent value as the mix state — if someone also has the real KLANG:app open on the same mix, JPMixer won't notice the difference. The paired dLive console setup is the same as for plain dLive support — see [Advanced: dLive Setup](#advanced-dlive-setup) — and the in-app warning on the Setup tab covers current known gaps.
+KLANG support is for rigs running a KLANG 3D in-ear processor alongside a dLive console — it's a third, independent backend that talks directly to the KLANG processor over OSC (KLANG needs its own dedicated audio feed from the console, patched outside of JPMixer entirely). Musicians' faders control their KLANG mix directly, not the console's aux sends; an optional secondary connection to the paired dLive console supplies channel names and drives Ear Scene recall off the console's own snapshot changes. KLANG's own control protocol has no way to confirm back what value it actually applied, so JPMixer trusts its own last-sent value as the mix state — if someone also has the real KLANG:app open on the same mix, JPMixer won't notice the difference. The paired dLive console setup is the same as for plain dLive support — see [Advanced: dLive and KLANG Setup](#advanced-dlive-and-klang-setup) — and the in-app warning on the Setup tab covers current known gaps.
 
 ---
 
@@ -118,7 +118,7 @@ KLANG support is for rigs running a KLANG 3D in-ear processor alongside a dLive 
 
 1. Open JPMixer — it appears in the menu bar / system tray
 2. Click the icon → **Settings**
-3. **Setup tab** — pick your **Console Type** (DiGiCo, dLive, or KLANG), then enter the console's IP address and connection details (DiGiCo: OSC ports, send `8000` / listen `8001` by default; dLive/KLANG: Base MIDI Channel and, if enabled, TLS credentials — see [Advanced: dLive Setup](#advanced-dlive-setup) for the full walkthrough)
+3. **Setup tab** — pick your **Console Type** (DiGiCo, dLive, or KLANG), then enter the console's IP address and connection details (DiGiCo: OSC ports, send `8000` / listen `8001` by default; dLive/KLANG: Base MIDI Channel and, if enabled, TLS credentials — see [Advanced: dLive and KLANG Setup](#advanced-dlive-and-klang-setup) for the full walkthrough)
 4. **Channels tab** — assign icons and labels; set channel/aux counts to match your patch
 5. **Auxes tab** — name each aux bus, assign colours, turn on EQ per aux if you want musicians to have it (DiGiCo only), and mark any aux **Link** to hide it from the public mix picker
 6. Click **Save & Apply** — the server starts automatically
@@ -130,9 +130,9 @@ For the full engineer setup guide and musician handout guide, see the [Releases 
 
 ---
 
-## Advanced: dLive Setup
+## Advanced: dLive and KLANG Setup
 
-dLive support is new (unvalidated on real hardware — see [Console Support](#console-support)) and connects very differently from DiGiCo, so it gets its own walkthrough. This applies whether you're using the plain **Allen & Heath dLive** console type or **KLANG (paired with dLive)** — both use the same console-side connection.
+dLive and KLANG support are both new (unvalidated on real hardware — see [Console Support](#console-support)) and connect very differently from DiGiCo, so they get their own walkthrough. If you're using **KLANG (paired with dLive)**, read both the dLive section below (its console-side connection is optional but recommended) *and* the dedicated [KLANG Setup](#klang-setup) section further down — the dLive steps alone are not enough to get musician mix control working in KLANG mode, since that's carried entirely over the separate KLANG connection.
 
 ### On the console, before opening JPMixer
 
@@ -167,6 +167,24 @@ Aux send levels, mute/solo (emulated the same way as DiGiCo — driving the send
 - **It connects but nothing responds** — try the alternate port (51328) in the MIDI/TCP Port Override field.
 - **Levels seem stale or don't update live** — make sure "Poll send levels as a backup" is on; it re-requests values in the background regardless of whether live push updates are actually happening.
 - Since this hasn't been run against real hardware yet, if you do test it, the most useful first thing to check is aux send levels — that's the single message type this integration leans on hardest and the one most worth confirming works before trusting anything else.
+
+### KLANG Setup
+
+This is the part that actually carries musician mix control in KLANG mode — the dLive connection above is only for channel names and Ear Scene snapshot-following, and is optional. Skipping this section is the most likely reason KLANG mode would "connect" (dLive side green) but nobody hears anything change.
+
+**Before any of this — audio routing.** KLANG needs its own dedicated multitrack audio feed (MADI, Dante, or analog) patched directly from the console to the KLANG processor. That's a physical/audio decision made at the console and patchbay, entirely outside JPMixer — the app only ever sends control messages, never audio. If that feed isn't patched, nothing below will produce sound no matter how correctly it's configured.
+
+1. **Find the KLANG processor's IP address.** Check **KLANG:app → CONFIG → CONNECT** on any device already talking to the processor, or the unit's own front-panel network info. Without a DHCP server on the network, KLANG defaults to a link-local `169.254.x.y` address — for a stable setup, either put a DHCP server on that network or assign the KLANG processor a fixed IP.
+2. **In JPMixer's Settings (Setup tab)**, enter that address in **KLANG Processor IP Address**. Leave **KLANG Port Override** at `0` unless you have a specific reason to change it — KLANG's documented default (9110) is what JPMixer uses.
+3. **Match channel numbers.** JPMixer's channel *N* has to line up with the same input channel *N* as shown in **KLANG:app → CONFIG → CHANNELS → INPUT**. If KLANG's input list is patched in a different order than JPMixer's Channels tab, faders will move the wrong performer's channel.
+4. **Match mix numbers.** JPMixer's aux *N* is KLANG's **MIX *N*** — the same numbering as the analog output labels USER1–USER8 (USER1 = mix 1, etc.). Set up your aux list on JPMixer's Auxes tab to correspond to the musicians' actual MIX assignments on KLANG.
+5. **Set each mix to Stereo placement mode in KLANG:app.** JPMixer's pan control only does anything meaningful in KLANG's *stereo* placement mode — it sends the azimuth parameter as a plain left/center/right pan (-90°/0°/+90°). In 3D or i3D mode, azimuth means a full spatial position around a 360° orbit instead, so JPMixer's pan slider wouldn't behave as expected. JPMixer never sets a mix's placement mode itself — do this once per mix in KLANG:app before use.
+
+**KLANG-specific troubleshooting:**
+- **dLive side shows connected but KLANG never moves** — the two connections are entirely independent; check the KLANG Processor IP Address separately from the dLive Console IP Address.
+- **Levels move but nothing is audible** — almost always the audio routing prerequisite above, not a JPMixer/network issue.
+- **Pan doesn't do anything** — confirm the mix is set to Stereo mode in KLANG:app (step 5).
+- **No way to tell if it's actually working from JPMixer's side alone** — KLANG's control protocol doesn't confirm back what value it actually applied (see [Console Support](#console-support)), so JPMixer has no read-back to show you. Watching the levels change live in KLANG:app on another device is the most reliable way to confirm control is actually working end to end.
 
 ---
 
