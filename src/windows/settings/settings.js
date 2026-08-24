@@ -107,6 +107,7 @@ const fields = {
   dlivePassword:    { el: $('dlivePassword'),    key: 'dlivePassword',    parse: String },
   klangIp:          { el: $('klangIp'),          key: 'klangIp',          parse: String },
   klangPort:        { el: $('klangPort'),        key: 'klangPort',        parse: Number },
+  wingPort:         { el: $('wingPort'),         key: 'wingPort',         parse: Number },
 };
 
 // Only one console's connection fields are relevant at a time — DiGiCo's
@@ -117,12 +118,16 @@ function updateConsoleTypeFields() {
   const consoleType = $('consoleType').value;
   const isDlive = consoleType === 'dlive';
   const isKlang = consoleType === 'klang';
+  const isWing  = consoleType === 'wing';
   isDliveType = isDlive;
-  isConsoleControllerUnsupported = isDlive || isKlang;
+  isConsoleControllerUnsupported = isDlive || isKlang || isWing;
 
-  $('digicoPortsRow').style.display = (isDlive || isKlang) ? 'none' : '';
+  $('digicoPortsRow').style.display = (isDlive || isKlang || isWing) ? 'none' : '';
   $('klangIpRow').style.display     = isKlang ? '' : 'none';
   $('klangFieldsRow').style.display = isKlang ? '' : 'none';
+  $('wingFieldsRow').style.display  = isWing ? '' : 'none';
+  // WING is self-contained (reuses Console IP Address directly, like plain
+  // dLive) — it never touches the dLive-specific fields block at all.
   $('dliveFieldsRow').style.display = (isDlive || isKlang) ? '' : 'none';
   $('dliveAuthRow').style.display   = ((isDlive || isKlang) && $('dliveTlsEnabled').checked) ? '' : 'none';
   $('dliveWarningText').textContent = isKlang
@@ -134,8 +139,8 @@ function updateConsoleTypeFields() {
   // sends (this integration doesn't use the separate stereo-aux pool). The
   // server now degrades gracefully past that rather than crashing, but
   // catching it here means nobody has to find that out by hitting it. KLANG
-  // has no documented equivalent ceiling, so its channel/aux(=MIX) counts
-  // stay at the generic defaults.
+  // and WING have no documented equivalent ceiling, so their channel/aux
+  // counts stay at the generic defaults.
   $('channels').max = isDlive ? '128' : '256';
   $('auxes').max     = isDlive ? '62'  : '64';
   if (isDlive && Number($('channels').value) > 128) $('channels').value = '128';
@@ -145,6 +150,11 @@ function updateConsoleTypeFields() {
 }
 $('consoleType').addEventListener('change', updateConsoleTypeFields);
 $('dliveTlsEnabled').addEventListener('change', updateConsoleTypeFields);
+
+$('wingPort').addEventListener('change', () => {
+  const raw = Number($('wingPort').value) || 0;
+  $('wingPort').value = (raw === 0) ? 0 : Math.max(1, Math.min(65535, raw));
+});
 
 $('klangPort').addEventListener('change', () => {
   const raw = Number($('klangPort').value) || 0;
@@ -235,7 +245,7 @@ function renderAuxes() {
   // setting) — disable the toggle so it doesn't look like a live control
   // that silently does nothing.
   const consoleType = $('consoleType').value;
-  const eqDisabled = consoleType === 'dlive' || consoleType === 'klang';
+  const eqDisabled = consoleType === 'dlive' || consoleType === 'klang' || consoleType === 'wing';
 
   for (let i = 1; i <= auxCount; i++) {
     const ov      = auxOverrides[String(i)] || {};
@@ -713,6 +723,9 @@ function collectConfig() {
   }
   if (out.klangPort !== 0 && (!Number.isInteger(out.klangPort) || out.klangPort < 1 || out.klangPort > 65535)) {
     out.klangPort = 0; // 0 = use the documented default port (9110)
+  }
+  if (out.wingPort !== 0 && (!Number.isInteger(out.wingPort) || out.wingPort < 1 || out.wingPort > 65535)) {
+    out.wingPort = 0; // 0 = use the documented default port (2223)
   }
   out.autoStart           = $('autoStart').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;

@@ -183,8 +183,14 @@ let primeTimer = null;
 
 function enqueuePrime(fn) { primeQueue.push(fn); }
 
+// Bug fixed here: this used to call stopPriming() first, which clears
+// primeQueue — but every real call site enqueues the whole batch *then*
+// calls startPriming() once, so that reset wiped the queue before the
+// interval ever fired a single tick. Priming (channel/aux names and
+// colours) has never actually run as a result. Verified with a standalone
+// repro before fixing: 5 enqueued calls, 0 executed after 500ms.
 function startPriming() {
-  stopPriming();
+  if (primeTimer) return; // already running — a fresh enqueue just extends the same queue
   primeTimer = setInterval(() => {
     const fn = primeQueue.shift();
     if (fn) fn();

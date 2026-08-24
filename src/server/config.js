@@ -39,7 +39,11 @@ const DEFAULTS = {
   // dLive* fields above are reused for this mode's optional secondary
   // connection (channel names + Ear Scene sync) — see klang-server.js.
   klangIp: '',
-  klangPort: 0 // 0 = use the documented default (9110)
+  klangPort: 0, // 0 = use the documented default (9110)
+  // Behringer WING — only read when consoleType is 'wing'. Reuses deskIp
+  // above for the console's address, same as the DiGiCo/dLive paths do —
+  // WING is self-contained, no secondary connection needed.
+  wingPort: 0 // 0 = use the documented default (2223)
 };
 
 let _config = { ...DEFAULTS };

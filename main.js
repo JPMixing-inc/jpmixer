@@ -79,11 +79,11 @@ let serverRunning = false;
 
 // Lazy-require so config uses app.getPath after app is ready
 let config, server, presets, scenes, autoBackup;
-// All three console backends are required up front but only one is ever
+// All four console backends are required up front but only one is ever
 // started — `server` is just a reference picked by console type in
 // startServer(). Each is a fully separate module from the others; picking
 // between them here is the only place any of them meet.
-let oscServer, dliveServer, klangServer;
+let oscServer, dliveServer, klangServer, wingServer;
 // Tracks which Ear Scenes keying scheme ('name' vs 'number') was last
 // active, so a Console Type change that crosses that boundary (not just a
 // Start/Stop of the same one) can clear stale entries — see startServer().
@@ -94,12 +94,13 @@ app.whenReady().then(() => {
   oscServer  = require('./src/server/osc-server');
   dliveServer = require('./src/server/dlive-server');
   klangServer = require('./src/server/klang-server');
+  wingServer  = require('./src/server/wing-server');
   server     = oscServer;
   presets    = require('./src/server/presets');
   scenes     = require('./src/server/scenes');
   autoBackup = require('./src/server/auto-backup');
   autoBackup.start();
-  for (const s of [oscServer, dliveServer, klangServer]) {
+  for (const s of [oscServer, dliveServer, klangServer, wingServer]) {
     s.setConsoleStatusCallback(broadcastConsoleStatus);
     s.setConnectionCountCallback(broadcastConnectionCount);
     s.setServerErrorCallback(handleServerError);
@@ -200,7 +201,7 @@ function rebuildTrayMenu() {
 
 function startServer() {
   const consoleType = config.get('consoleType');
-  const family = consoleType === 'dlive' ? 'dlive' : consoleType === 'klang' ? 'klang' : 'digico';
+  const family = consoleType === 'dlive' ? 'dlive' : consoleType === 'klang' ? 'klang' : consoleType === 'wing' ? 'wing' : 'digico';
   // Ear Scenes are keyed by snapshot *name* for DiGiCo and scene *number*
   // for dLive/KLANG (KLANG's backend reuses the paired dLive console's scene
   // number for the same reason the plain dLive backend does) — two
@@ -213,13 +214,17 @@ function startServer() {
   // mixed in with the new ones — dlive<->klang doesn't cross that boundary,
   // since both key by number, so only compare the *keying scheme*, not the
   // exact family, to avoid an unnecessary clear on that specific switch.
+  // WING never produces a snapshot key at all (no scene/snapshot signal
+  // over its OSC layer — see wing-protocol.js), so save-scene/recall-scene
+  // are permanent no-ops there regardless of which scheme it's grouped
+  // with; 'number' is picked arbitrarily for consistency with dlive/klang.
   const keyScheme = family === 'digico' ? 'name' : 'number';
   if (lastSceneKeyScheme !== null && lastSceneKeyScheme !== keyScheme && scenes) {
     scenes.clearOnStartup();
   }
   lastSceneKeyScheme = keyScheme;
 
-  server = family === 'dlive' ? dliveServer : family === 'klang' ? klangServer : oscServer;
+  server = family === 'dlive' ? dliveServer : family === 'klang' ? klangServer : family === 'wing' ? wingServer : oscServer;
   try {
     server.start(config.getAll());
     serverRunning = true;

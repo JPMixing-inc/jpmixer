@@ -81,6 +81,27 @@ async function main() {
   musicianWs.send(JSON.stringify({ type: 'set-active-aux', aux: 1 }));
   await new Promise((r) => setTimeout(r, 100));
 
+  // ── Channel names actually get primed via a real request/reply round trip ──
+  // Regression test: startPriming() used to call stopPriming() first, which
+  // clears the very queue enqueuePrime() just filled — so every enqueued
+  // priming call (channel/aux name and colour requests) silently never ran.
+  // Reproduced directly before fixing (5 enqueued, 0 executed after 500ms).
+  {
+    const ch1Coord = P.coordinate(0, 'input', 1);
+    const nameGetBytes = P.buildNameGet(ch1Coord.midiCh, ch1Coord.ch);
+    const sawNameRequest = () => containsSubsequence(received.flat(), nameGetBytes);
+    // Priming is paced at 75ms/tick — give it real time to reach channel 1.
+    const deadline = Date.now() + 1000;
+    while (!sawNameRequest() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(sawNameRequest(), 'dlive-server.js should actually send a Name Get request for channel 1 on connect');
+
+    const nameReply = P.buildNameSet(ch1Coord.midiCh, ch1Coord.ch, 'Kick');
+    mockSocket.write(Buffer.from(nameReply));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(server.getChannelNames()['1'], 'Kick', 'the primed name should actually reach getChannelNames()');
+    console.log('ok - channel names are actually primed via a real request/reply round trip (regression: startPriming() used to wipe its own queue)');
+  }
+
   // ── Devices view client sees the musician ────────────────────────────
   const devicesWs = new WebSocket(`ws://127.0.0.1:${serverPort}`);
   await new Promise((resolve) => devicesWs.once('open', resolve));
