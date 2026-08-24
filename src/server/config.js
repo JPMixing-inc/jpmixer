@@ -34,7 +34,12 @@ const DEFAULTS = {
   // How to keep aux send levels in sync — see dlive-server.js's file header.
   // Both on by default until push is confirmed reliable on real hardware.
   dliveListenSendLevels: true,
-  dlivePollSendLevels: true
+  dlivePollSendLevels: true,
+  // KLANG (for dLive consoles) — only read when consoleType is 'klang'. The
+  // dLive* fields above are reused for this mode's optional secondary
+  // connection (channel names + Ear Scene sync) — see klang-server.js.
+  klangIp: '',
+  klangPort: 0 // 0 = use the documented default (9110)
 };
 
 let _config = { ...DEFAULTS };

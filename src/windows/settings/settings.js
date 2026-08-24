@@ -105,20 +105,37 @@ const fields = {
   dliveMidiPort:    { el: $('dliveMidiPort'),    key: 'dliveMidiPort',    parse: Number },
   dliveUsername:    { el: $('dliveUsername'),    key: 'dliveUsername',    parse: String },
   dlivePassword:    { el: $('dlivePassword'),    key: 'dlivePassword',    parse: String },
+  klangIp:          { el: $('klangIp'),          key: 'klangIp',          parse: String },
+  klangPort:        { el: $('klangPort'),        key: 'klangPort',        parse: Number },
 };
 
 // Only one console's connection fields are relevant at a time — DiGiCo's
-// send/listen OSC ports vs dLive's base MIDI channel/TLS/auth.
+// send/listen OSC ports vs dLive's base MIDI channel/TLS/auth vs KLANG's
+// processor IP/port (which also reuses the dLive fields for its own
+// optional, paired-console connection — see klang-server.js).
 function updateConsoleTypeFields() {
-  const isDlive = $('consoleType').value === 'dlive';
+  const consoleType = $('consoleType').value;
+  const isDlive = consoleType === 'dlive';
+  const isKlang = consoleType === 'klang';
   isDliveType = isDlive;
-  $('digicoPortsRow').style.display = isDlive ? 'none' : '';
-  $('dliveFieldsRow').style.display = isDlive ? '' : 'none';
-  $('dliveAuthRow').style.display = (isDlive && $('dliveTlsEnabled').checked) ? '' : 'none';
+  isConsoleControllerUnsupported = isDlive || isKlang;
+
+  $('digicoPortsRow').style.display = (isDlive || isKlang) ? 'none' : '';
+  $('klangIpRow').style.display     = isKlang ? '' : 'none';
+  $('klangFieldsRow').style.display = isKlang ? '' : 'none';
+  $('dliveFieldsRow').style.display = (isDlive || isKlang) ? '' : 'none';
+  $('dliveAuthRow').style.display   = ((isDlive || isKlang) && $('dliveTlsEnabled').checked) ? '' : 'none';
+  $('dliveWarningText').textContent = isKlang
+    ? 'When set, this must point at the same console — under Utility → Control → MIDI — that KLANG is paired with.'
+    : '⚠️ dLive support is new and hasn’t been validated on real hardware yet. Aux send levels, mute, and scene recall work; per-send pan, EQ, and the Console Controller are not implemented for dLive.';
+  $('deskIpLabel').textContent = isKlang ? 'dLive Console IP Address (optional)' : 'Console IP Address';
+
   // dLive's protocol has a hard ceiling — 128 input channels, 62 mono aux
   // sends (this integration doesn't use the separate stereo-aux pool). The
   // server now degrades gracefully past that rather than crashing, but
-  // catching it here means nobody has to find that out by hitting it.
+  // catching it here means nobody has to find that out by hitting it. KLANG
+  // has no documented equivalent ceiling, so its channel/aux(=MIX) counts
+  // stay at the generic defaults.
   $('channels').max = isDlive ? '128' : '256';
   $('auxes').max     = isDlive ? '62'  : '64';
   if (isDlive && Number($('channels').value) > 128) $('channels').value = '128';
@@ -128,6 +145,11 @@ function updateConsoleTypeFields() {
 }
 $('consoleType').addEventListener('change', updateConsoleTypeFields);
 $('dliveTlsEnabled').addEventListener('change', updateConsoleTypeFields);
+
+$('klangPort').addEventListener('change', () => {
+  const raw = Number($('klangPort').value) || 0;
+  $('klangPort').value = (raw === 0) ? 0 : Math.max(1, Math.min(65535, raw));
+});
 
 // <input min/max> doesn't stop an out-of-range typed/pasted value from
 // sitting in .value — collectConfig() clamps what actually gets saved, but
@@ -148,6 +170,7 @@ $('dliveMidiPort').addEventListener('change', () => {
 let isRunning          = false;
 let isDemoMode         = false;
 let isDliveType        = false;
+let isConsoleControllerUnsupported = false; // dLive and KLANG both lack a Console Controller backend
 let channelGroups      = [];   // [{ id, name }]
 let channelOverrides   = {};   // { "1": { label, icon, groupId, order, enabled } }
 let channelOrder       = [];   // ordered list of channel numbers, e.g. [1, 3, 2, ...]
@@ -207,11 +230,12 @@ function renderAuxes() {
   const list    = $('auxesList');
   list.innerHTML = '';
   const auxCount = parseInt($('auxes').value) || 16;
-  // dLive doesn't implement per-send EQ (see dlive-server.js's buildConfig,
-  // which reports eqEnabled: false for every aux regardless of this
-  // per-aux setting) — disable the toggle so it doesn't look like a live
-  // control that silently does nothing.
-  const eqDisabled = $('consoleType').value === 'dlive';
+  // Neither dLive nor KLANG implement per-send EQ (both backends' buildConfig
+  // report eqEnabled: false for every aux regardless of this per-aux
+  // setting) — disable the toggle so it doesn't look like a live control
+  // that silently does nothing.
+  const consoleType = $('consoleType').value;
+  const eqDisabled = consoleType === 'dlive' || consoleType === 'klang';
 
   for (let i = 1; i <= auxCount; i++) {
     const ov      = auxOverrides[String(i)] || {};
@@ -221,7 +245,7 @@ function renderAuxes() {
 
     const eqEnabled = ov.eqEnabled === true;
     const linkOnly  = ov.linkOnly === true;
-    const eqTitle = eqDisabled ? "Per-send EQ isn't implemented for dLive yet" : 'Show EQ button on mixer page';
+    const eqTitle = eqDisabled ? "Per-send EQ isn't implemented for this console type yet" : 'Show EQ button on mixer page';
 
     const row = document.createElement('div');
     row.className = 'ch-editor-row';
@@ -687,6 +711,9 @@ function collectConfig() {
   if (out.dliveMidiPort !== 0 && (!Number.isInteger(out.dliveMidiPort) || out.dliveMidiPort < 1 || out.dliveMidiPort > 65535)) {
     out.dliveMidiPort = 0; // 0 = use the documented default port
   }
+  if (out.klangPort !== 0 && (!Number.isInteger(out.klangPort) || out.klangPort < 1 || out.klangPort > 65535)) {
+    out.klangPort = 0; // 0 = use the documented default port (9110)
+  }
   out.autoStart           = $('autoStart').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;
   out.autoBackupEnabled   = $('autoBackupEnabled').checked;
@@ -738,16 +765,16 @@ function setStatus(running) {
   $('monitorBtnHint').style.display = running ? 'none' : '';
   $('devicesBtnHint').style.display = running ? 'none' : '';
   // The Console Controller (main faders, mutes, solos, control groups) isn't
-  // implemented on the dLive backend yet — dlive-server.js doesn't handle
+  // implemented on the dLive or KLANG backends yet — neither server handles
   // any of console.js's message types except fire-snapshot, and nothing
   // ever answers request-console-state. Left open, the page would render
   // fully interactive-looking strips that silently do nothing on a real
   // console — worse than just not opening it. Disable the entry point
   // instead of shipping a page that only pretends to work.
-  $('openConsoleBtn').disabled = isDliveType;
-  if (isDliveType) {
+  $('openConsoleBtn').disabled = isConsoleControllerUnsupported;
+  if (isConsoleControllerUnsupported) {
     $('consoleBtnHint').style.display = '';
-    $('consoleBtnHint').textContent = 'Not available for dLive yet — main faders, mutes, and solos aren’t implemented on this backend.';
+    $('consoleBtnHint').textContent = 'Not available yet — main faders, mutes, and solos aren’t implemented on this backend.';
   } else {
     $('consoleBtnHint').style.display = running ? 'none' : '';
     $('consoleBtnHint').textContent = 'Start the server first to open.';

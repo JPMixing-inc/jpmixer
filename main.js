@@ -79,26 +79,27 @@ let serverRunning = false;
 
 // Lazy-require so config uses app.getPath after app is ready
 let config, server, presets, scenes, autoBackup;
-// Both console backends are required up front but only one is ever started —
-// `server` is just a reference picked by console type in startServer(). The
-// dLive path (dlive-server.js) is a fully separate module from osc-server.js;
-// picking between them here is the only place the two ever meet.
-let oscServer, dliveServer;
-// Tracks which console family was last started, so a Console Type change
-// (not just a Start/Stop of the same one) can clear stale Ear Scenes —
-// see the note in startServer() below.
-let lastConsoleFamily = null;
+// All three console backends are required up front but only one is ever
+// started — `server` is just a reference picked by console type in
+// startServer(). Each is a fully separate module from the others; picking
+// between them here is the only place any of them meet.
+let oscServer, dliveServer, klangServer;
+// Tracks which Ear Scenes keying scheme ('name' vs 'number') was last
+// active, so a Console Type change that crosses that boundary (not just a
+// Start/Stop of the same one) can clear stale entries — see startServer().
+let lastSceneKeyScheme = null;
 
 app.whenReady().then(() => {
   config     = require('./src/server/config');
   oscServer  = require('./src/server/osc-server');
   dliveServer = require('./src/server/dlive-server');
+  klangServer = require('./src/server/klang-server');
   server     = oscServer;
   presets    = require('./src/server/presets');
   scenes     = require('./src/server/scenes');
   autoBackup = require('./src/server/auto-backup');
   autoBackup.start();
-  for (const s of [oscServer, dliveServer]) {
+  for (const s of [oscServer, dliveServer, klangServer]) {
     s.setConsoleStatusCallback(broadcastConsoleStatus);
     s.setConnectionCountCallback(broadcastConnectionCount);
     s.setServerErrorCallback(handleServerError);
@@ -198,23 +199,27 @@ function rebuildTrayMenu() {
 // ─── Server lifecycle ─────────────────────────────────────────────────────────
 
 function startServer() {
-  const family = config.get('consoleType') === 'dlive' ? 'dlive' : 'digico';
+  const consoleType = config.get('consoleType');
+  const family = consoleType === 'dlive' ? 'dlive' : consoleType === 'klang' ? 'klang' : 'digico';
   // Ear Scenes are keyed by snapshot *name* for DiGiCo and scene *number*
-  // for dLive — two incompatible schemes sharing the same in-memory store,
-  // which normally never matters (only one console type is ever active).
-  // But that store only auto-clears once per app launch, not per server
-  // restart (by design — Ear Scenes should survive a Start/Stop of the
-  // *same* console mid-session). Switching Console Type is the one case
-  // that would otherwise leave the old scheme's entries lingering, mixed in
-  // with the new ones, in the Ear Scenes browser. Clear only on an actual
-  // family change, not on every restart, to avoid disturbing that
-  // established behavior for the common case.
-  if (lastConsoleFamily !== null && lastConsoleFamily !== family && scenes) {
+  // for dLive/KLANG (KLANG's backend reuses the paired dLive console's scene
+  // number for the same reason the plain dLive backend does) — two
+  // incompatible schemes sharing the same in-memory store, which normally
+  // never matters (only one console type is ever active). But that store
+  // only auto-clears once per app launch, not per server restart (by design
+  // — Ear Scenes should survive a Start/Stop of the *same* console
+  // mid-session). Switching between the name-keyed and number-keyed schemes
+  // is the one case that would otherwise leave stale entries lingering,
+  // mixed in with the new ones — dlive<->klang doesn't cross that boundary,
+  // since both key by number, so only compare the *keying scheme*, not the
+  // exact family, to avoid an unnecessary clear on that specific switch.
+  const keyScheme = family === 'digico' ? 'name' : 'number';
+  if (lastSceneKeyScheme !== null && lastSceneKeyScheme !== keyScheme && scenes) {
     scenes.clearOnStartup();
   }
-  lastConsoleFamily = family;
+  lastSceneKeyScheme = keyScheme;
 
-  server = family === 'dlive' ? dliveServer : oscServer;
+  server = family === 'dlive' ? dliveServer : family === 'klang' ? klangServer : oscServer;
   try {
     server.start(config.getAll());
     serverRunning = true;
