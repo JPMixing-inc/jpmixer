@@ -7,8 +7,8 @@
     "test": "node --test tests/*.test.js",
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
-    "build": "electron-builder --mac --publish never",
-    "build:dmg": "electron-builder --mac dmg --x64 --arm64 --publish never",
+    "build": "rm -rf dist && electron-builder --mac dmg --universal --publish never",
+    "build:dmg": "rm -rf dist && electron-builder --mac dmg --universal --publish never",
     "build:win": "electron-builder --win --publish never"
   },
   "build": {
@@ -27,15 +27,22 @@
       "!assets/ScreenShots/**",
       "!assets/design/**",
       "!assets/Icons For instruments/*.zip",
-      "!assets/Icons For instruments/120-PNG-Images-MusicalInstrumentsBundle/**"
+      "!assets/Icons For instruments/120-PNG-Images-MusicalInstrumentsBundle/**",
+      "!src/**/*.test.js",
+      "!src/server/_fake-electron-for-tests.js"
     ],
     "mac": {
       "category": "public.app-category.music",
       "icon": "assets/icon.icns",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] },
-        { "target": "pkg", "arch": ["arm64", "x64"] }
-      ]
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}.${ext}"
     },
     "win": {
       "icon": "assets/icon.ico",
