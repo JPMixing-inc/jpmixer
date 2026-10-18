@@ -4,6 +4,7 @@
   "description": "JPMixer — browser-based monitor mix control for DiGiCo consoles",
   "main": "main.js",
   "scripts": {
+    "test": "node --test tests/*.test.js",
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
     "build": "electron-builder --mac --publish never",
@@ -22,7 +23,11 @@
       "!assets/icon.iconset",
       "!assets/trayTemplateFinal.png",
       "!assets/DMG background.png",
-      "!assets/DMG Icon and App Icon.png"
+      "!assets/DMG Icon and App Icon.png",
+      "!assets/ScreenShots/**",
+      "!assets/design/**",
+      "!assets/Icons For instruments/*.zip",
+      "!assets/Icons For instruments/120-PNG-Images-MusicalInstrumentsBundle/**"
     ],
     "mac": {
       "category": "public.app-category.music",

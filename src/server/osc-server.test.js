@@ -114,17 +114,21 @@ async function main() {
     console.log('ok - console-fader rejects out-of-range channel and non-finite/non-numeric db');
   }
   {
+    // The moving page itself no longer gets its own (by then older) position
+    // echoed back — that made the thumb jitter — so watch from a second client.
+    const ws3 = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+    await new Promise((r) => ws3.on('open', r));
     const gotEcho = new Promise((resolve) => {
-      const handler = (m) => {
+      ws3.on('message', (m) => {
         const j = JSON.parse(m);
         if (j.address === '/Input_Channels/1/fader' && j.args[0] === -6) resolve(true);
-      };
-      ws.on('message', handler);
+      });
     });
     ws.send(JSON.stringify({ type: 'console-fader', ch: 1, db: -6 }));
     assert.equal(await Promise.race([gotEcho, new Promise((r) => setTimeout(() => r(false), 500))]), true,
-      'a legitimate console-fader move must still broadcast — the validation fix must not be over-broad');
-    console.log('ok - a legitimate console-fader move still broadcasts normally');
+      'a legitimate console-fader move must still broadcast to other clients — the validation fix must not be over-broad');
+    ws3.close();
+    console.log('ok - a legitimate console-fader move still broadcasts to other clients');
   }
 
   // ── save-scene / save-preset: "__proto__" cannot pollute Object.prototype ─

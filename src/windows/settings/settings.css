@@ -657,6 +657,19 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   margin-bottom: 6px;
 }
 
+/* Set Name / Merge Into controls under each device group */
+.mixes-tab-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 8px;
+}
+.mixes-tab-tools input[type="text"] { flex: 1 1 140px; min-width: 0; }
+.mixes-tab-tools select { flex: 1 1 160px; min-width: 0; }
+
+.url-hint { margin-top: 2px; max-width: 360px; }
+
 .mixes-tab-row {
   display: flex;
   align-items: center;

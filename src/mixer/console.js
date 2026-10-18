@@ -34,6 +34,7 @@ let cgSolos        = {};  // cg → bool
 let heartbeatTimer = null;
 let hasConnected   = false;
 let disconnectTimer = null;
+let reconnectTimer = null;
 
 // ── WebSocket ─────────────────────────────────────────────────────────────
 
@@ -43,6 +44,12 @@ function resetHeartbeat() {
 }
 
 function connect() {
+  // Only ever one live socket — the close handler's retry and the
+  // visibilitychange handler can both land here, and an orphaned second
+  // socket would keep receiving updates and send its own request-console-state.
+  clearTimeout(reconnectTimer);
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}`);
 
@@ -63,7 +70,7 @@ function connect() {
       document.body.classList.add('disconnected');
       if (hasConnected) document.getElementById('overlayMsg').textContent = 'Reconnecting…';
     }, 2500);
-    setTimeout(connect, 1000);
+    reconnectTimer = setTimeout(connect, 1000);
   });
 
   ws.addEventListener('message', e => {
@@ -80,6 +87,14 @@ function connect() {
 
 function onMessage(json) {
   if (json.config) {
+    // Desk loaded a different session — everything cached here belongs to the
+    // old one, so drop it and ask the server for the new session's state
+    if (json.config.sessionReload) {
+      consoleFaders = {}; consoleMutes = {}; consoleSolos = {};
+      auxFaders     = {}; auxMutes     = {};
+      cgFaders      = {}; cgMutes      = {}; cgSolos      = {};
+      send({ type: 'request-console-state' });
+    }
     chConfig  = json.config.channels || [];
     auxConfig = json.config.aux || [];
     cgConfig  = json.config.controlGroups || [];
@@ -194,6 +209,27 @@ function onMessage(json) {
 
 // ── Fader helpers ─────────────────────────────────────────────────────────
 
+// Same 30ms send throttle as the mixer's faders — an unthrottled drag sends
+// a desk message on every touchmove, and each one comes back as an echo.
+function throttle(fn, ms) {
+  let last = 0, timer = null;
+  return (...args) => {
+    const now = Date.now();
+    const remaining = ms - (now - last);
+    clearTimeout(timer);
+    if (remaining <= 0) { last = now; fn(...args); }
+    else timer = setTimeout(() => { last = Date.now(); fn(...args); }, remaining);
+  };
+}
+
+// While a fader is held (and briefly after release), incoming values for it
+// are ignored — desk echoes of older positions arrive mid-drag and would
+// otherwise yank the thumb and dB readout back.
+const ECHO_HOLD_MS = 400;
+function holdFader(fader)    { fader._held = true; }
+function releaseFader(fader) { fader._held = false; fader._holdUntil = Date.now() + ECHO_HOLD_MS; }
+function isFaderHeld(fader)  { return fader._held || Date.now() < (fader._holdUntil || 0); }
+
 // Thumb-only vertical fader control via a transparent touch/mouse overlay.
 // A touch that starts away from the thumb passes through to scrolling the
 // strip row; a touch that starts near the thumb defers to its first move to
@@ -244,6 +280,7 @@ function lockToThumb(fader, wrap, scrollSelector) {
     }
     tDecided   = false;
     tScrolling = false;
+    holdFader(fader);
     e.preventDefault();
   }, { passive: false });
 
@@ -255,6 +292,7 @@ function lockToThumb(fader, wrap, scrollSelector) {
     if (!tDecided && (dx > 4 || dy > 4)) {
       tDecided   = true;
       tScrolling = dx > dy; // horizontal = scroll the strip row, vertical = fader
+      if (tScrolling) fader._held = false;
     }
 
     if (tScrolling) {
@@ -266,17 +304,24 @@ function lockToThumb(fader, wrap, scrollSelector) {
     e.preventDefault();
   }, { passive: false });
 
-  overlay.addEventListener('touchend', () => {
-    if (!tScrolling) fader.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  const onTouchEnd = () => {
+    if (!tScrolling) {
+      fader.dispatchEvent(new Event('change', { bubbles: true }));
+      releaseFader(fader);
+    }
+  };
+  overlay.addEventListener('touchend', onTouchEnd);
+  overlay.addEventListener('touchcancel', onTouchEnd);
 
   // ── Mouse (desktop) ────────────────────────────────────────────────────
   overlay.addEventListener('mousedown', e => {
     if (!nearThumb(e.clientY)) return;
+    holdFader(fader);
     const onMove = ev => apply(valueFromY(ev.clientY));
     const onUp   = ev => {
       apply(valueFromY(ev.clientY));
       fader.dispatchEvent(new Event('change', { bubbles: true }));
+      releaseFader(fader);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onUp);
     };
@@ -331,13 +376,16 @@ function buildChStrip(ch) {
   fader.className = 'ch-fader';
   fader.min = '0'; fader.max = '1'; fader.step = '0.001';
   fader.value = String(sliderVal);
+  const sendFader = () => send({ type: 'console-fader', ch: ch.channel, db: sliderToDb(parseFloat(fader.value)) });
+  const sendFaderThrottled = throttle(sendFader, 30);
   fader.addEventListener('input', () => {
     const newDb = sliderToDb(parseFloat(fader.value));
     fill.style.height = `calc((100% - 12px) * ${fader.value})`;
     dbEl.textContent = formatDb(newDb);
     consoleFaders[ch.channel] = newDb;
-    send({ type: 'console-fader', ch: ch.channel, db: newDb });
+    sendFaderThrottled();
   });
+  fader.addEventListener('change', sendFader); // final position on release
   lockToThumb(fader, faderWrap, '.strips-scroll');
 
   faderWrap.append(track, fill, fader);
@@ -416,12 +464,19 @@ function buildAuxStrip(aux) {
   fader.className = 'aux-fader';
   fader.min = '0'; fader.max = '1'; fader.step = '0.001';
   fader.value = String(sliderVal);
+  const sendFader = () => send({ type: 'aux-fader', aux: aux.channel, db: sliderToDb(parseFloat(fader.value)) });
+  const sendFaderThrottled = throttle(sendFader, 30);
   fader.addEventListener('input', () => {
     const newDb = sliderToDb(parseFloat(fader.value));
     dbEl.textContent = formatDb(newDb);
     auxFaders[aux.channel] = newDb;
-    send({ type: 'aux-fader', aux: aux.channel, db: newDb });
+    sendFaderThrottled();
   });
+  fader.addEventListener('change', sendFader); // final position on release
+  // Native range input (no lockToThumb overlay) — hold it via pointer events
+  fader.addEventListener('pointerdown',   () => holdFader(fader));
+  fader.addEventListener('pointerup',     () => releaseFader(fader));
+  fader.addEventListener('pointercancel', () => releaseFader(fader));
   faderWrap.appendChild(fader);
 
   const dbEl = document.createElement('div');
@@ -479,13 +534,16 @@ function buildCGStrip(cg) {
   fader.className = 'ch-fader';
   fader.min = '0'; fader.max = '1'; fader.step = '0.001';
   fader.value = String(sliderVal);
+  const sendFader = () => send({ type: 'cg-fader', cg: cg.channel, db: sliderToDb(parseFloat(fader.value)) });
+  const sendFaderThrottled = throttle(sendFader, 30);
   fader.addEventListener('input', () => {
     const newDb = sliderToDb(parseFloat(fader.value));
     fill.style.height = `calc((100% - 12px) * ${fader.value})`;
     dbEl.textContent = formatDb(newDb);
     cgFaders[cg.channel] = newDb;
-    send({ type: 'cg-fader', cg: cg.channel, db: newDb });
+    sendFaderThrottled();
   });
+  fader.addEventListener('change', sendFader); // final position on release
   lockToThumb(fader, faderWrap, '.cg-scroll');
 
   faderWrap.append(track, fill, fader);
@@ -526,12 +584,15 @@ function buildCGStrip(cg) {
 
 function updateChFader(ch, db) {
   const sliderVal = dbToSlider(db);
-  document.querySelectorAll(`.ch-strip[data-ch="${ch}"] .ch-fader`).forEach(f => {
+  document.querySelectorAll(`.ch-strip[data-ch="${ch}"]`).forEach(strip => {
+    const f = strip.querySelector('.ch-fader');
+    if (!f || isFaderHeld(f)) return;
     f.value = sliderVal;
-    const fill = f.closest('.ch-fader-wrap').querySelector('.ch-fader-fill');
+    const fill = strip.querySelector('.ch-fader-fill');
     if (fill) fill.style.height = `calc((100% - 12px) * ${sliderVal})`;
+    const dbEl = strip.querySelector('.ch-db');
+    if (dbEl) dbEl.textContent = formatDb(db);
   });
-  document.querySelectorAll(`.ch-db[data-ch="${ch}"]`).forEach(el => { el.textContent = formatDb(db); });
 }
 
 function updateChMute(ch, muted) {
@@ -558,8 +619,13 @@ function updateChSolo(ch, soloed) {
 
 function updateAuxFader(aux, db) {
   const sliderVal = dbToSlider(db);
-  document.querySelectorAll(`.aux-strip[data-aux="${aux}"] .aux-fader`).forEach(f => { f.value = sliderVal; });
-  document.querySelectorAll(`.aux-db[data-aux="${aux}"]`).forEach(el => { el.textContent = formatDb(db); });
+  document.querySelectorAll(`.aux-strip[data-aux="${aux}"]`).forEach(strip => {
+    const f = strip.querySelector('.aux-fader');
+    if (!f || isFaderHeld(f)) return;
+    f.value = sliderVal;
+    const dbEl = strip.querySelector('.aux-db');
+    if (dbEl) dbEl.textContent = formatDb(db);
+  });
 }
 
 function updateAuxMute(aux, muted) {
@@ -569,12 +635,15 @@ function updateAuxMute(aux, muted) {
 
 function updateCGFader(cg, db) {
   const sliderVal = dbToSlider(db);
-  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .ch-fader`).forEach(f => {
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"]`).forEach(strip => {
+    const f = strip.querySelector('.ch-fader');
+    if (!f || isFaderHeld(f)) return;
     f.value = sliderVal;
-    const fill = f.closest('.ch-fader-wrap').querySelector('.cg-fader-fill');
+    const fill = strip.querySelector('.cg-fader-fill');
     if (fill) fill.style.height = `calc((100% - 12px) * ${sliderVal})`;
+    const dbEl = strip.querySelector('.ch-db');
+    if (dbEl) dbEl.textContent = formatDb(db);
   });
-  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .ch-db`).forEach(el => { el.textContent = formatDb(db); });
 }
 
 function updateCGMute(cg, muted) {

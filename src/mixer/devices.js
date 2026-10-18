@@ -36,6 +36,8 @@ function connect() {
     document.body.classList.remove('disconnected');
     document.getElementById('connDot').classList.add('connected');
     resetHeartbeat();
+    // device-activity is only sent to pages that ask for it
+    ws.send(JSON.stringify({ type: 'subscribe-activity' }));
   });
 
   ws.addEventListener('close', () => {

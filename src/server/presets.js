@@ -1,12 +1,12 @@
 'use strict';
 
-const fs   = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const { toNullProto } = require('./safe-object');
+const { writeFileAtomic, loadJsonObject } = require('./safe-write');
 
-let _presetsPath = null;
-// { [deviceId]: { [name]: { levels: { ch: sliderVal }, pans: { ch: panVal } } } }
+// { [deviceId]: { [name]: { levels: { ch: sliderVal }, pans: { ch: panVal }, owner?, aux?, savedAt? } } }
+// owner/aux/savedAt are only on newer saves — older entries just have levels + pans.
 // Object.create(null), not {} — deviceId and name both come straight from a
 // browser client's WS message (save-preset), completely unvalidated. With a
 // normal {} prototype, deviceId: "__proto__" turns `_presets[deviceId][name]
@@ -15,39 +15,85 @@ let _presetsPath = null;
 // object has no __proto__/constructor/etc. accessors to hijack.
 let _presets = Object.create(null);
 
-function presetsPath() {
-  if (!_presetsPath) _presetsPath = path.join(app.getPath('userData'), 'presets.json');
-  return _presetsPath;
-}
+// { [oldDeviceId]: newDeviceId } — written when Settings merges one device's
+// mixes into another. A phone (or browser origin) still using the old id then
+// reads and writes the merged group instead of starting a new orphan.
+// Kept in its own file so presets.json keeps its existing format. Keys are
+// client-supplied device ids too, so null-prototype for the same reason.
+let _aliases = Object.create(null);
+
+function dataPath(file) { return path.join(app.getPath('userData'), file); }
 
 function load() {
-  try {
-    const p = presetsPath();
-    // toNullProto matters here too, not just at the initial declaration —
-    // JSON.parse's own result has a normal Object.prototype, which would
-    // silently reintroduce the exact vulnerability the null-prototype
-    // stores below exist to close, the next time savePreset() runs.
-    if (fs.existsSync(p)) _presets = toNullProto(JSON.parse(fs.readFileSync(p, 'utf8')));
-  } catch (e) { _presets = Object.create(null); }
+  // toNullProto matters here too, not just at the declarations — JSON.parse's
+  // result has a normal Object.prototype, which would silently reintroduce the
+  // vulnerability the next time savePreset() runs. On a corrupt file, write
+  // the recovered copy straight back: the broken one was moved aside, and a
+  // missing file would load as empty next launch.
+  let presetsCorrupt = false, aliasesCorrupt = false;
+  const presets = loadJsonObject(dataPath('presets.json'), app.getPath('userData'), 'presets',
+    (msg) => { presetsCorrupt = true; console.error('[JPMixer] ' + msg); });
+  if (presets) _presets = toNullProto(presets);
+  const aliases = loadJsonObject(dataPath('preset-aliases.json'), app.getPath('userData'), 'presetAliases',
+    (msg) => { aliasesCorrupt = true; console.error('[JPMixer] ' + msg); });
+  if (aliases) _aliases = toNullProto(aliases);
+  if (presetsCorrupt) persist();
+  if (aliasesCorrupt) persistAliases();
 }
 
 function persist() {
-  try { fs.writeFileSync(presetsPath(), JSON.stringify(_presets, null, 2)); }
-  catch (e) { console.error('[JPMixer] Preset save error:', e); }
+  try {
+    writeFileAtomic(dataPath('presets.json'), JSON.stringify(_presets, null, 2));
+    return true;
+  } catch (e) {
+    console.error('[JPMixer] Preset save error:', e);
+    return false;
+  }
 }
 
-function savePreset(deviceId, name, levels, pans) {
-  if (!name || !deviceId) return;
-  if (!_presets[deviceId]) _presets[deviceId] = Object.create(null);
-  _presets[deviceId][name] = { levels: levels || {}, pans: pans || {} };
-  persist();
+function persistAliases() {
+  try { writeFileAtomic(dataPath('preset-aliases.json'), JSON.stringify(_aliases, null, 2)); }
+  catch (e) { console.error('[JPMixer] Preset alias save error:', e); }
+}
+
+// Follows merge aliases to the device id that actually holds the mixes
+function resolve(deviceId) {
+  let id = deviceId;
+  for (let hops = 0; hops < 20 && _aliases[id]; hops++) id = _aliases[id];
+  return id;
+}
+
+const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+const sameMix = (a, b) => JSON.stringify(a.levels || {}) === JSON.stringify(b.levels || {})
+                       && JSON.stringify(a.pans || {})   === JSON.stringify(b.pans || {});
+// Copy of a device bucket that stays null-prototype (a {...spread} would not)
+const copyBucket = (bucket) => Object.assign(Object.create(null), bucket);
+
+function savePreset(deviceId, name, levels, pans, meta) {
+  if (!name || !deviceId) return false;
+  const id = resolve(deviceId);
+  const previous = _presets[id];
+  _presets[id] = copyBucket(previous);
+  const entry = { levels: levels || {}, pans: pans || {}, savedAt: new Date().toISOString() };
+  if (meta && meta.owner) entry.owner = meta.owner;
+  if (meta && meta.aux != null) entry.aux = meta.aux;
+  _presets[id][name] = entry;
+  if (persist()) return true;
+  if (previous) _presets[id] = previous;
+  else delete _presets[id];
+  return false;
 }
 
 function deletePreset(deviceId, name) {
-  if (!_presets[deviceId]) return;
-  delete _presets[deviceId][name];
-  if (Object.keys(_presets[deviceId]).length === 0) delete _presets[deviceId];
-  persist();
+  const id = resolve(deviceId);
+  if (!_presets[id]) return true;
+  const previous = _presets[id];
+  _presets[id] = copyBucket(previous);
+  delete _presets[id][name];
+  if (Object.keys(_presets[id]).length === 0) delete _presets[id];
+  if (persist()) return true;
+  _presets[id] = previous;
+  return false;
 }
 
 function getPreset(deviceId, name) {
@@ -55,20 +101,113 @@ function getPreset(deviceId, name) {
   // a live reference to Object.prototype itself (not a write, but still a
   // reference leak a caller could go on to mutate) — same reasoning as the
   // write paths above, just on the read side.
-  return (_presets[deviceId] || Object.create(null))[name] || null;
+  return (_presets[resolve(deviceId)] || Object.create(null))[name] || null;
 }
 
 function getByDevice(deviceId) {
-  return _presets[deviceId] || Object.create(null);
+  return _presets[resolve(deviceId)] || Object.create(null);
 }
 
 function getAll() { return _presets; }
+function getAliases() { return _aliases; }
 
-// Wholesale replace — used when restoring from a backup file
-function replaceAll(data) {
+// "Find My Mixes" — a phone whose localStorage was wiped also loses its device
+// id, so its old backup can't be found by id. Search every device's mixes by
+// owner name or mix name instead (empty query lists everything), one result
+// per device, newest first. Names and metadata only — the phone fetches the
+// levels with getByDevice() once the musician picks a result.
+function findGroups(query, excludeDeviceId) {
+  const q = String(query || '').trim().toLowerCase();
+  const exclude = excludeDeviceId ? resolve(excludeDeviceId) : null;
+  const groups = [];
+  for (const [deviceId, mixes] of Object.entries(_presets)) {
+    if (deviceId === exclude) continue;
+    const entries = Object.entries(mixes || {});
+    if (entries.length === 0) continue;
+
+    const owners = [...new Set(entries.map(([, p]) => p && p.owner).filter(Boolean))];
+    const matches = !q
+      || owners.some(o => o.toLowerCase().includes(q))
+      || entries.some(([name]) => name.toLowerCase().includes(q));
+    if (!matches) continue;
+
+    let lastSaved = null, lastAux = null;
+    for (const [, p] of entries) {
+      if (p && p.savedAt && (!lastSaved || p.savedAt > lastSaved)) {
+        lastSaved = p.savedAt;
+        lastAux   = p.aux ?? null;
+      }
+    }
+    groups.push({
+      deviceId,
+      names: entries.map(([name]) => name).sort((a, b) => a.localeCompare(b)),
+      owners,
+      lastSaved,
+      lastAux
+    });
+  }
+  // Newest first; older saves with no savedAt sort to the bottom
+  groups.sort((a, b) => (b.lastSaved || '').localeCompare(a.lastSaved || ''));
+  return groups.slice(0, 50);
+}
+
+// Settings → My Mixes → Merge. Moves every mix from one device group into
+// another (an identical mix already there is skipped, a different one with
+// the same name is kept as "Name (2)"), then aliases the old id to the new
+// one. Callers write a backup first — this removes the source group.
+function mergeDevices(fromId, toId) {
+  const from = resolve(fromId), to = resolve(toId);
+  if (!from || !to || from === to) return { ok: false, error: 'Pick two different devices.' };
+  const source = _presets[from];
+  if (!source) return { ok: false, error: 'That device has no mixes.' };
+  if (!_presets[to]) _presets[to] = Object.create(null);
+  const target = _presets[to];
+
+  let moved = 0, renamed = 0;
+  for (const [name, mix] of Object.entries(source)) {
+    if (has(target, name) && sameMix(target[name], mix)) continue;
+    let newName = name;
+    for (let n = 2; has(target, newName); n++) newName = `${name} (${n})`;
+    if (newName !== name) renamed++;
+    target[newName] = mix;
+    moved++;
+  }
+  delete _presets[from];
+  _aliases[from] = to;
+  persist();
+  persistAliases();
+  return { ok: true, moved, renamed, toId: to };
+}
+
+// Settings → My Mixes → Set Name. Stamps the musician's name on every mix in
+// the group so Find My Mixes can match it by name.
+function setOwner(deviceId, owner) {
+  const id = resolve(deviceId);
+  const mixes = _presets[id];
+  if (!mixes) return { ok: false, error: 'That device has no mixes.' };
+  const clean = String(owner || '').trim().slice(0, 64);
+  for (const mix of Object.values(mixes)) {
+    if (!mix || typeof mix !== 'object') continue;
+    if (clean) mix.owner = clean;
+    else delete mix.owner;
+  }
+  persist();
+  return { ok: true };
+}
+
+// Wholesale replace — used when restoring from a backup file. Aliases are
+// only replaced when the backup has them (v1 backups predate aliases).
+function replaceAll(data, aliases) {
   _presets = toNullProto((data && typeof data === 'object') ? data : {});
   persist();
+  if (aliases && typeof aliases === 'object') {
+    _aliases = toNullProto(aliases);
+    persistAliases();
+  }
 }
 
 load();
-module.exports = { savePreset, deletePreset, getPreset, getByDevice, getAll, replaceAll };
+module.exports = {
+  savePreset, deletePreset, getPreset, getByDevice, getAll, getAliases, findGroups,
+  mergeDevices, setOwner, resolve, replaceAll
+};

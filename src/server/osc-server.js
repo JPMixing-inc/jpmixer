@@ -9,6 +9,7 @@ const fs       = require('fs');
 const { app }  = require('electron');
 const scenes   = require('./scenes');
 const presets  = require('./presets');
+const shared   = require('./shared-handlers');
 const config   = require('./config');
 const { mountGreenRoom } = require('./greenroom');
 
@@ -25,6 +26,36 @@ function logEvent(type, detail) {
   eventLog.push(entry);
   if (eventLog.length > 100) eventLog.shift();
   console.log(`[JPMixer] ${type}: ${detail}`);
+  writeEventLogFile(entry);
+}
+
+// The in-memory ring above is gone after a crash or quit, so every event is
+// also appended to jpmixer-events.log in the OSC logs folder (Settings → OSC
+// Log → open folder). Events are low-rate (connects, saves, recalls, errors —
+// never per-fader), so a synchronous append is fine. Rotates at 1 MB,
+// keeping 3 old files.
+const EVENT_LOG_MAX_BYTES = 1024 * 1024;
+const EVENT_LOG_KEEP      = 3;
+let eventLogFile  = null;
+let eventLogBytes = 0;
+
+function writeEventLogFile(entry) {
+  try {
+    if (!eventLogFile) {
+      eventLogFile = path.join(oscLogRecordsFolder(), 'jpmixer-events.log');
+      try { eventLogBytes = fs.statSync(eventLogFile).size; } catch (_) { eventLogBytes = 0; }
+    }
+    const line = `${entry.t}  ${entry.type}  ${entry.detail}\n`;
+    if (eventLogBytes + line.length > EVENT_LOG_MAX_BYTES) {
+      for (let i = EVENT_LOG_KEEP - 1; i >= 1; i--) {
+        try { fs.renameSync(`${eventLogFile}.${i}`, `${eventLogFile}.${i + 1}`); } catch (_) {}
+      }
+      try { fs.renameSync(eventLogFile, `${eventLogFile}.1`); } catch (_) {}
+      eventLogBytes = 0;
+    }
+    fs.appendFileSync(eventLogFile, line);
+    eventLogBytes += Buffer.byteLength(line);
+  } catch (_) {} // logging must never take the server down
 }
 
 // Ring buffer of raw OSC traffic (desk ⇄ server) for the Settings "OSC Log" view.
@@ -139,33 +170,38 @@ let onOscTraffic = null;
 // Background cache-priming interval
 let cachePrimeInterval = null;
 
-// Paced request-console-state polling — one query per tick, matching
-// primeCache()'s own established-safe pacing below and for the exact same
-// reason (see that function's comment: bursting queries at the console is
-// the prime suspect for a real CommandBridge.dll Access Violation crash).
-// request-console-state fires on every Console Controller page load/
-// reconnect and used to fire ~150-200 sendToDesk() calls synchronously in
-// one tick — this queue+interval replaces that burst.
-let consoleStatePrimeQueue = [];
-let consoleStatePrimeTimer = null;
-function enqueueConsoleStatePrime(fn) { consoleStatePrimeQueue.push(fn); }
-function startConsoleStatePriming() {
-  if (consoleStatePrimeTimer) return; // already draining — new items just extend the same queue
-  consoleStatePrimeTimer = setInterval(() => {
-    const fn = consoleStatePrimeQueue.shift();
-    if (fn) fn();
-    if (consoleStatePrimeQueue.length === 0) stopConsoleStatePriming();
+// Paced, deduped queue for desk queries after startup — browser cache misses,
+// EQ loading, Console state, aux refresh and background priming all share one
+// query per 100ms tick. See the note on primeCache for why queries are never
+// bursted at the desk.
+const deskQueryQueue  = [];
+const deskQueryQueued = new Set();
+let deskQueryTimer    = null;
+
+function queueDeskQueries(addresses) {
+  for (const a of addresses) {
+    if (deskQueryQueued.has(a)) continue;
+    deskQueryQueued.add(a);
+    deskQueryQueue.push(a);
+  }
+  if (deskQueryTimer || deskQueryQueue.length === 0) return;
+  deskQueryTimer = setInterval(() => {
+    const next = deskQueryQueue.shift();
+    if (next === undefined) {
+      clearInterval(deskQueryTimer);
+      deskQueryTimer = null;
+      return;
+    }
+    deskQueryQueued.delete(next);
+    sendToDesk(next, []);
   }, 100);
 }
-function stopConsoleStatePriming() {
-  if (consoleStatePrimeTimer) { clearInterval(consoleStatePrimeTimer); consoleStatePrimeTimer = null; }
-  consoleStatePrimeQueue = [];
-}
 
-// Paced EQ-param-loading timers, keyed by aux — prevents two overlapping
-// timers for the same aux (e.g. panel closed/reopened quickly, or a
-// reconnect racing an in-flight load) from doubling the query rate
-const eqPrimeTimers = new Map();
+function clearDeskQueries() {
+  if (deskQueryTimer) { clearInterval(deskQueryTimer); deskQueryTimer = null; }
+  deskQueryQueue.length = 0;
+  deskQueryQueued.clear();
+}
 
 // Connection watchdog — pings clients to detect silent disconnects
 let pingInterval = null;
@@ -185,12 +221,25 @@ const cgFaders      = {}; // cg  → dB
 const cgMutes       = {}; // cg  → bool
 const cgSolos       = {}; // cg  → bool
 
+function clearConsoleState() {
+  for (const state of [consoleFaders, consoleMutes, consoleSolos, auxFaders, auxMutes, cgFaders, cgMutes, cgSolos]) {
+    for (const k of Object.keys(state)) delete state[k];
+  }
+}
+
 // Snapshot tracking
 let currentSnapshotName = '';
 let currentSnapshot     = -1;
 
 // Debounce timer for session-change reloads
 let sessionReloadTimer  = null;
+let sceneRecallTimer = null;
+let metadataFetchTimer = null;
+
+function cancelSceneRecall() {
+  clearTimeout(sceneRecallTimer);
+  sceneRecallTimer = null;
+}
 
 // ── Colour helper ─────────────────────────────────────────────────────────
 
@@ -224,16 +273,17 @@ function applyMuteSolo(aux) {
     const soloed   = !!(soloState[aux]?.[ch]);
     const silenced = muted || (anySolo && !soloed);
 
+    // Paced: a solo toggle rewrites every channel in the mix
     if (silenced) {
       if (premuteState[aux][ch] === undefined) {
         premuteState[aux][ch] = cache.get(key).args[0];
       }
-      sendToDesk(key, [-150]);
+      sendToDeskPaced(key, [-150]);
     } else {
       const restore = premuteState[aux][ch] !== undefined
         ? premuteState[aux][ch]
         : cache.get(key).args[0];
-      sendToDesk(key, [restore]);
+      sendToDeskPaced(key, [restore]);
       cache.set(key, { address: key, args: [restore] });
       restoredLevels[ch] = restore;
       delete premuteState[aux][ch];
@@ -319,6 +369,23 @@ function setAuxLabel(n, label) {
   return true;
 }
 
+// The desk reports the physical -150 dB used to implement mute/solo. Keep
+// that echo separate from the musician's logical fader value. This also
+// applies an existing solo to channels whose first reply arrives later.
+function processDeskSendLevel(msg) {
+  const match = msg.address.match(/^\/Input_Channels\/(\d+)\/Aux_Send\/(\d+)\/send_level$/);
+  if (!match) return msg;
+  const [, ch, aux] = match;
+  const silenced = muteState[aux]?.[ch]
+    || (Object.values(soloState[aux] || {}).some(Boolean) && !soloState[aux]?.[ch]);
+  if (!silenced) return msg;
+  if (!premuteState[aux]) premuteState[aux] = {};
+  const db = msg.args[0];
+  if (db !== -150 || premuteState[aux][ch] === undefined) premuteState[aux][ch] = db;
+  if (db !== -150) sendToDeskPaced(msg.address, [-150]);
+  return { ...msg, args: [premuteState[aux][ch], ...msg.args.slice(1)] };
+}
+
 // ── Scene recall ───────────────────────────────────────────────────────────
 
 function sliderToDb(v) {
@@ -326,9 +393,10 @@ function sliderToDb(v) {
   return db === -Infinity ? -150 : db;
 }
 
-// Sends one aux's saved scene values to the desk and updates server-side
-// caches so desk echoes don't race the broadcast; returns the { chStr: sliderVal }
-// map to send back to clients.
+// Sends one aux's saved scene values to the desk (paced — see sendToDeskPaced)
+// and updates server-side caches right away, so the cache, the clients and
+// any desk echoes all agree; returns the { chStr: sliderVal } map to send
+// back to clients.
 function pushSceneValuesToDesk(auxStr, values) {
   const levels = {};
   const aux = parseInt(auxStr);
@@ -358,10 +426,10 @@ function pushSceneValuesToDesk(auxStr, values) {
     if (silenced) {
       // Channel is silenced — store real level so unmute restores to the recalled value
       premuteState[aux][ch] = db;
-      sendToDesk(address, [-150]);
+      sendToDeskPaced(address, [-150]);
     } else {
       delete premuteState[aux][ch];
-      sendToDesk(address, [db]);
+      sendToDeskPaced(address, [db]);
     }
   }
   return levels;
@@ -394,7 +462,7 @@ function applySceneForSnapshot(snapshotName) {
 
 // ── Config builder — sent to every new browser client ─────────────────────
 
-function buildConfig() {
+function buildConfig(extra) {
   const auxCount = cache.has('/Console/Aux_Outputs/modes')
     ? cache.get('/Console/Aux_Outputs/modes').args.length
     : (serverCfg.auxes || 16);
@@ -496,7 +564,8 @@ function buildConfig() {
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
       scenes: scenes.getAll(),
       mutes: muteState,
-      solos: soloState
+      solos: soloState,
+      ...extra
     }
   });
 }
@@ -527,7 +596,48 @@ function maybeCacheResponse(msg) {
 
 // ── Broadcast helpers ─────────────────────────────────────────────────────
 
+// Paced queue for bulk *set* messages to the desk — Ear Scene recalls, My Mix
+// loads and mute/solo re-applies. A snapshot change used to write every
+// channel of every aux with a scene in one synchronous loop (16 auxes × 50
+// channels = 800 UDP packets at once), against the "never burst the desk"
+// rule above, and enough to drop packets on a busy network. Now a few go out
+// per tick. Keyed by address: a newer queued value replaces an older one, and
+// a direct sendToDesk() to the same address (a live fader move) cancels the
+// queued write so it can't land late and undo the move.
+// Tune on real hardware — 8 per 10ms ≈ 800/s: one aux of 50 channels lands in
+// ~70ms, a full 800-message recall in ~1s.
+const DESK_SET_BATCH   = 8;
+const DESK_SET_TICK_MS = 10;
+const deskSetQueue = new Map(); // address → args
+let deskSetTimer   = null;
+
+function sendToDeskPaced(address, args) {
+  deskSetQueue.delete(address); // re-insert so send order follows the latest write
+  deskSetQueue.set(address, args);
+  if (deskSetTimer) return;
+  deskSetTimer = setInterval(() => {
+    let sent = 0;
+    for (const [addr, a] of deskSetQueue) {
+      deskSetQueue.delete(addr);
+      rawSendToDesk(addr, a);
+      if (++sent >= DESK_SET_BATCH) break;
+    }
+    if (deskSetQueue.size === 0) { clearInterval(deskSetTimer); deskSetTimer = null; }
+  }, DESK_SET_TICK_MS);
+}
+
+function clearDeskSetQueue() {
+  if (deskSetTimer) { clearInterval(deskSetTimer); deskSetTimer = null; }
+  if (deskSetQueue.size) logEvent('desk-set-dropped', `${deskSetQueue.size} queued writes discarded`);
+  deskSetQueue.clear();
+}
+
 function sendToDesk(address, args) {
+  if (deskSetQueue.size) deskSetQueue.delete(address); // supersedes a queued paced write
+  rawSendToDesk(address, args);
+}
+
+function rawSendToDesk(address, args) {
   if (!udpPort || !serverCfg.deskIp) return;
   try {
     udpPort.send({ address, args: args || [] }, serverCfg.deskIp, serverCfg.deskSendPort);
@@ -580,13 +690,18 @@ function broadcastDevicesUpdate() {
   broadcastToClients({ type: 'devices-update', devices: getConnectedDevicesInfo() });
 }
 
-function broadcastToClients(msg) {
+// device-activity → Devices view only, rate-limited — see shared-handlers.js
+function broadcastActivity(msg, fromWs) {
+  shared.broadcastActivity(connections, msg, fromWs);
+}
+
+function broadcastToClients(msg, excludeSocket) {
   const payload = typeof msg === 'string' ? msg : JSON.stringify(msg);
   const alive = [];
   for (const conn of connections) {
     if (conn.readyState === WebSocket.OPEN) {
       alive.push(conn);
-      conn.send(payload);
+      if (conn !== excludeSocket) conn.send(payload);
     }
   }
   connections = alive;
@@ -616,10 +731,12 @@ function broadcast(oscMsg, excludeIpOrSocket) {
 // ── Sequential loader — polls desk until all metadata is cached ───────────
 
 function fetchValues() {
+  clearTimeout(metadataFetchTimer);
+  metadataFetchTimer = null;
   if (loaded) return;
   sendToDesk('/Console/Channels/?', []);
   console.log('[JPMixer] Requesting console metadata…');
-  setTimeout(fetchValues, 3000);
+  metadataFetchTimer = setTimeout(fetchValues, 3000);
 }
 
 function loadNextRequiredParameter() {
@@ -659,8 +776,19 @@ function loadNextRequiredParameter() {
   sendToDesk('/Snapshots/Current_Snapshot/?', []);
 
   loaded = true;
+  clearTimeout(metadataFetchTimer);
+  metadataFetchTimer = null;
   logEvent('metadata-loaded', `clients:${connections.length}`);
   if (onConsoleStatusChange) onConsoleStatusChange(true);
+
+  // wss already running means this was a session-change reload with pages
+  // still connected — they only get the layout on connect otherwise, so push
+  // the new session's config, then refresh the auxes people are actively
+  // mixing ahead of background priming.
+  if (wss) {
+    broadcastToClients(buildConfig({ sessionReload: true }));
+    queueActiveAuxRefresh();
+  }
   startWebSocketServer();
 
   // Prime aux send levels in the background
@@ -677,6 +805,8 @@ function loadNextRequiredParameter() {
 // performer opens it anyway. Do not raise this without confirming on real
 // hardware, not just a demo-mode/local test.
 function primeCache() {
+  if (deskQueryQueue.length > 0) return; // yield the tick — keeps the combined query rate at one per 100ms
+
   const chCount  = cache.has('/Console/Input_Channels')
     ? cache.get('/Console/Input_Channels').args[0]
     : (serverCfg.channels || 48);
@@ -687,11 +817,11 @@ function primeCache() {
   for (let aux = 1; aux <= auxCount; aux++) {
     for (let ch = 1; ch <= chCount; ch++) {
       if (!cache.has(`/Input_Channels/${ch}/Aux_Send/${aux}/send_level`)) {
-        sendToDesk(`/Input_Channels/${ch}/Aux_Send/${aux}/send_level/?`, []);
+        queueDeskQueries([`/Input_Channels/${ch}/Aux_Send/${aux}/send_level/?`]);
         return;
       }
       if (!cache.has(`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan`)) {
-        sendToDesk(`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan/?`, []);
+        queueDeskQueries([`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan/?`]);
         return;
       }
     }
@@ -702,10 +832,31 @@ function primeCache() {
   console.log('[JPMixer] Cache fully primed');
 }
 
+// After a session reload, re-query send levels (and pans, for stereo auxes) for
+// every aux a connected mixer has open, through the paced queue — mixer.js
+// skips its own requestAuxValues() burst on a sessionReload config.
+function queueActiveAuxRefresh() {
+  const chCount  = cache.get('/Console/Input_Channels').args[0];
+  const auxModes = cache.get('/Console/Aux_Outputs/modes').args;
+  const activeAuxes = new Set(connections.map(c => c._activeAux).filter(a => a != null));
+  const queries = [];
+  for (const aux of activeAuxes) {
+    for (let ch = 1; ch <= chCount; ch++) {
+      queries.push(`/Input_Channels/${ch}/Aux_Send/${aux}/send_level/?`);
+      if (auxModes[aux - 1] === 2) queries.push(`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan/?`);
+    }
+  }
+  queueDeskQueries(queries);
+}
+
 // ── Snapshot tracking ─────────────────────────────────────────────────────
 
 function processSnapshotMsg(oscMsg) {
+  // Ignore the outgoing session's remaining notifications while the desk
+  // settles. The metadata reload requests the current snapshot again.
+  if (sessionReloadTimer) return;
   if (oscMsg.address === '/Snapshots/Current_Snapshot') {
+    cancelSceneRecall();
     currentSnapshot = oscMsg.args[0];
     if (currentSnapshot < 0) {
       currentSnapshotName = '';
@@ -726,7 +877,12 @@ function processSnapshotMsg(oscMsg) {
   if (oscMsg.address === '/Snapshots/name' && oscMsg.args[0] === currentSnapshot) {
     currentSnapshotName = oscMsg.args[oscMsg.args.length - 1];
     broadcastToClients({ address: '/SnapshotName', args: [currentSnapshotName] });
-    setTimeout(() => applySceneForSnapshot(currentSnapshotName), 300);
+    cancelSceneRecall();
+    const snapshot = currentSnapshot, name = currentSnapshotName;
+    sceneRecallTimer = setTimeout(() => {
+      sceneRecallTimer = null;
+      if (currentSnapshot === snapshot && currentSnapshotName === name) applySceneForSnapshot(name);
+    }, 300);
   }
 }
 
@@ -777,10 +933,11 @@ function startWebSocketServer() {
 
         if (msg.type === 'pong') { ws._lastPong = Date.now(); return; }
 
-        // Mixer: dump cached levels for one specific aux
+        // Mixer: dump cached levels (and pans) for one specific aux — cache
+        // only, never queries the desk
         if (msg.type === 'request-aux-levels') {
           for (const [address, cached] of cache.entries()) {
-            if (address.includes(`/Aux_Send/${msg.aux}/`) && address.endsWith('/send_level')) {
+            if (address.includes(`/Aux_Send/${msg.aux}/`) && (address.endsWith('/send_level') || address.endsWith('/send_pan'))) {
               ws.send(JSON.stringify(cached));
             }
           }
@@ -812,12 +969,13 @@ function startWebSocketServer() {
           scenes.saveScene(snapshot, msg.aux, msg.values);
           broadcastToClients({ type: 'scene-saved', snapshot, aux: msg.aux });
           ws._lastActivityAt = Date.now();
-          broadcastToClients({ type: 'device-activity', deviceId: ws._deviceId || null, aux: msg.aux, kind: 'save-scene', snapshot });
+          broadcastActivity({ type: 'device-activity', deviceId: ws._deviceId || null, aux: msg.aux, kind: 'save-scene', snapshot }, ws);
           return;
         }
         if (msg.type === 'delete-scene') {
           const snapshot = (typeof msg.snapshot === 'string' && msg.snapshot) ? msg.snapshot : currentSnapshotName;
           if (!snapshot) return;
+          logEvent('scene-delete', `snapshot:"${snapshot}" aux:${msg.aux}`);
           scenes.deleteScene(snapshot, msg.aux);
           broadcastToClients({ type: 'scene-deleted', snapshot, aux: msg.aux });
           return;
@@ -860,23 +1018,11 @@ function startWebSocketServer() {
           return;
         }
 
-        // Personal named mixes — stored per-device, aux-agnostic.
-        // Levels and pans are stored without an aux so they work regardless
-        // of which aux the performer is currently assigned to.
-        if (msg.type === 'save-preset') {
-          const name = (msg.name || '').trim();
-          if (!name || !msg.deviceId) return;
-          logEvent('preset-save', `device:${msg.deviceId.slice(0,8)} name:"${name}"`);
-          presets.savePreset(msg.deviceId, name, msg.levels, msg.pans);
-          ws._lastActivityAt = Date.now();
-          broadcastToClients({ type: 'device-activity', deviceId: ws._deviceId || null, aux: ws._activeAux ?? null, kind: 'save-mix', name });
-          return;
-        }
-        if (msg.type === 'delete-preset') {
-          if (!msg.deviceId) return;
-          presets.deletePreset(msg.deviceId, msg.name);
-          return;
-        }
+
+        // My Mixes storage/sync, Find My Mixes and the activity feed are the
+        // same on every backend — see shared-handlers.js
+        if (shared.handleSharedMessage(ws, msg, { logEvent, onActivity: broadcastActivity })) return;
+
         // Client sends levels+pans from localStorage; server pushes them to the desk.
         if (msg.type === 'apply-preset') {
           const auxStr = String(msg.aux);
@@ -891,17 +1037,11 @@ function startWebSocketServer() {
             const ch = parseInt(chStr);
             if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(val)) continue;
             const addr = `/Input_Channels/${chStr}/Aux_Send/${auxStr}/send_pan`;
-            sendToDesk(addr, [val]);
+            sendToDeskPaced(addr, [val]);
             cache.set(addr, { address: addr, args: [val] });
           }
           logEvent('preset-apply', `aux:${msg.aux} name:"${msg.name}"`);
           broadcastToClients({ type: 'preset-loaded', aux: msg.aux, name: msg.name, levels, pans: msg.pans || {} });
-          return;
-        }
-        // Device requests its preset backup (used when localStorage is empty, e.g. new device)
-        if (msg.type === 'request-device-presets') {
-          if (!msg.deviceId) return;
-          try { ws.send(JSON.stringify({ type: 'device-presets', presets: presets.getByDevice(msg.deviceId) })); } catch (_) {}
           return;
         }
         if (msg.type === 'request-aux-eq') {
@@ -922,23 +1062,7 @@ function startWebSocketServer() {
             }
           }
           if (!cache.has(`${prefix}eq_in`)) missingEq.push(`${prefix}eq_in/?`);
-          if (missingEq.length > 0) {
-            // The EQ panel can send this twice in quick succession (open + a
-            // reconnect racing it) — cancel any timer already loading this
-            // aux instead of letting two run concurrently.
-            const existingEqTimer = eqPrimeTimers.get(msg.aux);
-            if (existingEqTimer) clearInterval(existingEqTimer);
-            let eqIdx = 0;
-            const eqTimer = setInterval(() => {
-              if (eqIdx >= missingEq.length) {
-                clearInterval(eqTimer);
-                eqPrimeTimers.delete(msg.aux);
-                return;
-              }
-              sendToDesk(missingEq[eqIdx++], []);
-            }, 100);
-            eqPrimeTimers.set(msg.aux, eqTimer);
-          }
+          queueDeskQueries(missingEq);
           return;
         }
 
@@ -962,31 +1086,36 @@ function startWebSocketServer() {
             ws.send(JSON.stringify({ address: `/Control_Groups/${cg}/mute`, args: [m ? 1.0 : 0.0] }));
           for (const [cg, s] of Object.entries(cgSolos))
             ws.send(JSON.stringify({ address: `/Control_Groups/${cg}/solo`, args: [s ? 1.0 : 0.0] }));
-          // Poll the desk for current values — responses come back via OSC
-          // and broadcast to all clients. Paced one query per 100ms tick,
-          // not fired synchronously — see consoleStatePrimeQueue's comment.
+          // Poll the desk for anything not already known — responses come back
+          // via OSC and broadcast to all clients. Desk-side changes keep the
+          // state above current once it's filled, so a reconnect only queries
+          // what's missing, and through the paced queue rather than one burst.
           const chCount  = cache.has('/Console/Input_Channels')
             ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
           const auxCount = cache.has('/Console/Aux_Outputs/modes')
             ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
           const cgPollCount = cache.has('/Console/Control_Groups')
             ? cache.get('/Console/Control_Groups').args[0] : 8;
+          const queries = [];
           for (let i = 1; i <= chCount; i++) {
-            enqueueConsoleStatePrime(() => sendToDesk(`/Input_Channels/${i}/fader/?`, []));
-            enqueueConsoleStatePrime(() => sendToDesk(`/Input_Channels/${i}/mute/?`, []));
+            if (consoleFaders[i] === undefined) queries.push(`/Input_Channels/${i}/fader/?`);
+            if (consoleMutes[i]  === undefined) queries.push(`/Input_Channels/${i}/mute/?`);
+            if (consoleSolos[i]  === undefined) queries.push(`/Input_Channels/${i}/solo/?`);
           }
           for (let i = 1; i <= auxCount; i++) {
-            enqueueConsoleStatePrime(() => sendToDesk(`/Aux_Outputs/${i}/fader/?`, []));
-            enqueueConsoleStatePrime(() => sendToDesk(`/Aux_Outputs/${i}/mute/?`, []));
+            if (auxFaders[i] === undefined) queries.push(`/Aux_Outputs/${i}/fader/?`);
+            if (auxMutes[i]  === undefined) queries.push(`/Aux_Outputs/${i}/mute/?`);
           }
           for (let i = 1; i <= cgPollCount; i++) {
-            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/fader/?`, []));
-            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/mute/?`, []));
-            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/solo/?`, []));
-            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/name/?`, []));
-            enqueueConsoleStatePrime(() => sendToDesk(`/Control_Groups/${i}/Channel_Input/name/?`, []));
+            if (cgFaders[i] === undefined) queries.push(`/Control_Groups/${i}/fader/?`);
+            if (cgMutes[i]  === undefined) queries.push(`/Control_Groups/${i}/mute/?`);
+            if (cgSolos[i]  === undefined) queries.push(`/Control_Groups/${i}/solo/?`);
+            if (!cache.has(`/Control_Groups/${i}/name`) && !cache.has(`/Control_Groups/${i}/Channel_Input/name`)) {
+              queries.push(`/Control_Groups/${i}/name/?`);
+              queries.push(`/Control_Groups/${i}/Channel_Input/name/?`);
+            }
           }
-          startConsoleStatePriming();
+          queueDeskQueries(queries);
           return;
         }
 
@@ -1004,13 +1133,14 @@ function startWebSocketServer() {
         const liveAuxMax = cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
         const liveCgMax  = cache.has('/Console/Control_Groups') ? cache.get('/Console/Control_Groups').args[0] : (serverCfg.groups || 8);
 
-        // Console page — main channel fader
+        // Console page — main channel fader. Fader broadcasts skip the sender:
+        // echoing its own (by then older) position back makes the thumb jitter.
         if (msg.type === 'console-fader') {
           const ch = parseInt(msg.ch);
           if (isNaN(ch) || ch < 1 || ch > liveChMax || !Number.isFinite(msg.db)) return;
           sendToDesk(`/Input_Channels/${ch}/fader`, [msg.db]);
           consoleFaders[ch] = msg.db;
-          broadcastToClients({ address: `/Input_Channels/${ch}/fader`, args: [msg.db] });
+          broadcastToClients({ address: `/Input_Channels/${ch}/fader`, args: [msg.db] }, ws);
           return;
         }
 
@@ -1042,7 +1172,7 @@ function startWebSocketServer() {
           if (isNaN(aux) || aux < 1 || aux > liveAuxMax || !Number.isFinite(msg.db)) return;
           sendToDesk(`/Aux_Outputs/${aux}/fader`, [msg.db]);
           auxFaders[aux] = msg.db;
-          broadcastToClients({ address: `/Aux_Outputs/${aux}/fader`, args: [msg.db] });
+          broadcastToClients({ address: `/Aux_Outputs/${aux}/fader`, args: [msg.db] }, ws);
           return;
         }
 
@@ -1063,7 +1193,7 @@ function startWebSocketServer() {
           if (isNaN(cg) || cg < 1 || cg > liveCgMax || !Number.isFinite(msg.db)) return;
           sendToDesk(`/Control_Groups/${cg}/fader`, [msg.db]);
           cgFaders[cg] = msg.db;
-          broadcastToClients({ address: `/Control_Groups/${cg}/fader`, args: [msg.db] });
+          broadcastToClients({ address: `/Control_Groups/${cg}/fader`, args: [msg.db] }, ws);
           return;
         }
 
@@ -1132,7 +1262,7 @@ function startWebSocketServer() {
           if (cache.has(key)) {
             ws.send(JSON.stringify(cache.get(key)));
           } else {
-            sendToDesk(oscMsg.address, oscMsg.args || []);
+            queueDeskQueries([oscMsg.address]);
           }
           return;
         }
@@ -1163,14 +1293,14 @@ function startWebSocketServer() {
             direction = newVal > prevVal ? 'up' : 'down';
           }
           ws._lastActivityAt = Date.now();
-          broadcastToClients({
+          broadcastActivity({
             type: 'device-activity',
             deviceId: ws._deviceId || null,
             aux: parseInt(auxStr, 10),
             channel: parseInt(chStr, 10),
             kind,
             direction
-          });
+          }, ws);
         }
 
         // If this is a send_level and the channel is muted/solo-off, send -150 to desk
@@ -1258,6 +1388,11 @@ function startDemoMode() {
 // ── Main start / stop ─────────────────────────────────────────────────────
 
 function start(cfg) {
+  cancelSceneRecall();
+  clearTimeout(metadataFetchTimer);
+  metadataFetchTimer = null;
+  currentSnapshot = -1;
+  currentSnapshotName = '';
   serverCfg = cfg;
   loaded    = false;
   cache.clear();
@@ -1271,9 +1406,13 @@ function start(cfg) {
   }, OSC_LOG_FLUSH_MS);
 
   const app = express();
+  // The mixer pages keep express's default ETag revalidation — caching
+  // mixer.js/index.html for days would leave phones on old code after an
+  // update. Icons never change between releases, so phones may keep them a week.
   app.use(express.static(path.join(__dirname, '..', 'mixer')));
-  app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '1-To-70-SVG-Files-MusicalInstrumentsBundle')));
-  app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '71-To-120-SVG-Files-MusicalInstrumentsBundle')));
+  const ICON_CACHE = { maxAge: '7d' };
+  app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '1-To-70-SVG-Files-MusicalInstrumentsBundle'), ICON_CACHE));
+  app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '71-To-120-SVG-Files-MusicalInstrumentsBundle'), ICON_CACHE));
   mountGreenRoom(app);
 
   // Diagnostic endpoints — localhost only to keep rig topology off the venue network
@@ -1388,12 +1527,23 @@ function start(cfg) {
 
     // Session change — reload data without dropping clients
     if (oscMsg.address === '/Console/Session/!') {
+      cancelSceneRecall();
+      clearDeskSetQueue();
+      clearTimeout(metadataFetchTimer);
+      metadataFetchTimer = null;
+      currentSnapshot = -1;
+      currentSnapshotName = '';
       logEvent('session-change', 'debouncing 500ms');
       clearTimeout(sessionReloadTimer);
       sessionReloadTimer = setTimeout(() => {
+        sessionReloadTimer = null;
         logEvent('session-reload', 'clearing cache and reloading');
         cache.clear();
         clearMuteSolo();
+        clearConsoleState();
+        clearDeskQueries();
+        clearDeskSetQueue(); // writes meant for the old session
+        cancelSceneRecall();
         loaded = false;
         if (onConsoleStatusChange) onConsoleStatusChange(false);
         if (cachePrimeInterval) { clearInterval(cachePrimeInterval); cachePrimeInterval = null; }
@@ -1403,6 +1553,7 @@ function start(cfg) {
     }
 
     processSnapshotMsg(oscMsg);
+    oscMsg = processDeskSendLevel(oscMsg);
     maybeCacheResponse(oscMsg);
 
     // Relay all desk messages to every configured iPad regardless of address
@@ -1481,14 +1632,15 @@ function start(cfg) {
 }
 
 function stop() {
+  cancelSceneRecall();
+  clearTimeout(metadataFetchTimer);
+  metadataFetchTimer = null;
   if (cachePrimeInterval)  { clearInterval(cachePrimeInterval);   cachePrimeInterval  = null; }
-  stopConsoleStatePriming();
   if (pingInterval)        { clearInterval(pingInterval);         pingInterval        = null; }
   if (sessionReloadTimer)  { clearTimeout(sessionReloadTimer);    sessionReloadTimer  = null; }
   if (oscLogFlushTimer)    { clearInterval(oscLogFlushTimer);     oscLogFlushTimer    = null; }
   if (oscLogRecordStream)  { stopOscLogRecording(); }
-  for (const t of eqPrimeTimers.values()) clearInterval(t);
-  eqPrimeTimers.clear();
+  clearDeskQueries();
 
   // Restore real fader levels to the desk for any muted channels so the desk
   // doesn't retain -150 after we stop. Must run before clearMuteSolo() wipes premuteState.
@@ -1499,17 +1651,20 @@ function stop() {
       }
     }
   }
+  clearDeskSetQueue();
   clearMuteSolo();
+  clearConsoleState();
   if (udpPort) { try { udpPort.close(); } catch (_) {} udpPort = null; }
   ipadPorts.clear();
+  // wss.close() only stops accepting *new* connections — already-upgraded
+  // WebSocket sockets are detached from the HTTP server's own connection
+  // tracking (a known `ws` gotcha) and are left open otherwise. A client
+  // still connected at this exact moment would keep a live socket whose
+  // 'message' handler closure still references this module's shared state
+  // (cache, muteState, etc.), and phones would sit until their 35s heartbeat
+  // gave up. Terminate them all so they reconnect straight away.
+  for (const conn of connections) { try { conn.terminate(); } catch (_) {} }
   if (wss) {
-    // wss.close() only stops accepting *new* connections — already-upgraded
-    // WebSocket sockets are detached from the HTTP server's own connection
-    // tracking (a known `ws` gotcha) and are left open otherwise. A client
-    // still connected at this exact moment would keep a live socket whose
-    // 'message' handler closure still references this module's shared state
-    // (cache, muteState, etc.), invisible to getConnectedDevicesInfo() but
-    // still able to mutate state after a subsequent start().
     for (const client of wss.clients) { try { client.terminate(); } catch (_) {} }
     wss.close();
     wss = null;
@@ -1559,7 +1714,22 @@ function getConnectionCount() { return connections.length; }
 
 function setServerErrorCallback(cb) { onServerError = cb; }
 
+// Save & Apply for settings that don't need a restart (labels, colours, icons,
+// channel order, scene recall…) — swap the config in and push the new layout
+// to every connected page. Mixer pages refill their faders from the server
+// cache on a liveUpdate config, so this sends nothing to the desk.
+function applyConfigLive(cfg) {
+  serverCfg = cfg;
+  logEvent('config-live', `pushed to ${connections.length} clients`);
+  if (wss) broadcastToClients(buildConfig({ liveUpdate: true }));
+}
+
+// After Settings merges device groups — see shared-handlers.js
+function pushDevicePresets(deviceId) {
+  shared.pushDevicePresets(connections, deviceId);
+}
+
 function getOscLog() { return oscLog; }
 function setOscTrafficCallback(cb) { onOscTraffic = cb; }
 
-module.exports = { start, stop, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };
+module.exports = { start, stop, applyConfigLive, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };

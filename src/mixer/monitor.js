@@ -149,7 +149,10 @@ function onMessage(json) {
     applyMonMuteSolo(json.aux, json.mutes, json.solos);
     if (json.levels) {
       for (const [chStr, dBVal] of Object.entries(json.levels)) {
-        updateFaderEl(json.aux, parseInt(chStr), dbToSlider(dBVal));
+        const val = dbToSlider(dBVal);
+        if (!levels[json.aux]) levels[json.aux] = {};
+        levels[json.aux][chStr] = val;
+        updateFaderEl(json.aux, parseInt(chStr), val);
       }
     }
     return;
@@ -170,9 +173,10 @@ function onMessage(json) {
     return;
   }
 
-  if (json.type === 'scene-recalled') {
-    if (json.levels) {
-      for (const [auxStr, auxLevels] of Object.entries(json.levels)) {
+  if (json.type === 'scene-recalled' || json.type === 'preset-loaded') {
+    const recalled = json.type === 'preset-loaded' ? { [json.aux]: json.levels || {} } : json.levels;
+    if (recalled) {
+      for (const [auxStr, auxLevels] of Object.entries(recalled)) {
         const aux = parseInt(auxStr);
         for (const [chStr, sliderVal] of Object.entries(auxLevels)) {
           const ch = parseInt(chStr);

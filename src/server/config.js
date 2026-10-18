@@ -1,6 +1,6 @@
-const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { writeFileAtomic, loadJsonObject } = require('./safe-write');
 
 const DEFAULTS = {
   autoStart: true,
@@ -17,6 +17,7 @@ const DEFAULTS = {
   channelOverrides: {},
   auxOverrides: {},
   sceneRecallEnabled: false,
+  clearScenesOnLaunch: false,
   ipadConnections: [],
   autoBackupEnabled: true,
   autoBackupIntervalDays: 7,
@@ -74,21 +75,20 @@ function configPath() {
 }
 
 function load() {
-  try {
-    const p = configPath();
-    if (fs.existsSync(p)) {
-      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-      _config = { ...DEFAULTS, ...data };
-    }
-  } catch (e) {
-    console.error('Config load error:', e);
-  }
+  // An unreadable config.json used to fall back to defaults silently, and the
+  // next Save & Apply then overwrote it — losing channel names, groups and
+  // console settings. Now it's moved aside and the newest auto-backup's copy used.
+  let corrupt = false;
+  const data = loadJsonObject(configPath(), app.getPath('userData'), 'config',
+    (msg) => { corrupt = true; console.error('[JPMixer] ' + msg); });
+  if (data) _config = { ...DEFAULTS, ...data };
+  if (corrupt) save(_config);
 }
 
 function save(incoming) {
   _config = { ...DEFAULTS, ...incoming };
   try {
-    fs.writeFileSync(configPath(), JSON.stringify(_config, null, 2));
+    writeFileAtomic(configPath(), JSON.stringify(_config, null, 2));
   } catch (e) {
     console.error('Config save error:', e);
   }
@@ -114,7 +114,7 @@ function updateOverride(kind, n, patch) {
   bucket[String(n)] = { ...(bucket[String(n)] || {}), ...patch };
   _config = { ..._config, [key]: bucket };
   try {
-    fs.writeFileSync(configPath(), JSON.stringify(_config, null, 2));
+    writeFileAtomic(configPath(), JSON.stringify(_config, null, 2));
   } catch (e) {
     console.error('Config save error:', e);
   }

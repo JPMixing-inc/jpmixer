@@ -77,6 +77,10 @@
         <span class="menu-item-icon" id="menuSceneIcon">💾</span>
         <span class="menu-item-label" id="menuSceneLabel">Save Ear Scene</span>
       </button>
+      <button class="menu-item" id="menuSceneUpdateItem" style="display:none">
+        <span class="menu-item-icon">💾</span>
+        <span class="menu-item-label">Update Ear Scene</span>
+      </button>
       <button class="menu-item" id="menuEarScenesItem">
         <span class="menu-item-icon">📋</span>
         <span class="menu-item-label">Browse Ear Scenes</span>
@@ -107,6 +111,21 @@
       </div>
       <button class="mixes-save-btn" id="mixesSaveBtn">+ Save Current Mix As…</button>
       <div class="mixes-list" id="mixesList"></div>
+      <button class="mixes-find-btn" id="mixesFindBtn">Find My Mixes…</button>
+    </div>
+  </div>
+
+  <!-- Find My Mixes overlay — search the server's backed-up mixes from other
+       devices and copy one set onto this phone, visible when body.findMixesOpen -->
+  <div class="mixes-picker" id="findMixesPicker">
+    <div class="mixes-picker-inner">
+      <div class="mixes-picker-header">
+        <span class="mixes-picker-title">Find My Mixes</span>
+        <button class="mixes-close-btn" id="findMixesCloseBtn" aria-label="Close">✕</button>
+      </div>
+      <div class="mixes-hint">Search by your name or a mix name. Mixes you pick are copied onto this phone — the originals stay where they are.</div>
+      <input class="name-mix-input find-mixes-input" id="findMixesInput" type="search" placeholder="Your name or a mix name" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="64" />
+      <div class="mixes-list" id="findMixesList"></div>
     </div>
   </div>
 
@@ -191,6 +210,7 @@
     <div class="name-mix-inner">
       <div class="name-mix-title">Save Mix As</div>
       <input class="name-mix-input" id="nameMixInput" type="text" placeholder="Type your mix name here" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="64" />
+      <input class="name-mix-input" id="nameMixOwner" type="text" placeholder="Your name (helps you find your mixes later)" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="64" />
       <div class="name-mix-btns">
         <button class="name-mix-cancel" id="nameMixCancel">Cancel</button>
         <button class="name-mix-confirm" id="nameMixConfirm">Save</button>

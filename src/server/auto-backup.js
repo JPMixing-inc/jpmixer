@@ -6,6 +6,26 @@ const { app } = require('electron');
 
 const config  = require('./config');
 const presets = require('./presets');
+const scenes  = require('./scenes');
+
+// Backup file format, shared by auto-backups and Settings → Export Backup.
+// v2 added scenes and presetAliases; v1 files (config + presets only) are
+// still accepted on import, and leave Ear Scenes and aliases untouched.
+const BACKUP_VERSION = 2;
+
+function buildBackupData() {
+  return {
+    app: 'JPMixer',
+    type: 'backup',
+    version: BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    appVersion: app.getVersion(),
+    config: config.getAll(),
+    presets: presets.getAll(),
+    presetAliases: presets.getAliases(),
+    scenes: scenes.getAll()
+  };
+}
 
 const RETENTION_MS    = 30 * 24 * 60 * 60 * 1000; // prune backups older than a month
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;          // re-check hourly — cheap, and catches missed launches
@@ -42,19 +62,12 @@ function pruneOldBackups() {
   }
 }
 
-async function writeBackup() {
+// `label` tags safety backups taken right before a destructive action
+// (import, mix merge) so they're easy to spot in the folder
+async function writeBackup(label) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filePath = path.join(backupsDir(), `auto-backup-${stamp}.json`);
-  const data = {
-    app: 'JPMixer',
-    type: 'backup',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    appVersion: app.getVersion(),
-    config: config.getAll(),
-    presets: presets.getAll()
-  };
-  await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2));
+  const filePath = path.join(backupsDir(), `auto-backup-${stamp}${label ? '-' + label : ''}.json`);
+  await fs.promises.writeFile(filePath, JSON.stringify(buildBackupData(), null, 2));
   return filePath;
 }
 
@@ -87,4 +100,4 @@ function getStatus() {
   };
 }
 
-module.exports = { start, maybeRunBackup, getStatus, listBackups, backupsDir };
+module.exports = { start, maybeRunBackup, getStatus, listBackups, backupsDir, writeBackup, buildBackupData, BACKUP_VERSION };

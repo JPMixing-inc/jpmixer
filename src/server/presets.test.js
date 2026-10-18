@@ -26,8 +26,9 @@ const presets = require('./presets.js');
 
 t('savePreset/getPreset round-trip normal data', () => {
   presets.savePreset('musician-1', 'My Mix', { '1': 0.5, '2': 0.75 }, { '1': 0.5 });
-  const got = presets.getPreset('musician-1', 'My Mix');
+  const { savedAt, ...got } = presets.getPreset('musician-1', 'My Mix');
   assert.deepEqual(got, { levels: { '1': 0.5, '2': 0.75 }, pans: { '1': 0.5 } });
+  assert.ok(!isNaN(Date.parse(savedAt)), 'each save is timestamped for Find My Mixes / Settings');
 });
 
 t('getByDevice returns only that device\'s presets', () => {
@@ -51,14 +52,16 @@ t('deviceId "__proto__" cannot pollute Object.prototype', () => {
   assert.equal(Object.prototype.pwned, undefined);
   // The data itself should still be stored safely, just as an ordinary key —
   // not silently dropped, not silently redirected anywhere dangerous.
-  assert.deepEqual(presets.getPreset('__proto__', 'pwned'), { levels: { evil: true }, pans: {} });
+  const { savedAt: _s1, ...pwned } = presets.getPreset('__proto__', 'pwned');
+  assert.deepEqual(pwned, { levels: { evil: true }, pans: {} });
 });
 
 t('name "__proto__" cannot hijack a device bucket\'s own prototype', () => {
   presets.savePreset('musician-4', '__proto__', { evil: true }, {});
   const bucket = presets.getByDevice('musician-4');
   assert.equal(Object.getPrototypeOf(bucket), null, 'the bucket must still have no prototype of its own');
-  assert.deepEqual(bucket['__proto__'], { levels: { evil: true }, pans: {} });
+  const { savedAt: _s2, ...stored } = bucket['__proto__'];
+  assert.deepEqual(stored, { levels: { evil: true }, pans: {} });
 });
 
 t('getPreset/getByDevice fall back safely for an unknown deviceId (no live Object.prototype leak)', () => {

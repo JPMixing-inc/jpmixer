@@ -42,6 +42,7 @@ const WebSocket = require('ws');
 const path      = require('path');
 const scenes    = require('./scenes');
 const presets   = require('./presets');
+const shared    = require('./shared-handlers');
 const config    = require('./config');
 const { mountGreenRoom } = require('./greenroom');
 const { WingClient } = require('./wing-client');
@@ -413,19 +414,9 @@ function start(cfg) {
         return;
       }
 
-      if (msg.type === 'save-preset') {
-        const name = (msg.name || '').trim();
-        if (!name || !msg.deviceId) return;
-        presets.savePreset(msg.deviceId, name, msg.levels, msg.pans);
-        ws._lastActivityAt = Date.now();
-        broadcastToClients({ type: 'device-activity', deviceId: ws._deviceId || null, aux: ws._activeAux ?? null, kind: 'save-mix', name });
-        return;
-      }
-      if (msg.type === 'delete-preset') {
-        if (!msg.deviceId) return;
-        presets.deletePreset(msg.deviceId, msg.name);
-        return;
-      }
+      // My Mixes storage/sync, Find My Mixes and the activity feed are the
+      // same on every backend — see shared-handlers.js
+      if (shared.handleSharedMessage(ws, msg, { logEvent, onActivity: (m, from) => shared.broadcastActivity(connections, m, from) })) return;
       if (msg.type === 'apply-preset') {
         const aux = parseInt(msg.aux, 10);
         const chMax = serverCfg.channels || 40;
@@ -447,11 +438,6 @@ function start(cfg) {
           }
         }
         broadcastToClients({ type: 'preset-loaded', aux: msg.aux, name: msg.name, levels: outLevels, pans: outPans });
-        return;
-      }
-      if (msg.type === 'request-device-presets') {
-        if (!msg.deviceId) return;
-        try { ws.send(JSON.stringify({ type: 'device-presets', presets: presets.getByDevice(msg.deviceId) })); } catch (_) {}
         return;
       }
 
@@ -482,7 +468,7 @@ function start(cfg) {
         panCache.set(key, val);
         wing && wing.setSendPan(ch, aux, sliderToAzimuth(val));
         ws._lastActivityAt = Date.now();
-        broadcastToClients({ type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'pan', direction: val < 0.5 ? 'left' : val > 0.5 ? 'right' : null });
+        shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'pan', direction: val < 0.5 ? 'left' : val > 0.5 ? 'right' : null }, ws);
         return;
       }
 
@@ -493,7 +479,7 @@ function start(cfg) {
       ws._lastActivityAt = Date.now();
       let direction = null;
       if (typeof prevDb === 'number' && val !== prevDb) direction = val > prevDb ? 'up' : 'down';
-      broadcastToClients({ type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'level', direction });
+      shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'level', direction }, ws);
     });
 
     ws.on('close', () => {
@@ -574,7 +560,12 @@ function stopOscLogRecording() { return { ok: false, error: 'Traffic recording i
 function getOscLogRecordingStatus() { return { recording: false }; }
 function oscLogRecordsFolder() { return null; }
 
-module.exports = {
+// After Settings merges device groups — see shared-handlers.js
+function pushDevicePresets(deviceId) {
+  shared.pushDevicePresets(connections, deviceId);
+}
+
+module.exports = { pushDevicePresets,
   start, stop, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,

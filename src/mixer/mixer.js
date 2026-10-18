@@ -87,6 +87,8 @@ let allScenes          = {};   // { snapshotName: { auxCh: { ch: sliderVal } } }
 let localPresets       = {};   // { name: { levels: { ch: sliderVal }, pans: { ch: panVal } } } — stored in localStorage
 let sceneDirty         = false; // true once faders move after a scene exists for this snapshot/aux
 let sceneLocked        = false; // true when a saved scene exists and volume faders are protected from touch
+let sceneDirtyMix      = null;  // name of the My Mix loaded over the Ear Scene, when that's why it's dirty
+let pendingPresetLoad  = null;  // My Mix this device just asked to load — only it gets the Ear Scene prompt
 let sceneRecallEnabled = false;
 let currentSnapshot    = '—';
 let allMutes           = {}; // allMutes[aux][ch]
@@ -144,6 +146,8 @@ function onOpen() {
   resetHeartbeat();
   // Let the server (and any Devices view) know which device this is
   ws.send(JSON.stringify({ type: 'identify', deviceId }));
+  // Re-send any mix saves/deletes the server never confirmed
+  flushPresetSync();
   // Request all cached levels so faders fill in immediately after reconnect,
   // and re-announce our active aux (the server's per-connection state is fresh)
   if (selectedAux !== null) {
@@ -163,10 +167,10 @@ function onOpen() {
       ws.send(JSON.stringify({ type: 'request-aux-eq', aux: selectedAux }));
     }
   }
-  // If localStorage has no presets (e.g. first visit or cache cleared), ask server for backup
-  if (Object.keys(localPresets).length === 0) {
-    ws.send(JSON.stringify({ type: 'request-device-presets', deviceId }));
-  }
+  // Always fetch this device's server backup and merge it in (see the
+  // device-presets handler) — not only when localStorage is empty, so mixes
+  // merged in from Settings, or saved from another tab, show up here too
+  ws.send(JSON.stringify({ type: 'request-device-presets', deviceId }));
 }
 
 function noConnection() {
@@ -220,7 +224,7 @@ function showToast(msg) {
 // save-mix flow below builds its own dialog instead of using confirm().
 // Returns a Promise: confirm mode resolves true/false, input mode resolves the
 // trimmed string or null (cancelled).
-function showActionDialog({ title, showInput = false, inputValue = '', confirmLabel = 'OK' }) {
+function showActionDialog({ title, showInput = false, inputValue = '', confirmLabel = 'OK', cancelLabel = 'Cancel' }) {
   return new Promise((resolve) => {
     const input      = document.getElementById('actionDialogInput');
     const confirmBtn = document.getElementById('actionDialogConfirm');
@@ -230,6 +234,7 @@ function showActionDialog({ title, showInput = false, inputValue = '', confirmLa
     input.style.display = showInput ? '' : 'none';
     input.value = inputValue;
     confirmBtn.textContent = confirmLabel;
+    cancelBtn.textContent  = cancelLabel;
 
     document.body.classList.add('actionDialogOpen');
     if (showInput) setTimeout(() => { input.focus(); input.select(); }, 80);
@@ -262,14 +267,21 @@ function updateSceneUI() {
   const menuItem  = document.getElementById('menuSceneItem');
   const menuIcon  = document.getElementById('menuSceneIcon');
   const menuLabel = document.getElementById('menuSceneLabel');
+  const updateItem = document.getElementById('menuSceneUpdateItem');
   const status    = document.getElementById('sceneStatus');
   const hasScene  = hasSavedScene();
+  if (!sceneDirty) sceneDirtyMix = null;
 
   if (menuItem) {
     menuItem.style.display = selectedAux !== null ? '' : 'none';
     if (menuIcon)  menuIcon.textContent  = hasScene ? '🗑' : '💾';
     if (menuLabel) menuLabel.textContent = hasScene ? 'Delete Ear Scene' : 'Save Ear Scene';
   }
+  if (updateItem) updateItem.style.display = (selectedAux !== null && hasScene) ? '' : 'none';
+
+  // Dims the volume faders while they're locked, so a locked mix never looks
+  // like it's accepting touches (see addFaderOverlay's locked()).
+  document.body.classList.toggle('scene-locked', hasScene && sceneLocked);
 
   if (status) {
     if (selectedAux === null) {
@@ -282,8 +294,10 @@ function updateSceneUI() {
         status.title = '';
       } else if (sceneDirty) {
         status.className = 'scene-status status-dirty';
-        status.textContent = '↺ Changed Since Save — Tap to Revert';
-        status.title = 'Tap to revert to your last saved mix';
+        status.textContent = sceneDirtyMix
+          ? `↺ My Mix "${sceneDirtyMix}" loaded — Tap to go back to the Ear Scene`
+          : '↺ Changed Since Save — Tap to go back to the Ear Scene';
+        status.title = `Tap to go back to the Ear Scene saved for ${currentSnapshot}`;
       } else if (sceneLocked) {
         status.className = 'scene-status status-locked';
         status.textContent = `🔒 Mix Locked for ${currentSnapshot}`;
@@ -298,11 +312,49 @@ function updateSceneUI() {
 }
 
 // Marks the current mix as having drifted from its saved scene — called on
-// any fader move once a scene already exists for this snapshot/aux.
-function markSceneDirty() {
-  if (sceneDirty || !hasSavedScene()) return;
+// any fader move once a scene already exists for this snapshot/aux, and with
+// the mix's name when a My Mix was loaded over it (the banner then says so).
+function markSceneDirty(mixName) {
+  if (!hasSavedScene()) return;
+  if (sceneDirty && mixName === undefined) return;
   sceneDirty = true;
+  if (mixName !== undefined) sceneDirtyMix = mixName;
   updateSceneUI();
+}
+
+// Saves the current faders as this aux's Ear Scene for the live snapshot.
+// `overrides` ({ ch: sliderVal }) wins over the faders — used right after a
+// My Mix load, while the faders may still be animating to their new values.
+function saveCurrentEarScene(overrides) {
+  if (selectedAux === null || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const values = {};
+  volumeInputs.forEach((s, idx) => { if (s) values[String(idx + 1)] = parseFloat(s.value); });
+  Object.assign(values, overrides || {});
+  ws.send(JSON.stringify({ type: 'save-scene', aux: selectedAux, values }));
+}
+
+// An Ear Scene for this snapshot is auto-recalled whenever the snapshot fires,
+// which would silently replace a My Mix just loaded or saved over it. Ask once,
+// right then, which one should win.
+async function offerEarSceneUpdate(mixName, overrides) {
+  const snap = currentSnapshot, aux = selectedAux;
+  const ok = await showActionDialog({
+    title: `Use "${mixName}" as your Ear Scene for ${snap}? If you keep the old Ear Scene, it comes back the next time ${snap} is recalled.`,
+    confirmLabel: 'Update Ear Scene',
+    cancelLabel: 'Keep Old'
+  });
+  if (!ok || snap !== currentSnapshot || aux !== selectedAux) return;
+  saveCurrentEarScene(overrides);
+}
+
+// A touch on a locked fader used to be quietly turned into a scroll — the
+// performer thought they were mixing and nothing changed. Say so instead.
+let lastLockedHintAt = 0;
+function showLockedHint() {
+  const now = Date.now();
+  if (now - lastLockedHintAt < 2500) return;
+  lastLockedHintAt = now;
+  showToast(`🔒 Locked to the Ear Scene for ${currentSnapshot} — tap the banner at the top to unlock`);
 }
 
 // ── Ear Scenes — view/edit/delete saved mixes across every snapshot for the
@@ -510,6 +562,43 @@ function saveLocalPresets() {
   localStorage.setItem('jpm_presets', JSON.stringify(localPresets));
 }
 
+// Server backups the server hasn't confirmed yet — kept in localStorage so a
+// mix saved or deleted while the socket was down (or the page got reloaded)
+// still reaches the server on the next connect, instead of the backup
+// silently drifting from what's on the phone.
+// { [name]: { op: 'save' | 'delete', seq, owner?, aux? } }
+let pendingSync = {};
+try { pendingSync = JSON.parse(localStorage.getItem('jpm_presets_pending') || '{}'); } catch (_) {}
+let pendingSeq = Date.now(); // seq only has to be unique per name, across reloads too
+let presetSyncRetryTimer = null;
+let presetSyncErrorShown = false;
+
+function savePendingSync() {
+  localStorage.setItem('jpm_presets_pending', JSON.stringify(pendingSync));
+}
+
+function queuePresetSync(name, entry) {
+  pendingSync[name] = { ...entry, seq: ++pendingSeq };
+  savePendingSync();
+  sendPresetSync(name);
+}
+
+function sendPresetSync(name) {
+  const p = pendingSync[name];
+  if (!p || !ws || ws.readyState !== WebSocket.OPEN) return;
+  if (p.op === 'delete') {
+    ws.send(JSON.stringify({ type: 'delete-preset', deviceId, name, seq: p.seq }));
+    return;
+  }
+  const preset = localPresets[name];
+  if (!preset) { delete pendingSync[name]; savePendingSync(); return; } // deleted since
+  ws.send(JSON.stringify({ type: 'save-preset', deviceId, name, levels: preset.levels, pans: preset.pans, owner: p.owner || '', aux: p.aux ?? null, seq: p.seq }));
+}
+
+function flushPresetSync() {
+  for (const name of Object.keys(pendingSync)) sendPresetSync(name);
+}
+
 function renderPresetsList() {
   const list = document.getElementById('mixesList');
   if (!list) return;
@@ -520,7 +609,7 @@ function renderPresetsList() {
   if (names.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'mixes-empty';
-    empty.textContent = 'No saved mixes yet.\nDial in your levels, then tap "Save Mix As…"';
+    empty.textContent = 'No saved mixes yet.\nDial in your levels, then tap "Save Mix As…"\n\nNew phone, or your mixes disappeared?\nTap "Find My Mixes…" below.';
     list.appendChild(empty);
     return;
   }
@@ -561,9 +650,11 @@ function closeMixesPicker() {
 function savePresetPrompt() {
   if (selectedAux === null || !ws || ws.readyState !== WebSocket.OPEN) return;
   const input   = document.getElementById('nameMixInput');
+  const ownerInput = document.getElementById('nameMixOwner');
   const confirmBtn = document.getElementById('nameMixConfirm');
   const cancelBtn  = document.getElementById('nameMixCancel');
   input.value = '';
+  ownerInput.value = localStorage.getItem('jpm_owner') || '';
   document.body.classList.add('nameMixOpen');
   setTimeout(() => input.focus(), 80);
 
@@ -573,6 +664,11 @@ function savePresetPrompt() {
     // Overwrite silently — the user typed the name and hit Save, that's sufficient intent.
     // window.confirm() is suppressed on iOS WKWebView and would cause silent save failures.
     cleanup();
+    // Remembered for next time; stored with the server backup so Find My
+    // Mixes can match it if this phone's storage is ever wiped
+    const owner = ownerInput.value.trim();
+    if (owner) localStorage.setItem('jpm_owner', owner);
+    else localStorage.removeItem('jpm_owner');
     const levels = {}, pans = {};
     volumeInputs.forEach((s, idx) => { if (s) levels[String(idx + 1)] = parseFloat(s.value); });
     panInputs.forEach((s, idx) => { if (s) pans[String(idx + 1)] = parseFloat(s.value); });
@@ -581,7 +677,10 @@ function savePresetPrompt() {
     renderPresetsList();
     showToast('Mix saved: ' + name);
     // Back up to server so it survives a localStorage clear
-    ws.send(JSON.stringify({ type: 'save-preset', deviceId, name, levels, pans }));
+    queuePresetSync(name, { op: 'save', owner, aux: selectedAux });
+    // Saved a mix that differs from this snapshot's Ear Scene — without this,
+    // the next recall of the snapshot would quietly put the old mix back
+    if (hasSavedScene() && sceneDirty) offerEarSceneUpdate(name);
   }
 
   function cleanup() {
@@ -589,6 +688,7 @@ function savePresetPrompt() {
     confirmBtn.removeEventListener('click', commit);
     cancelBtn.removeEventListener('click', cleanup);
     input.removeEventListener('keydown', onKey);
+    ownerInput.removeEventListener('keydown', onKey);
   }
 
   function onKey(e) {
@@ -599,12 +699,14 @@ function savePresetPrompt() {
   confirmBtn.addEventListener('click', commit);
   cancelBtn.addEventListener('click', cleanup);
   input.addEventListener('keydown', onKey);
+  ownerInput.addEventListener('keydown', onKey);
 }
 
 function loadPreset(name) {
   if (selectedAux === null || !ws || ws.readyState !== WebSocket.OPEN) return;
   const preset = localPresets[name];
   if (!preset) return;
+  pendingPresetLoad = name;
   ws.send(JSON.stringify({ type: 'apply-preset', aux: selectedAux, name, levels: preset.levels || {}, pans: preset.pans || {} }));
   closeMixesPicker();
 }
@@ -616,9 +718,115 @@ async function deletePresetPrompt(name) {
   saveLocalPresets();
   renderPresetsList();
   showToast('Mix deleted: ' + name);
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'delete-preset', deviceId, name }));
+  queuePresetSync(name, { op: 'delete' });
+}
+
+// ── Find My Mixes — recover mixes backed up under another device id ──────
+// A wiped localStorage takes the device id with it, so the automatic
+// request-device-presets restore can't find the old backup. This searches
+// every device's backup by owner or mix name and copies a picked set onto
+// this phone (and into its own backup) — the original is never changed.
+
+let findMixesTimer = null;
+
+function openFindMixes() {
+  closeMixesPicker();
+  document.getElementById('findMixesInput').value = '';
+  renderFoundGroups(null);
+  document.body.classList.add('findMixesOpen');
+  sendFindQuery('');
+}
+
+function closeFindMixes() {
+  clearTimeout(findMixesTimer);
+  document.body.classList.remove('findMixesOpen');
+}
+
+function sendFindQuery(query) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'find-presets', deviceId, query }));
+}
+
+// groups === null → still waiting on the server
+function renderFoundGroups(groups) {
+  const list = document.getElementById('findMixesList');
+  list.innerHTML = '';
+
+  if (!groups || groups.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'mixes-empty';
+    empty.textContent = groups ? 'No saved mixes match that.' : 'Searching…';
+    list.appendChild(empty);
+    return;
   }
+
+  for (const g of groups) {
+    const btn = document.createElement('button');
+    btn.className = 'mixes-row-name found-group';
+
+    const names = document.createElement('span');
+    names.className = 'found-group-names';
+    names.textContent = g.names.join(', ');
+
+    const meta = document.createElement('span');
+    meta.className = 'found-group-meta';
+    meta.textContent = describeFoundGroup(g);
+
+    btn.append(names, meta);
+    btn.addEventListener('click', () => confirmImportGroup(g));
+    list.appendChild(btn);
+  }
+}
+
+function describeFoundGroup(g) {
+  const parts = [g.names.length === 1 ? '1 mix' : `${g.names.length} mixes`];
+  if (g.owners.length) parts.push(g.owners.join(' / '));
+  if (g.lastAux != null) {
+    const aux = auxConfig.find(a => a.channel === g.lastAux);
+    parts.push((aux && aux.label) || `AUX ${g.lastAux}`);
+  }
+  parts.push(g.lastSaved
+    ? new Date(g.lastSaved).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : 'older save');
+  return parts.join(' · ');
+}
+
+async function confirmImportGroup(g) {
+  const count = g.names.length === 1 ? '1 mix' : `${g.names.length} mixes`;
+  const ok = await showActionDialog({ title: `Copy ${count} onto this phone?`, confirmLabel: 'Copy' });
+  if (!ok || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'request-found-presets', fromDeviceId: g.deviceId }));
+}
+
+function importFoundPresets(found) {
+  const owner = localStorage.getItem('jpm_owner') || '';
+  let added = 0;
+  for (const [name, p] of Object.entries(found || {})) {
+    if (!p || name === '__proto__') continue;
+    const levels = p.levels || {}, pans = p.pans || {};
+    // Already have this exact mix (e.g. copied once before) — don't duplicate it
+    // Already on this phone under any name (e.g. copied once before, then
+    // renamed "(2)") — don't duplicate it
+    const sig = JSON.stringify(levels) + JSON.stringify(pans);
+    if (Object.values(localPresets).some(lp => JSON.stringify(lp.levels || {}) + JSON.stringify(lp.pans || {}) === sig)) continue;
+    // Never overwrite a different local mix that has the same name — keep both
+    const has = (key) => Object.prototype.hasOwnProperty.call(localPresets, key);
+    let target = name;
+    for (let n = 2; has(target); n++) target = `${name} (${n})`;
+    localPresets[target] = { levels, pans };
+    pendingSync[target] = { op: 'save', owner: p.owner || owner, aux: p.aux ?? null, seq: ++pendingSeq };
+    added++;
+  }
+  // Persist the mixes before their sync entries, then send — a reload in
+  // between can then only ever re-send, never point at a missing mix
+  saveLocalPresets();
+  savePendingSync();
+  flushPresetSync();
+  closeFindMixes();
+  openMixesPicker();
+  showToast(added
+    ? `Copied ${added} ${added === 1 ? 'mix' : 'mixes'} to this phone`
+    : 'Those mixes are already on this phone');
 }
 
 function onMessage(e) {
@@ -756,18 +964,88 @@ function onMessage(e) {
           }
         }
       }
-      markSceneDirty();
+      // Every device on this aux gets preset-loaded; only the one that asked
+      // is prompted. If an Ear Scene exists here, the loaded mix now differs
+      // from it — say so on the banner rather than a generic "changed".
+      const loadedHere = pendingPresetLoad === json.name;
+      if (loadedHere) pendingPresetLoad = null;
+      markSceneDirty(json.name);
       showToast('Mix loaded: ' + json.name);
+      if (loadedHere && hasSavedScene()) offerEarSceneUpdate(json.name, json.levels || {});
     }
     return;
   }
-  // Server returned preset backup for this device (localStorage was empty)
+  // Server's backup for this device — merged with the phone's copy rather than
+  // only restoring into an empty list. Mixes only on the server are added
+  // (unless this phone deleted them and the server hasn't confirmed yet); for
+  // a name on both, the phone's copy stays. Admin deletes in Settings aren't
+  // undone: phone-only mixes are pushed up just once, to back up anything
+  // saved before backups were reliable.
   if (json.type === 'device-presets') {
-    if (json.presets && Object.keys(json.presets).length > 0 && Object.keys(localPresets).length === 0) {
-      localPresets = json.presets;
-      saveLocalPresets();
-      if (document.body.classList.contains('mixesOpen')) renderPresetsList();
+    const fromServer = json.presets || {};
+    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+    let added = 0;
+    for (const [name, p] of Object.entries(fromServer)) {
+      if (!p || name === '__proto__' || has(localPresets, name)) continue;
+      if (pendingSync[name] && pendingSync[name].op === 'delete') continue;
+      localPresets[name] = { levels: p.levels || {}, pans: p.pans || {} };
+      added++;
     }
+    if (!localStorage.getItem('jpm_presets_backfilled')) {
+      const owner = localStorage.getItem('jpm_owner') || '';
+      for (const name of Object.keys(localPresets)) {
+        if (!has(fromServer, name) && !pendingSync[name]) {
+          pendingSync[name] = { op: 'save', owner, aux: null, seq: ++pendingSeq };
+        }
+      }
+      localStorage.setItem('jpm_presets_backfilled', '1');
+    }
+    saveLocalPresets();
+    savePendingSync();
+    flushPresetSync();
+    if (added && document.body.classList.contains('mixesOpen')) renderPresetsList();
+    return;
+  }
+  if (json.type === 'preset-sync-error') {
+    const p = pendingSync[json.name];
+    if (!p || p.seq !== json.seq) return;
+    if (!presetSyncErrorShown) {
+      showToast('Mix backup failed — your change is kept on this phone. Retrying…');
+      presetSyncErrorShown = true;
+    }
+    if (!presetSyncRetryTimer) {
+      presetSyncRetryTimer = setTimeout(() => {
+        presetSyncRetryTimer = null;
+        flushPresetSync();
+      }, 5000);
+    }
+    return;
+  }
+  if (json.type === 'preset-synced') {
+    // Only clear it if this confirms the latest change to that name — an older
+    // ack must not clear a newer save made since
+    const p = pendingSync[json.name];
+    if (p && p.seq === json.seq) {
+      delete pendingSync[json.name];
+      savePendingSync();
+      if (Object.keys(pendingSync).length === 0) {
+        clearTimeout(presetSyncRetryTimer);
+        presetSyncRetryTimer = null;
+        presetSyncErrorShown = false;
+      }
+    }
+    return;
+  }
+  if (json.type === 'found-presets') {
+    // Drop results for a query the musician has already typed past
+    if (document.body.classList.contains('findMixesOpen') &&
+        json.query === document.getElementById('findMixesInput').value.trim()) {
+      renderFoundGroups(json.groups || []);
+    }
+    return;
+  }
+  if (json.type === 'found-device-presets') {
+    importFoundPresets(json.presets);
     return;
   }
 
@@ -797,6 +1075,10 @@ function onMessage(e) {
     currentSnapshot = args[0] || '—';
     document.getElementById('snapshotName').textContent = currentSnapshot;
     sceneDirty = false;
+    // Re-derive the lock for the new snapshot, same default as selectAux().
+    // Leaving it as-is kept faders locked on a snapshot with no Ear Scene —
+    // the banner read "Not Saved" and tapping it couldn't unlock anything.
+    sceneLocked = hasSavedScene();
     updateSceneUI();
     renderEarScenesList(); // keep the LIVE badge/sort current if the list is already open
     return;
@@ -898,7 +1180,15 @@ function applyConfig(config) {
 
   if (targetAux !== null) {
     document.body.classList.remove('auxPicker');
-    selectAux(targetAux, true, true); // skipReset=true — don't zero faders on refresh
+    // skipReset=true — don't zero faders on refresh. On a session reload the
+    // server re-queries this aux's levels itself through its paced queue, and
+    // on a live Settings update the server cache already has them — either way
+    // skip requestAuxValues() rather than have every phone burst the desk at once.
+    const fromServer = config.sessionReload || config.liveUpdate;
+    selectAux(targetAux, !fromServer, true);
+    if (config.liveUpdate && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'request-aux-levels', aux: targetAux }));
+    }
   } else {
     document.body.classList.add('auxPicker');
   }
@@ -1303,7 +1593,7 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
 
   slider.style.pointerEvents = 'none';
 
-  function locked() { return isLockable && sceneLocked; }
+  function locked() { return isLockable && sceneLocked && hasSavedScene(); }
 
   function valueFromPos(clientX, clientY) {
     const rect = slider.getBoundingClientRect();
@@ -1337,6 +1627,7 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
     tStartX = tLastX = t.clientX;
     tStartY = tLastY = t.clientY;
 
+    if (locked() && nearThumb(t.clientX, t.clientY)) showLockedHint();
     if (locked() || !nearThumb(t.clientX, t.clientY)) {
       tDecided   = true;
       tScrolling = true;
@@ -1379,6 +1670,7 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
 
   // ── Mouse (desktop) ────────────────────────────────────────────────────
   overlay.addEventListener('mousedown', e => {
+    if (locked() && nearThumb(e.clientX, e.clientY)) showLockedHint();
     if (locked() || !nearThumb(e.clientX, e.clientY)) return;
     const onMove = ev => apply(valueFromPos(ev.clientX, ev.clientY));
     const onUp   = ev => {
@@ -1405,7 +1697,7 @@ function resetVolSlider(slider, dbEl) {
 // Tap the dB readout to type an exact level instead of dragging the fader
 async function promptSetVolume(slider, dbEl) {
   if (selectedAux === null) return;
-  if (sceneLocked) { showToast('Mix locked — tap the banner above to unlock'); return; }
+  if (sceneLocked && hasSavedScene()) { showLockedHint(); return; }
   const currentDb = sliderToDb(parseFloat(slider.value));
   const placeholder = currentDb <= -90 ? '-inf' : currentDb.toFixed(1);
   const raw = await showActionDialog({
@@ -1831,6 +2123,13 @@ document.getElementById('eqCloseBtn').addEventListener('click', closeEQPanel);
 
 document.getElementById('mixesCloseBtn').addEventListener('click', closeMixesPicker);
 document.getElementById('mixesSaveBtn').addEventListener('click', savePresetPrompt);
+document.getElementById('mixesFindBtn').addEventListener('click', openFindMixes);
+document.getElementById('findMixesCloseBtn').addEventListener('click', () => { closeFindMixes(); openMixesPicker(); });
+document.getElementById('findMixesInput').addEventListener('input', (e) => {
+  clearTimeout(findMixesTimer);
+  const query = e.target.value.trim();
+  findMixesTimer = setTimeout(() => sendFindQuery(query), 250);
+});
 
 // ── Ear Scenes — open/close list, open/close/save the offline editor ──────
 
@@ -1848,9 +2147,17 @@ document.getElementById('snapshotEditSaveBtn').addEventListener('click', () => {
 
 // ── Tap the scene status banner — revert if dirty, otherwise toggle the lock ──
 
-document.getElementById('sceneStatus').addEventListener('click', () => {
+document.getElementById('sceneStatus').addEventListener('click', async () => {
   if (selectedAux === null || !hasSavedScene()) return;
   if (sceneDirty) {
+    // Confirm first — this replaces the live faders, which after a My Mix
+    // load isn't what "revert" sounds like it would do
+    const snap = currentSnapshot, aux = selectedAux;
+    const ok = await showActionDialog({
+      title: `Go back to your Ear Scene for ${snap}? Your current faders will be replaced.`,
+      confirmLabel: 'Go Back'
+    });
+    if (!ok || snap !== currentSnapshot || aux !== selectedAux) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: 'recall-scene', aux: selectedAux }));
     return;
@@ -1896,18 +2203,29 @@ document.getElementById('menuEarScenesItem').addEventListener('click', () => {
   openEarScenesPicker();
 });
 
-document.getElementById('menuSceneItem').addEventListener('click', () => {
+document.getElementById('menuSceneItem').addEventListener('click', async () => {
   if (selectedAux === null || !ws || ws.readyState !== WebSocket.OPEN) return;
   closeMenu();
   const alreadySaved = !!(currentSnapshot &&
     allScenes[currentSnapshot] && allScenes[currentSnapshot][String(selectedAux)]);
   if (alreadySaved) {
+    // Now sits right next to "Update Ear Scene" — confirm so a mis-tap can't delete it
+    const snap = currentSnapshot, aux = selectedAux;
+    const ok = await showActionDialog({ title: `Delete your Ear Scene for ${snap}?`, confirmLabel: 'Delete' });
+    if (!ok || snap !== currentSnapshot || aux !== selectedAux) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: 'delete-scene', aux: selectedAux }));
   } else {
-    const values = {};
-    volumeInputs.forEach((s, idx) => { if (s) values[String(idx + 1)] = parseFloat(s.value); });
-    ws.send(JSON.stringify({ type: 'save-scene', aux: selectedAux, values }));
+    saveCurrentEarScene();
   }
+});
+
+// Overwrite the existing Ear Scene with the current faders in one step —
+// previously this meant Delete, then Save again
+document.getElementById('menuSceneUpdateItem').addEventListener('click', () => {
+  if (selectedAux === null || !hasSavedScene()) return;
+  closeMenu();
+  saveCurrentEarScene();
 });
 
 // ── Fader layout size ─────────────────────────────────────────────────────

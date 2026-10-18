@@ -928,6 +928,7 @@ function applyConfig(cfg) {
   }
   $('autoStart').checked          = !!cfg.autoStart;
   $('sceneRecallEnabled').checked = !!cfg.sceneRecallEnabled;
+  $('clearScenesOnLaunch').checked = !!cfg.clearScenesOnLaunch;
   $('autoBackupEnabled').checked  = cfg.autoBackupEnabled !== false;
   $('dliveTlsEnabled').checked    = !!cfg.dliveTlsEnabled;
   $('dliveListenSendLevels').checked = cfg.dliveListenSendLevels !== false;
@@ -987,6 +988,7 @@ function collectConfig() {
   }
   out.autoStart           = $('autoStart').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;
+  out.clearScenesOnLaunch = $('clearScenesOnLaunch').checked;
   out.autoBackupEnabled   = $('autoBackupEnabled').checked;
   out.apiEnabled          = $('apiEnabled').checked;
   out.pcoServiceTypeId    = $('pcoServiceType').value || '';
@@ -1009,6 +1011,27 @@ function collectConfig() {
 // ── Status ────────────────────────────────────────────────────────────────
 
 let localIP = null;
+let port80  = { installed: false, upToDate: true }; // from get-port80-status
+
+// Port-80 helper state → the button's status text. An installed proxy from
+// before the TCP_NODELAY fix still works, but can add latency to fader moves.
+function renderPort80Status() {
+  const status = $('port80Status');
+  if (!port80.installed) { status.className = 'ip-status'; status.textContent = ''; return; }
+  if (port80.upToDate) {
+    status.className   = 'ip-status ok';
+    status.textContent = '✓ Port 80 active';
+  } else {
+    status.className   = 'ip-status err';
+    status.textContent = 'Port 80 helper is outdated — click Use Port 80 to update it (fixes fader lag)';
+  }
+}
+
+async function refreshPort80Status() {
+  try { port80 = await window.jpm.getPort80Status(); } catch (_) {}
+  renderPort80Status();
+  setStatus(isRunning);
+}
 
 function setConsoleStatus(connected) {
   const demo = isDemoMode && connected;
@@ -1027,7 +1050,10 @@ function setDeviceCount(count) {
 function getBaseUrl() {
   if (!isRunning) return null;
   const port = Number($('serverPort').value);
-  return localIP ? `http://${localIP}:${port}` : `http://localhost:${port}`;
+  if (!localIP) return `http://localhost:${port}`;
+  // With the port-80 helper installed, give out one canonical address — a
+  // browser keeps separate storage (and so separate My Mixes) for :80 and :8080
+  return port80.installed ? `http://${localIP}` : `http://${localIP}:${port}`;
 }
 
 function setStatus(running) {
@@ -1036,6 +1062,7 @@ function setStatus(running) {
   $('statusLabel').textContent = running ? 'Running' : 'Stopped';
   const base = getBaseUrl();
   $('serverUrl').textContent = base || 'Not running';
+  $('serverUrlHint').style.display = (running && port80.installed && localIP) ? '' : 'none';
   $('monitorUrl').textContent  = base ? `${base}/monitor.html`  : '— (server not running)';
   $('consoleUrl').textContent  = base ? `${base}/console.html`  : '— (server not running)';
   $('devicesUrl').textContent  = base ? `${base}/devices.html`  : '— (server not running)';
@@ -1100,6 +1127,8 @@ $('port80Btn').addEventListener('click', async () => {
   if (result.ok) {
     status.className   = 'ip-status ok';
     status.textContent = '✓ Active — persists after reboot';
+    try { port80 = await window.jpm.getPort80Status(); } catch (_) {}
+    setStatus(isRunning);
   } else {
     status.className   = 'ip-status err';
     status.textContent = '✕ Failed — run as administrator';
@@ -1138,17 +1167,82 @@ async function renderMixesTab() {
     return;
   }
 
-  for (const deviceId of deviceIds) {
+  // Who / when / where for each group, from the owner, savedAt and aux that
+  // newer saves record — lets you tell which orphaned device was whose
+  const describe = (deviceId) => {
+    const mixes = Object.values(allPresets[deviceId] || {});
+    const owners = [...new Set(mixes.map(m => m && m.owner).filter(Boolean))];
+    let last = null, lastAux = null;
+    for (const m of mixes) {
+      if (m && m.savedAt && (!last || m.savedAt > last)) { last = m.savedAt; lastAux = m.aux ?? null; }
+    }
+    const parts = [owners.length ? owners.join(' / ') : `Device ${deviceId.slice(0, 8)}…`];
+    if (lastAux != null) parts.push(auxNames[lastAux] || `Aux ${lastAux}`);
+    parts.push(last ? `last saved ${new Date(last).toLocaleDateString()}` : 'older saves');
+    return { label: parts.join(' · '), owner: owners[0] || '' };
+  };
+  const listed = deviceIds.filter(id => Object.keys(allPresets[id] || {}).length > 0);
+
+  for (const deviceId of listed) {
     const names = Object.keys(allPresets[deviceId] || {}).sort((a, b) => a.localeCompare(b));
-    if (names.length === 0) continue;
+    const info = describe(deviceId);
 
     const section = document.createElement('div');
     section.className = 'mixes-tab-aux';
 
     const header = document.createElement('div');
     header.className = 'mixes-tab-aux-header';
-    header.textContent = `Device ${deviceId.slice(0, 8)}…`;
+    header.textContent = info.label;
+    header.title = deviceId;
     section.appendChild(header);
+
+    // Set Name — stamps the name on every mix in the group for Find My Mixes
+    const tools = document.createElement('div');
+    tools.className = 'mixes-tab-tools';
+
+    const ownerInput = document.createElement('input');
+    ownerInput.type = 'text';
+    ownerInput.placeholder = 'Performer name';
+    ownerInput.maxLength = 64;
+    ownerInput.value = info.owner;
+    const ownerBtn = document.createElement('button');
+    ownerBtn.className = 'btn btn-sm';
+    ownerBtn.textContent = 'Set Name';
+    ownerBtn.addEventListener('click', async () => {
+      const result = await window.jpm.setPresetOwner(deviceId, ownerInput.value);
+      if (!result.ok) { alert(result.error || 'Could not set the name.'); return; }
+      renderMixesTab();
+    });
+
+    // Merge Into — moves this group's mixes into another device's group
+    const mergeSelect = document.createElement('select');
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Merge into…';
+    mergeSelect.appendChild(placeholder);
+    for (const otherId of listed) {
+      if (otherId === deviceId) continue;
+      const opt = document.createElement('option');
+      opt.value = otherId;
+      opt.textContent = describe(otherId).label;
+      mergeSelect.appendChild(opt);
+    }
+    const mergeBtn = document.createElement('button');
+    mergeBtn.className = 'btn btn-sm';
+    mergeBtn.textContent = 'Merge';
+    mergeBtn.addEventListener('click', async () => {
+      const toId = mergeSelect.value;
+      if (!toId) return;
+      const target = describe(toId).label;
+      if (!confirm(`Move all ${names.length} mix(es) from "${info.label}" into "${target}"?\n\nSame-name mixes that differ are kept as "Name (2)". A phone still using the old device picks up the merged list. A backup is saved first.`)) return;
+      mergeBtn.disabled = true;
+      const result = await window.jpm.mergePresets(deviceId, toId);
+      if (!result.ok) { alert(result.error || 'Merge failed.'); mergeBtn.disabled = false; return; }
+      renderMixesTab();
+    });
+
+    tools.append(ownerInput, ownerBtn, mergeSelect, mergeBtn);
+    section.appendChild(tools);
 
     for (const name of names) {
       const row = document.createElement('div');
@@ -1163,7 +1257,8 @@ async function renderMixesTab() {
       del.textContent = 'Delete';
       del.addEventListener('click', async () => {
         if (!confirm(`Delete "${name}"?`)) return;
-        await window.jpm.deletePreset(deviceId, name);
+        const result = await window.jpm.deletePreset(deviceId, name);
+        if (!result.ok) { alert('Could not save the deletion to disk. Please try again.'); return; }
         renderMixesTab();
       });
 
@@ -1208,7 +1303,7 @@ $('importBackupBtn').addEventListener('click', async () => {
   const btn    = $('importBackupBtn');
   const status = $('importStatus');
 
-  if (!confirm('Importing a backup replaces your current console settings, channel/aux setup, and My Mixes. This cannot be undone. Continue?')) return;
+  if (!confirm('Importing a backup replaces your current console settings, channel/aux setup, My Mixes and Ear Scenes. Your current setup is saved to the automatic backups folder first. Continue?')) return;
 
   btn.disabled    = true;
   btn.textContent = 'Importing…';
@@ -1260,8 +1355,9 @@ $('resetLayoutBtn').addEventListener('click', async () => {
 $('saveBtn').addEventListener('click', async () => {
   $('saveBtn').textContent = 'Saving…';
   $('saveBtn').disabled    = true;
-  await window.jpm.saveConfig(collectConfig());
-  $('saveBtn').textContent = 'Saved!';
+  const result = await window.jpm.saveConfig(collectConfig());
+  // Most changes now apply live; say when phones were disconnected by a restart
+  $('saveBtn').textContent = (result && result.restarted) ? 'Saved — server restarted' : 'Saved!';
   setTimeout(() => {
     $('saveBtn').textContent = 'Save & Apply';
     $('saveBtn').disabled    = false;
@@ -1494,6 +1590,7 @@ async function init() {
   window.jpm.onConnectionCount(({ count }) => setDeviceCount(count));
 
   refreshAutoBackupInfo();
+  refreshPort80Status();
   initOscLog();
 }
 

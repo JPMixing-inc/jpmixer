@@ -76,6 +76,7 @@
           <div>
             <div class="label">Web Server</div>
             <div class="sub" id="serverUrl">Not running</div>
+            <div class="sub url-hint" id="serverUrlHint" style="display:none">Give performers this address. The :8080 address also works, but a phone keeps a separate My Mixes list for each address.</div>
           </div>
           <button class="btn" id="toggleBtn">Start</button>
         </div>
@@ -330,7 +331,7 @@
           <h2>Saved Mixes</h2>
           <button class="btn btn-sm" id="refreshMixesBtn">Refresh</button>
         </div>
-        <div class="sub" style="margin-bottom:12px">All mixes saved by performers, organized by device. You can delete individual mixes from here.</div>
+        <div class="sub" style="margin-bottom:12px">All mixes saved by performers, organized by device. A new phone, a cleared browser, or a different address (port 80 vs :8080) shows up as a new device — use <strong>Merge Into</strong> to put one person's mixes back together (that phone picks them up on its next connect), and <strong>Set Name</strong> so Find My Mixes can find them by name. A backup is saved before every merge.</div>
         <div id="mixesByAux"></div>
       </section>
     </div>
@@ -347,6 +348,13 @@
           </div>
           <input type="checkbox" id="sceneRecallEnabled" class="toggle" />
         </div>
+        <div class="card-row">
+          <div>
+            <label class="toggle-label" for="clearScenesOnLaunch">Clear Ear Scenes on launch</label>
+            <div class="sub">Off (recommended): Ear Scenes are kept when JPMixer quits, crashes or the computer restarts. On: every launch starts with no Ear Scenes.</div>
+          </div>
+          <input type="checkbox" id="clearScenesOnLaunch" class="toggle" />
+        </div>
       </section>
 
       <section class="card">
@@ -354,7 +362,7 @@
         <div class="card-row">
           <div>
             <label class="toggle-label" for="autoBackupEnabled">Automatically back up</label>
-            <div class="sub">Saves your console settings, channel/aux setup, and My Mixes on a schedule. Backups older than a month are deleted automatically.</div>
+            <div class="sub">Saves your console settings, channel/aux setup, My Mixes and Ear Scenes on a schedule. Backups older than a month are deleted automatically.</div>
           </div>
           <input type="checkbox" id="autoBackupEnabled" class="toggle" />
         </div>
@@ -376,7 +384,7 @@
 
       <section class="card">
         <h2>Export Backup</h2>
-        <div class="sub" style="margin-bottom:16px">Save your console settings, channel/aux setup, and My Mixes to a file. Useful before an app update, or to move everything to a new computer.</div>
+        <div class="sub" style="margin-bottom:16px">Save your console settings, channel/aux setup, My Mixes and Ear Scenes to a file. Useful before an app update, or to move everything to a new computer.</div>
         <div class="card-row">
           <button class="btn btn-primary" id="exportBackupBtn">Export Backup…</button>
         </div>
@@ -385,7 +393,7 @@
 
       <section class="card">
         <h2>Import / Restore</h2>
-        <div class="sub" style="margin-bottom:16px">Restore from a previously exported backup file. This <strong>replaces</strong> your current console settings, channel/aux setup, and My Mixes — it does not affect Ear Scenes, which always start fresh on launch.</div>
+        <div class="sub" style="margin-bottom:16px">Restore from a previously exported backup file. This <strong>replaces</strong> your current console settings, channel/aux setup, My Mixes and Ear Scenes. Backups from before Ear Scenes were included leave your current Ear Scenes as they are. Your current setup is saved to the automatic backups folder first.</div>
         <div class="card-row">
           <button class="btn" id="importBackupBtn">Choose Backup File…</button>
         </div>

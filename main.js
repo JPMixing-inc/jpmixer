@@ -7,6 +7,33 @@ const { exec } = require('child_process');
 
 const GITHUB_REPO = 'JPMixing-inc/jpmixer';
 
+// One copy only — a second would fight the first over the HTTP/OSC ports and
+// the JSON data files. Launching again just brings up Settings in the first.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => { if (app.isReady()) openSettings(); });
+}
+
+// > 0 when a is newer than b. Handles x.y.z and x.y.z-prerelease (a
+// prerelease sorts before its release, e.g. 1.1.6-beta.1 < 1.1.6).
+function compareVersions(a, b) {
+  const parse = (v) => {
+    const [core, pre] = String(v).split('-', 2);
+    return { nums: core.split('.').map(n => parseInt(n, 10) || 0), pre: pre || null };
+  };
+  const A = parse(a), B = parse(b);
+  for (let i = 0; i < 3; i++) {
+    const d = (A.nums[i] || 0) - (B.nums[i] || 0);
+    if (d) return d;
+  }
+  if (A.pre === B.pre) return 0;
+  if (!A.pre) return 1;
+  if (!B.pre) return -1;
+  return A.pre.localeCompare(B.pre, undefined, { numeric: true });
+}
+
 function checkForUpdates(silent = false) {
   const options = {
     hostname: 'api.github.com',
@@ -24,7 +51,9 @@ function checkForUpdates(silent = false) {
         const release  = releases[0];
         const latest   = (release.tag_name || '').replace(/^v/, '');
         const current = app.getVersion();
-        if (latest && latest !== current) {
+        // Only when the release is actually newer — a plain !== also fired
+        // for a build newer than the latest release (e.g. a local test build)
+        if (latest && compareVersions(latest, current) > 0) {
           dialog.showMessageBox({
             type: 'info',
             title: 'Update Available',
@@ -98,6 +127,7 @@ let pcoClient;
 let lastSceneKeyScheme = null;
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
   config     = require('./src/server/config');
   oscServer  = require('./src/server/osc-server');
   dliveServer = require('./src/server/dlive-server');
@@ -231,10 +261,19 @@ function startServer() {
   // are permanent no-ops there regardless of which scheme it's grouped
   // with; 'number' is picked arbitrarily for consistency with dlive/klang.
   const keyScheme = family === 'digico' ? 'name' : 'number';
-  if (lastSceneKeyScheme !== null && lastSceneKeyScheme !== keyScheme && scenes) {
-    scenes.clearOnStartup();
+  // Ear Scenes now persist across launches, so the scheme they were saved
+  // under has to persist too — otherwise quitting on DiGiCo and relaunching
+  // on dLive would mix name-keyed scenes in with number-keyed ones.
+  const previousScheme = lastSceneKeyScheme !== null ? lastSceneKeyScheme : (scenes && scenes.getKeyScheme());
+  if (previousScheme && previousScheme !== keyScheme && scenes) {
+    if (Object.keys(scenes.getAll()).length > 0) {
+      autoBackup.writeBackup('before-console-switch')
+        .catch((err) => console.error('[JPMixer] Backup before console switch failed:', err));
+    }
+    scenes.clearForSchemeChange();
   }
   lastSceneKeyScheme = keyScheme;
+  if (scenes) scenes.setKeyScheme(keyScheme);
 
   server = family === 'dlive' ? dliveServer : family === 'klang' ? klangServer : family === 'wing' ? wingServer : oscServer;
   try {
@@ -379,6 +418,29 @@ ipcMain.handle('open-devices', () => {
   win.loadURL(`http://localhost:${cfg.serverPort}/devices.html`);
 });
 
+const PORT80_PROXY_DEST   = '/usr/local/bin/jpmixing-proxy.py';
+const PORT80_PROXY_MARKER = 'jpmixing-proxy v2 (TCP_NODELAY)';
+
+// Whether the port-80 helper is installed, and (macOS) whether it's the
+// current proxy script. Settings uses this to show performers the port-80
+// URL — http://<ip>/ and http://<ip>:8080/ are separate sites to a browser,
+// each with its own My Mixes — and to offer re-running setup when the
+// installed proxy predates TCP_NODELAY (updating it needs admin rights, so it
+// can't be done silently).
+ipcMain.handle('get-port80-status', () => new Promise(resolve => {
+  if (process.platform === 'win32') {
+    exec('netsh interface portproxy show v4tov4', (err, stdout) => {
+      const installed = !err && /\b0\.0\.0\.0\s+80\b/.test(stdout || '');
+      resolve({ installed, upToDate: true });
+    });
+    return;
+  }
+  fs.readFile(PORT80_PROXY_DEST, 'utf8', (err, text) => {
+    if (err) return resolve({ installed: false, upToDate: false });
+    resolve({ installed: true, upToDate: text.includes(PORT80_PROXY_MARKER) });
+  });
+}));
+
 ipcMain.handle('setup-port-80', async (_, serverPort) => {
   // Validate before embedding in scripts that run as root
   if (typeof serverPort !== 'number' || !Number.isInteger(serverPort) || serverPort < 1024 || serverPort > 65535) {
@@ -420,14 +482,22 @@ ipcMain.handle('setup-port-80', async (_, serverPort) => {
   const proxyScript = path.join(macTmpDir, 'jpmixing-proxy.py');
   const plistTmp    = path.join(macTmpDir, 'com.jpmixing.port80.plist');
   const setupTmp    = path.join(macTmpDir, 'jpmixing-setup.sh');
-  const proxyDest   = '/usr/local/bin/jpmixing-proxy.py';
+  const proxyDest   = PORT80_PROXY_DEST;
   const plistDest   = '/Library/LaunchDaemons/com.jpmixing.port80.plist';
 
   // Raw TCP proxy — forwards port 80 → server port, handles HTTP + WebSocket
+  // TCP_NODELAY on both legs — without it Nagle's algorithm can hold back the
+  // small WebSocket frames fader moves are made of. PORT80_PROXY_MARKER lets
+  // Settings spot an installed copy from before this fix (see get-port80-status).
   const proxyPy = `#!/usr/bin/env python3
+# ${PORT80_PROXY_MARKER}
 import socket, threading, sys
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else ${serverPort}
+
+def nodelay(sock):
+    try: sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except Exception: pass
 
 def pipe(src, dst):
     try:
@@ -447,6 +517,8 @@ def handle(client):
     try:
         srv = socket.create_connection(('127.0.0.1', PORT), timeout=10)
         srv.settimeout(None)
+        nodelay(client)
+        nodelay(srv)
         threading.Thread(target=pipe, args=(client, srv), daemon=True).start()
         threading.Thread(target=pipe, args=(srv, client), daemon=True).start()
     except Exception:
@@ -517,18 +589,60 @@ launchctl bootstrap system '${plistDest}' 2>/dev/null || launchctl load -w '${pl
   });
 });
 
-ipcMain.handle('save-config', (_, incoming) => {
-  config.save(incoming);
-  if (serverRunning) {
+// Settings that only take effect by restarting the server: its sockets and
+// ports, the desk connection, the iPad relay list, and demo mode's fake
+// console. Everything else (labels, colours, icons, order, groups, scene
+// recall…) is pushed to connected pages live. Restarting for every change
+// dropped every phone and re-primed the whole console — minutes, mid-service.
+const RESTART_KEYS = [
+  'serverPort', 'deskIp', 'deskSendPort', 'deskListenPort', 'consoleType', 'demoMode', 'ipadConnections',
+  // dLive / KLANG / WING connection settings
+  'dliveBaseChannel', 'dliveTlsEnabled', 'dliveUsername', 'dlivePassword', 'dliveMidiPort',
+  'dliveListenSendLevels', 'dlivePollSendLevels', 'klangIp', 'klangPort', 'wingPort'
+];
+const PCO_KEYS = ['pcoAppId', 'pcoSecret', 'pcoServiceTypeId', 'pcoTeamId', 'pcoPositionMapping', 'pcoIncludeUnconfirmed', 'pcoGreenRoomHidden'];
+
+function needsRestart(prev, next) {
+  if (RESTART_KEYS.some(k => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))) return true;
+  // Demo mode builds its fake console from these counts at start
+  return !!next.demoMode && (prev.channels !== next.channels || prev.auxes !== next.auxes);
+}
+
+// Applies a just-saved config to the running server; returns whether it restarted
+function applySavedConfig(prev) {
+  if (!serverRunning) return false;
+  const next = config.getAll();
+  if (needsRestart(prev, next)) {
     stopServer();
     startServer();
+    return true;
   }
+  if (server.applyConfigLive) {
+    server.applyConfigLive(next);
+  } else {
+    // dLive/KLANG/WING have no live-update path yet — restart them as before
+    stopServer();
+    startServer();
+    return true;
+  }
+  // Settings → Planning Center changes used to take effect through the
+  // restart's auto-sync; re-run it now that most saves don't restart
+  if (PCO_KEYS.some(k => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))) {
+    autoSyncPlanningCenter().catch((err) => console.error('[JPMixer/PCO] auto-sync error:', err));
+  }
+  return false;
+}
+
+ipcMain.handle('save-config', (_, incoming) => {
+  const prev = config.getAll();
+  config.save(incoming);
+  const restarted = applySavedConfig(prev);
   // Reconciled separately from the console-backend restart above — the
   // Control API's own enable/port state should never force a console
   // reconnect, and vice versa. See api-server.js's file header.
   apiServer.applyConfig(config.getAll());
   rebuildTrayMenu();
-  return { ok: true };
+  return { ok: true, restarted };
 });
 
 ipcMain.handle('start-server', () => startServer());
@@ -663,7 +777,7 @@ ipcMain.handle('pco-sync-now', async (_, { serviceTypeId, mapping, includeUnconf
 ipcMain.handle('open-greenroom', (_, url) => { shell.openExternal(url); return { ok: true }; });
 
 ipcMain.handle('get-presets',       () => presets.getAll());
-ipcMain.handle('delete-preset', (_, deviceId, name) => { presets.deletePreset(deviceId, name); return { ok: true }; });
+ipcMain.handle('delete-preset', (_, deviceId, name) => ({ ok: presets.deletePreset(deviceId, name) }));
 
 ipcMain.handle('get-auto-backup-status', () => autoBackup.getStatus());
 ipcMain.handle('open-auto-backups-folder', () => {
@@ -681,15 +795,7 @@ ipcMain.handle('export-backup', async () => {
   });
   if (canceled || !filePath) return { ok: false, canceled: true };
 
-  const data = {
-    app: 'JPMixer',
-    type: 'backup',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    appVersion: app.getVersion(),
-    config: config.getAll(),
-    presets: presets.getAll()
-  };
+  const data = autoBackup.buildBackupData(); // same format as auto-backups — includes Ear Scenes
   try {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
     return { ok: true, filePath };
@@ -716,13 +822,37 @@ ipcMain.handle('import-backup', async () => {
   if (!data || data.app !== "JPMixer" || data.type !== "backup" || !data.config) {
     return { ok: false, error: "That doesn’t look like a JPMixer backup file." };
   }
-  if (typeof data.version !== "number" || data.version > 1) {
+  if (typeof data.version !== "number" || data.version > autoBackup.BACKUP_VERSION) {
     return { ok: false, error: "This backup was created by a newer version of JPMixer (format v" + data.version + "). Please update the app first." };
   }
 
+  // Import replaces everything — take a safety backup of the current state
+  // first, so "cannot be undone" has an undo in the auto-backups folder
+  try { await autoBackup.writeBackup('before-import'); }
+  catch (e) { return { ok: false, error: 'Could not back up the current settings first: ' + e.message }; }
+
+  const prev = config.getAll();
   config.save(data.config);
-  if (data.presets) presets.replaceAll(data.presets);
-  if (serverRunning) { stopServer(); startServer(); }
+  if (data.presets) presets.replaceAll(data.presets, data.presetAliases);
+  // v1 backups have no scenes — leave the current Ear Scenes alone rather than wipe them
+  if (data.scenes) scenes.replaceAll(data.scenes);
+  applySavedConfig(prev);
+  apiServer.applyConfig(config.getAll());
   rebuildTrayMenu();
   return { ok: true };
+});
+
+// ── Settings → My Mixes admin ──────────────────────────────────────────────
+
+ipcMain.handle('get-preset-aliases', () => presets.getAliases());
+
+ipcMain.handle('set-preset-owner', (_, deviceId, owner) => presets.setOwner(deviceId, owner));
+
+ipcMain.handle('merge-presets', async (_, fromId, toId) => {
+  // Merging removes the source group — back up first so it can be undone
+  try { await autoBackup.writeBackup('before-merge'); }
+  catch (e) { return { ok: false, error: 'Could not write a backup first: ' + e.message }; }
+  const result = presets.mergeDevices(fromId, toId);
+  if (result.ok && serverRunning && server.pushDevicePresets) server.pushDevicePresets(result.toId);
+  return result;
 });
