@@ -100,7 +100,7 @@ function serverHarness() {
   vm.runInContext(read('src/server/shared-handlers.js'), sharedContext);
   mocks['./shared-handlers'] = sharedContext.module.exports;
   const context = vm.createContext({
-    ...clock, Buffer, console: quiet, module: { exports: {} },
+    ...clock, Buffer, console: quiet, module: { exports: {} }, setImmediate,
     __dirname: path.join(root, 'src/server'),
     require: name => mocks[name] || require(name)
   });
@@ -416,8 +416,8 @@ test('iPads are relayed the real desk value (-150) for a muted channel, browsers
   h.clock.advance(10);
   const mark = h.ports[0].sent.length;
   h.echo({ address: level(1), args: [-150] });
-  const toIpad = h.ports[0].sent.slice(mark).find(m => m.address === level(1));
-  assert.equal(toIpad.args[0], -150);
+  const toIpad = h.ports[0].sent.slice(mark).filter(m => m.address === level(1));
+  assert.deepEqual(toIpad.map(m => m.args[0]), [-150], 'exactly one relay, carrying the real value');
   assert.equal(h.cached(level(1)), -12);
 });
 
@@ -488,4 +488,43 @@ test('a session change stops querying the old session immediately', () => {
   const mark = h.ports[0].sent.length;
   h.clock.advance(400); // still inside the 500ms debounce
   assert.deepEqual(h.ports[0].sent.slice(mark).map(m => m.address), []);
+});
+
+test('a malformed packet is ignored instead of stopping the server', () => {
+  const h = serverHarness();
+  h.ports[0].emit('error', new Error('A malformed type tag string was found while reading the arguments of an OSC message.'));
+  assert.equal(h.run('loaded'), true, 'server still running');
+  h.ports[0].emit('error', Object.assign(new Error('bind EADDRINUSE 0.0.0.0:9000'), { code: 'EADDRINUSE' }));
+  assert.equal(h.run('loaded'), false, 'a real socket failure still stops it');
+});
+
+test('an iPad message with no type tag (DiGiCo iPad app) is relayed to the desk', () => {
+  const h = serverHarness();
+  h.run(`ipadPorts.set('192.0.2.9', { ip: '192.0.2.9', sendPort: 7000, name: 'iPad' })`);
+  const mark = h.ports[0].sent.length;
+  // Exactly what the iPad app sent: the address, null-padded, nothing after
+  const bare = new Uint8Array(Buffer.from('/Console/Name/?\0', 'latin1'));
+  h.ports[0].emit('raw', bare, { address: '192.0.2.9', port: 61753 });
+  h.ports[0].emit('error', new Error('A malformed type tag string was found while reading the arguments of an OSC message.'));
+  const sent = h.ports[0].sent.slice(mark);
+  assert.ok(sent.some(m => m.address === '/Console/Name/?'), 'forwarded to the desk');
+  assert.equal(h.run('loaded'), true, 'server still running');
+});
+
+test('stop sends muted channels\' real levels before closing the socket', async () => {
+  const h = serverHarness();
+  const events = [];
+  const udp = h.ports[0];
+  const origSend = udp.send.bind(udp);
+  udp.send = (m) => { events.push(['send', m.address, m.args[0]]); origSend(m); };
+  udp.close = () => { events.push(['close']); udp.emit('close'); };
+  h.echo({ address: level(1), args: [-12] });
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
+  h.clock.advance(10);
+  const closed = h.run('stop()');
+  assert.ok(!events.some(e => e[0] === 'close'), 'socket must not close in the same tick as the final sends');
+  await closed;
+  const closeAt = events.findIndex(e => e[0] === 'close');
+  const restoreAt = events.findIndex(e => e[1] === level(1) && e[2] === -12);
+  assert.ok(restoreAt >= 0 && closeAt > restoreAt, JSON.stringify(events.slice(-4)));
 });

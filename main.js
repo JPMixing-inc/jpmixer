@@ -233,7 +233,12 @@ function rebuildTrayMenu() {
     { type: 'separator' },
     {
       label: 'Quit JPMixer',
-      click: () => { stopServer(); app.exit(0); }
+      // Wait for stop() to actually send muted channels' levels back to the
+      // desk (capped, so Quit can never hang) — exiting straight away lost them
+      click: async () => {
+        await Promise.race([stopServer(), new Promise(r => setTimeout(r, 1000))]);
+        app.exit(0);
+      }
     }
   ]);
   tray.setContextMenu(menu);
@@ -296,12 +301,16 @@ function startServer({ pcoSync = true } = {}) {
   broadcastStatus();
 }
 
-function stopServer() {
-  server.stop();
+// Resolves once the backend's sockets are closed (osc-server's UDP close is
+// deferred a tick so its final sends go out) — await it before starting
+// again on the same ports
+async function stopServer() {
+  const closed = server.stop();
   serverRunning = false;
   apiServer.setActiveBackend(null);
   rebuildTrayMenu();
   broadcastStatus();
+  await closed;
 }
 
 function broadcastStatus() {
@@ -655,13 +664,13 @@ function needsRestart(prev, next) {
 }
 
 // Applies a just-saved config to the running server; returns whether it restarted
-function applySavedConfig(prev) {
+async function applySavedConfig(prev) {
   if (!serverRunning) return false;
   const next = config.getAll();
   const pcoChanged = PCO_KEYS.some(k => JSON.stringify(prev[k]) !== JSON.stringify(next[k]));
   if (needsRestart(prev, next) || !server.applyConfigLive) {
     // dLive/KLANG/WING have no live-update path yet, so they restart on every save
-    stopServer();
+    await stopServer();
     startServer({ pcoSync: pcoChanged || prev.consoleType !== next.consoleType }); // a new backend starts unlabelled
     return true;
   }
@@ -674,10 +683,10 @@ function applySavedConfig(prev) {
   return false;
 }
 
-ipcMain.handle('save-config', (_, incoming) => {
+ipcMain.handle('save-config', async (_, incoming) => {
   const prev = config.getAll();
   config.save(incoming);
-  const restarted = applySavedConfig(prev);
+  const restarted = await applySavedConfig(prev);
   // Reconciled separately from the console-backend restart above — the
   // Control API's own enable/port state should never force a console
   // reconnect, and vice versa. See api-server.js's file header.
@@ -877,7 +886,7 @@ ipcMain.handle('import-backup', async () => {
   if (data.presets) presets.replaceAll(data.presets, data.presetAliases);
   // v1 backups have no scenes — leave the current Ear Scenes alone rather than wipe them
   if (data.scenes) scenes.replaceAll(data.scenes);
-  applySavedConfig(prev);
+  await applySavedConfig(prev);
   apiServer.applyConfig(config.getAll());
   rebuildTrayMenu();
   return { ok: true };

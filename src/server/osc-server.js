@@ -1466,6 +1466,22 @@ function startDemoMode() {
 
 // ── Main start / stop ─────────────────────────────────────────────────────
 
+// An OSC packet that is only an address ("/Console/Name/?" + null padding)
+// with no type tag string — returns the address, else null
+function readBareOscAddress(data) {
+  if (!data || data.length < 4 || data[0] !== 0x2f) return null; // must start with "/"
+  let end = 0;
+  while (end < data.length && data[end] !== 0) end++;
+  const padded = (end + 4) & ~3; // address + at least one null, padded to 4 bytes
+  if (end === data.length || padded < data.length) return null; // unterminated, or a type tag follows
+  return String.fromCharCode(...data.subarray(0, end));
+}
+let bareMessagePending = false;
+
+// UDP socket errors that mean the socket itself is unusable
+const UDP_FATAL_CODES = new Set(['EADDRINUSE', 'EACCES', 'EADDRNOTAVAIL', 'ERR_SOCKET_BIND']);
+let lastBadPacketLogAt = 0;
+
 function start(cfg) {
   cancelSceneRecall();
   clearTimeout(metadataFetchTimer);
@@ -1573,7 +1589,7 @@ function start(cfg) {
     localPort:    cfg.deskListenPort
   });
 
-  udpPort.on('message', (oscMsg, timeTag, info) => {
+  const onUdpMessage = (oscMsg, timeTag, info) => {
     allSeenAddresses.set(oscMsg.address, oscMsg.args);
 
     logOscTraffic('in', oscMsg.address, oscMsg.args, ipadPorts.has(info.address) ? `ipad:${ipadPorts.get(info.address).name}` : 'desk');
@@ -1685,7 +1701,25 @@ function start(cfg) {
       }
     }
 
-    broadcast(oscMsg, info.address);
+    // Browser clients only. iPads were already sent the desk's real value
+    // above — broadcast() relayed every desk message to them a second time,
+    // with the logical level for a muted channel, which overrode the -150
+    // (and doubled all iPad traffic). It would also forward to the desk any
+    // message that arrived from an address other than the desk's.
+    broadcastToClients(oscMsg);
+  };
+  udpPort.on('message', onUdpMessage);
+
+  // Older OSC senders — the DiGiCo iPad app among them (its /Console/Name/?)
+  // — send just an address, with no type tag string. osc.js rejects those as
+  // malformed, so the iPad never got past connecting through the relay. Read
+  // them here as messages with no arguments, which is how the desk treats
+  // them, and route them like any other message.
+  udpPort.on('raw', (data, info) => {
+    const address = readBareOscAddress(data);
+    if (!address) return;
+    bareMessagePending = true; // osc.js reports this same packet as an error next
+    onUdpMessage({ address, args: [] }, undefined, info);
   });
 
   udpPort.on('error', (err) => {
@@ -1698,14 +1732,28 @@ function start(cfg) {
     // A local bind failure (EADDRINUSE/EACCES/EADDRNOTAVAIL on
     // deskListenPort — the exact scenario the HTTP server's own error
     // handler above already guards against, e.g. the stop+immediately-
-    // start cycle Save & Apply and Import Backup both do) previously only
-    // logged here, leaving the server "started" but with no working UDP
-    // socket and nothing surfaced to the caller/UI. Bring this in line with
-    // httpServer's error handling.
-    console.error('[JPMixer] UDP error:', err.message || err.code);
-    logEvent('udp-error', `${err.code || err.message} — desk socket failed`);
-    stop();
-    if (onServerError) onServerError(err);
+    // start cycle Save & Apply and Import Backup both do) leaves no working
+    // UDP socket, so stop and surface it, like httpServer's error handling.
+    if (UDP_FATAL_CODES.has(err.code)) {
+      console.error('[JPMixer] UDP error:', err.message || err.code);
+      logEvent('udp-error', `${err.code} — desk socket failed`);
+      stop();
+      if (onServerError) onServerError(err);
+      return;
+    }
+    // The bare-address message the 'raw' handler above already handled
+    if (bareMessagePending) { bareMessagePending = false; return; }
+    // Anything else is one bad packet — osc.js reports an undecodable message
+    // (from any device sending to this port: a misconfigured iPad app, a
+    // network scanner) as an 'error'. Stopping here took the whole server
+    // down, and every phone with it, over a single garbled packet (seen when
+    // an iPad OSC app was pointed at this port). Log it, rate-limited, and
+    // keep going.
+    const now = Date.now();
+    if (now - lastBadPacketLogAt > 10000) {
+      lastBadPacketLogAt = now;
+      logEvent('udp-bad-packet', `ignored: ${err.message || err.code || err}`);
+    }
   });
 
   udpPort.on('ready', fetchValues);
@@ -1743,7 +1791,23 @@ function stop() {
   flushDeskSetQueue();
   clearMuteSolo();
   clearConsoleState();
-  if (udpPort) { try { udpPort.close(); } catch (_) {} udpPort = null; }
+  // Close the UDP socket on the next turn, not now. The sends just queued
+  // above (muted channels' real levels, the flushed writes) are dropped if
+  // the socket closes in the same tick — measured: 20 of 20 lost — so every
+  // stop, quit and restarting Save & Apply left channels muted from a phone
+  // silent on the desk. Callers that restart straight away wait on the
+  // returned promise so the new socket can bind the same port.
+  let socketClosed = Promise.resolve();
+  if (udpPort) {
+    const closing = udpPort;
+    udpPort = null;
+    socketClosed = new Promise((resolve) => {
+      const done = () => { clearTimeout(fallback); resolve(); };
+      const fallback = setTimeout(done, 1000);
+      closing.once('close', done);
+      setImmediate(() => { try { closing.close(); } catch (_) { done(); } });
+    });
+  }
   ipadPorts.clear();
   // wss.close() only stops accepting *new* connections — already-upgraded
   // WebSocket sockets are detached from the HTTP server's own connection
@@ -1764,6 +1828,7 @@ function stop() {
   cache.clear();
   connections = [];
   console.log('[JPMixer] Server stopped');
+  return socketClosed;
 }
 
 function getChannelNames() {
