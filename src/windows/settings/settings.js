@@ -197,6 +197,11 @@ let pcoPositionMapping = {};   // { "PCO position name": auxNumber } — saved t
 let pcoGreenRoomHidden = [];   // PCO position names excluded from the Green Room display
 let pcoSavedServiceTypeId = ''; // restored into the dropdown once a live fetch populates it
 let pcoSavedTeamId = '';        // ditto, for the Team dropdown
+// Whether each dropdown holds a real list from Planning Center. Until it does
+// (offline, bad credentials, never refreshed), Save & Apply keeps the saved
+// value — reading the empty dropdown used to wipe the Service Type and Team.
+let pcoServiceTypesLoaded = false;
+let pcoTeamsLoaded = false;
 let pcoAllPositions = [];      // full result of the last Refresh Positions fetch (every team) — the Team
                                 // dropdown re-filters this in place, no new network call per team switch
 
@@ -218,7 +223,7 @@ function pcoAuxOptionsHtml(selectedAux) {
   for (let i = 1; i <= auxCount; i++) {
     const name = (auxOverrides[String(i)] && auxOverrides[String(i)].label) || auxNames[String(i)] || `AUX ${i}`;
     const sel = String(selectedAux) === String(i) ? ' selected' : '';
-    html += `<option value="${i}"${sel}>${i} — ${name}</option>`;
+    html += `<option value="${i}"${sel}>${i} — ${escHtml(name)}</option>`;
   }
   return html;
 }
@@ -233,7 +238,7 @@ function renderPcoPositionsFallback() {
     container.textContent = 'Pick a Service Type above, then click Refresh Positions.';
     return;
   }
-  container.innerHTML = entries.map(([pos, aux]) => `<div>${pos} → Aux ${aux}</div>`).join('')
+  container.innerHTML = entries.map(([pos, aux]) => `<div>${escHtml(pos)} → Aux ${escHtml(aux)}</div>`).join('')
     + '<div style="margin-top:6px">Click Refresh Positions to edit this mapping.</div>';
 }
 
@@ -257,9 +262,9 @@ function renderPcoPositionsEditable(positions) {
     row.className = 'pco-position-row';
     const hidden = pcoGreenRoomHidden.some((p) => p.toLowerCase() === pos.name.toLowerCase());
     row.innerHTML = `
-      <span class="pco-position-name">${pos.name}</span>
-      <select data-pco-position="${pos.name}">${pcoAuxOptionsHtml(pcoPositionMapping[pos.name])}</select>
-      <label class="pco-hide-toggle"><input type="checkbox" data-pco-hide="${pos.name}"${hidden ? ' checked' : ''} /> Hide from Green Room</label>
+      <span class="pco-position-name">${escHtml(pos.name)}</span>
+      <select data-pco-position="${escHtml(pos.name)}">${pcoAuxOptionsHtml(pcoPositionMapping[pos.name])}</select>
+      <label class="pco-hide-toggle"><input type="checkbox" data-pco-hide="${escHtml(pos.name)}"${hidden ? ' checked' : ''} /> Hide from Green Room</label>
     `;
     container.appendChild(row);
   }
@@ -296,6 +301,7 @@ $('pcoTeam').addEventListener('change', () => {
 async function refreshPcoTeams() {
   const serviceTypeId = $('pcoServiceType').value;
   if (!serviceTypeId) { $('pcoTeamStatus').textContent = 'Pick a Service Type first.'; return; }
+  pcoTeamsLoaded = false; // the list on screen may belong to another Service Type until this returns
   $('pcoTeamStatus').textContent = 'Loading…';
   const res = await window.jpm.pcoListTeams(serviceTypeId, pcoCredsFromFields());
   if (!res.ok) {
@@ -304,10 +310,11 @@ async function refreshPcoTeams() {
   }
   const sel = $('pcoTeam');
   sel.innerHTML = '<option value="">— All Teams —</option>'
-    + res.teams.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+    + res.teams.map((t) => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('');
   if (pcoSavedTeamId && res.teams.some((t) => t.id === pcoSavedTeamId)) {
     sel.value = pcoSavedTeamId;
   }
+  pcoTeamsLoaded = true;
   $('pcoTeamStatus').textContent = `${res.teams.length} team(s) loaded.`;
 }
 
@@ -319,12 +326,19 @@ async function refreshPcoServiceTypes() {
     return;
   }
   const sel = $('pcoServiceType');
+  // A "pick one" placeholder first, so a saved Service Type that no longer
+  // exists isn't silently replaced by whichever type happens to be listed first
   sel.innerHTML = res.types.length
-    ? res.types.map((t) => `<option value="${t.id}">${t.name}</option>`).join('')
+    ? '<option value="">— pick a Service Type —</option>'
+      + res.types.map((t) => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('')
     : '<option value="">— none found —</option>';
+  pcoServiceTypesLoaded = true;
   if (pcoSavedServiceTypeId && res.types.some((t) => t.id === pcoSavedServiceTypeId)) {
     sel.value = pcoSavedServiceTypeId;
     await refreshPcoTeams(); // saved Service Type is already selected — chain into Teams too
+  } else if (pcoSavedServiceTypeId) {
+    $('pcoServiceTypeStatus').textContent = `${res.types.length} service type(s) loaded — your saved one wasn't found, pick one.`;
+    return;
   }
   $('pcoServiceTypeStatus').textContent = `${res.types.length} service type(s) loaded.`;
 }
@@ -380,13 +394,13 @@ $('pcoSyncNowBtn').addEventListener('click', async () => {
   $('pcoSyncStatus').textContent = `Synced from "${res.plan.title || res.plan.id}".`;
   const parts = [];
   if (res.applied.length) {
-    parts.push(`<div class="sub"><strong>Updated:</strong> ${res.applied.map((a) => `Aux ${a.aux} → "${a.label}"`).join(', ')}</div>`);
+    parts.push(`<div class="sub"><strong>Updated:</strong> ${res.applied.map((a) => `Aux ${escHtml(a.aux)} → "${escHtml(a.label)}"`).join(', ')}</div>`);
   }
   if (res.unmapped.length) {
-    parts.push(`<div class="sub">⚠️ Scheduled but unmapped: ${res.unmapped.join(', ')}</div>`);
+    parts.push(`<div class="sub">⚠️ Scheduled but unmapped: ${res.unmapped.map(escHtml).join(', ')}</div>`);
   }
   if (res.errors.length) {
-    parts.push(`<div class="sub">Errors: ${res.errors.join(', ')}</div>`);
+    parts.push(`<div class="sub">Errors: ${res.errors.map(escHtml).join(', ')}</div>`);
   }
   if (!parts.length) parts.push('<div class="sub">No one relevant is scheduled yet, or nothing matched a mapping.</div>');
   $('pcoSyncResults').innerHTML = parts.join('');
@@ -953,11 +967,31 @@ function applyConfig(cfg) {
     ? cfg.channelOverrides : {};
   auxOverrides     = (cfg.auxOverrides && typeof cfg.auxOverrides === 'object')
     ? cfg.auxOverrides : {};
+  // What these looked like when Settings loaded them — see mergeExternalLabels()
+  loadedOverrides = JSON.parse(JSON.stringify({ channel: channelOverrides, aux: auxOverrides }));
 
   initChannelOrder();
   renderGroups();
   renderChannels();
   renderAuxes();
+}
+
+// Names the Control API or a Planning Center sync wrote while Settings was
+// open exist only in config.json — Settings' copy is from when it loaded, and
+// saving it wholesale reverted them (and pushed the old names to every
+// phone). Keep a fresher saved name unless it was also edited here.
+let loadedOverrides = { channel: {}, aux: {} };
+function mergeExternalLabels(mine, base, fresh) {
+  const out = { ...mine };
+  for (const [n, freshOv] of Object.entries(fresh || {})) {
+    if (!freshOv || freshOv.label === undefined) continue;
+    const baseLabel = (base[n] || {}).label;
+    const mineLabel = (mine[n] || {}).label;
+    if (freshOv.label !== baseLabel && mineLabel === baseLabel) {
+      out[n] = { ...(mine[n] || {}), label: freshOv.label };
+    }
+  }
+  return out;
 }
 
 function collectConfig() {
@@ -991,8 +1025,8 @@ function collectConfig() {
   out.clearScenesOnLaunch = $('clearScenesOnLaunch').checked;
   out.autoBackupEnabled   = $('autoBackupEnabled').checked;
   out.apiEnabled          = $('apiEnabled').checked;
-  out.pcoServiceTypeId    = $('pcoServiceType').value || '';
-  out.pcoTeamId           = $('pcoTeam').value || '';
+  out.pcoServiceTypeId    = pcoServiceTypesLoaded ? ($('pcoServiceType').value || '') : pcoSavedServiceTypeId;
+  out.pcoTeamId           = pcoTeamsLoaded ? ($('pcoTeam').value || '') : pcoSavedTeamId;
   out.pcoIncludeUnconfirmed = $('pcoIncludeUnconfirmed').checked;
   out.pcoPositionMapping  = pcoPositionMapping;
   out.pcoGreenRoomHidden  = pcoGreenRoomHidden;
@@ -1361,7 +1395,19 @@ $('resetLayoutBtn').addEventListener('click', async () => {
 $('saveBtn').addEventListener('click', async () => {
   $('saveBtn').textContent = 'Saving…';
   $('saveBtn').disabled    = true;
-  const result = await window.jpm.saveConfig(collectConfig());
+  const out = collectConfig();
+  const fresh = await window.jpm.getConfig();
+  out.channelOverrides = mergeExternalLabels(out.channelOverrides, loadedOverrides.channel, fresh.channelOverrides);
+  out.auxOverrides     = mergeExternalLabels(out.auxOverrides, loadedOverrides.aux, fresh.auxOverrides);
+  const result = await window.jpm.saveConfig(out);
+  // This is now the baseline for the next save
+  channelOverrides = out.channelOverrides;
+  auxOverrides     = out.auxOverrides;
+  loadedOverrides  = JSON.parse(JSON.stringify({ channel: channelOverrides, aux: auxOverrides }));
+  pcoSavedServiceTypeId = out.pcoServiceTypeId;
+  pcoSavedTeamId        = out.pcoTeamId;
+  renderChannels();
+  renderAuxes();
   // Most changes now apply live; say when phones were disconnected by a restart
   $('saveBtn').textContent = (result && result.restarted) ? 'Saved — server restarted' : 'Saved!';
   refreshPort80Status(); // a server-port change can stop the helper matching

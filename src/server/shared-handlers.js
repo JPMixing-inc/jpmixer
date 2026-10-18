@@ -8,6 +8,7 @@
 
 const WebSocket = require('ws');
 const presets   = require('./presets');
+const config    = require('./config');
 
 function send(ws, msg) {
   try { ws.send(JSON.stringify(msg)); } catch (_) {}
@@ -102,4 +103,24 @@ function pushDevicePresets(connections, deviceId) {
   }
 }
 
-module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets };
+// Live relabeling — the External Control API's main use case (e.g. a Planning
+// Center connector naming aux mixes after who's playing them). Updates the
+// backend's in-memory config, persists via config.updateOverride() (not the
+// full save-config path, which would restart the backend), and tells
+// connected pages so labels change with no reconnect. Same on every backend
+// apart from the default channel count.
+function relabel(serverCfg, kind, n, label, maxDefault, broadcastToClients) {
+  const num = parseInt(n, 10);
+  const max = (kind === 'aux' ? serverCfg.auxes : serverCfg.channels) || maxDefault;
+  if (!Number.isInteger(num) || num < 1 || num > max || typeof label !== 'string') return false;
+  const key = kind === 'aux' ? 'auxOverrides' : 'channelOverrides';
+  if (!serverCfg[key]) serverCfg[key] = {};
+  serverCfg[key][String(num)] = { ...(serverCfg[key][String(num)] || {}), label };
+  config.updateOverride(kind, num, { label });
+  broadcastToClients(kind === 'aux'
+    ? { type: 'aux-relabeled', aux: num, label }
+    : { type: 'channel-relabeled', channel: num, label });
+  return true;
+}
+
+module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets, relabel };

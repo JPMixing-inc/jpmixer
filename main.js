@@ -241,7 +241,7 @@ function rebuildTrayMenu() {
 
 // ─── Server lifecycle ─────────────────────────────────────────────────────────
 
-function startServer() {
+function startServer({ pcoSync = true } = {}) {
   const consoleType = config.get('consoleType');
   const family = consoleType === 'dlive' ? 'dlive' : consoleType === 'klang' ? 'klang' : consoleType === 'wing' ? 'wing' : 'digico';
   // Ear Scenes are keyed by snapshot *name* for DiGiCo and scene *number*
@@ -283,8 +283,11 @@ function startServer() {
     // Fire-and-forget — a Planning Center round trip shouldn't block the
     // tray menu/status broadcast below. Covers both auto-launch (autoStart)
     // and a manual Start Server click uniformly, so a saved setup stays in
-    // sync without anyone needing to open Settings.
-    autoSyncPlanningCenter().catch((err) => console.error('[JPMixer/PCO] auto-sync error:', err));
+    // sync without anyone needing to open Settings. Skipped for a Save &
+    // Apply restart that didn't touch Planning Center settings — otherwise
+    // it overwrote aux names the engineer had just edited (dLive/KLANG/WING
+    // restart on every save).
+    if (pcoSync) autoSyncPlanningCenter().catch((err) => console.error('[JPMixer/PCO] auto-sync error:', err));
   } catch (err) {
     console.error('Server start failed:', err);
     serverRunning = false;
@@ -655,22 +658,17 @@ function needsRestart(prev, next) {
 function applySavedConfig(prev) {
   if (!serverRunning) return false;
   const next = config.getAll();
-  if (needsRestart(prev, next)) {
+  const pcoChanged = PCO_KEYS.some(k => JSON.stringify(prev[k]) !== JSON.stringify(next[k]));
+  if (needsRestart(prev, next) || !server.applyConfigLive) {
+    // dLive/KLANG/WING have no live-update path yet, so they restart on every save
     stopServer();
-    startServer();
+    startServer({ pcoSync: pcoChanged || prev.consoleType !== next.consoleType }); // a new backend starts unlabelled
     return true;
   }
-  if (server.applyConfigLive) {
-    server.applyConfigLive(next);
-  } else {
-    // dLive/KLANG/WING have no live-update path yet — restart them as before
-    stopServer();
-    startServer();
-    return true;
-  }
-  // Settings → Planning Center changes used to take effect through the
-  // restart's auto-sync; re-run it now that most saves don't restart
-  if (PCO_KEYS.some(k => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))) {
+  server.applyConfigLive(next);
+  // Planning Center changes used to take effect through the restart's
+  // auto-sync; run it now that most saves don't restart
+  if (pcoChanged) {
     autoSyncPlanningCenter().catch((err) => console.error('[JPMixer/PCO] auto-sync error:', err));
   }
   return false;

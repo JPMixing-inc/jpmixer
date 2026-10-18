@@ -287,14 +287,14 @@ function applyMuteSolo(aux) {
     const soloed   = !!(soloState[aux]?.[ch]);
     const silenced = muted || (anySolo && !soloed);
 
-    // Only channels whose silenced state actually changes are written — a
-    // mute is one message, not a rewrite of the whole mix — and they take the
-    // paced queue's urgent lane (see sendToDeskPaced).
+    // Silenced channels are (re-)sent -150 on every mute/solo change, so a
+    // -150 lost on a busy network is corrected by the next change rather than
+    // leaving a channel audible that every phone shows muted. Audible channels
+    // are only written when they come back from silence — a mute is not a
+    // rewrite of the whole mix. All of it takes the paced queue's urgent lane.
     if (silenced) {
-      if (premuteState[aux][ch] === undefined) {
-        premuteState[aux][ch] = cache.get(key).args[0];
-        sendToDeskPaced(key, [-150], true);
-      }
+      if (premuteState[aux][ch] === undefined) premuteState[aux][ch] = cache.get(key).args[0];
+      sendToDeskPaced(key, [-150], true);
     } else if (premuteState[aux][ch] !== undefined) {
       const restore = premuteState[aux][ch];
       sendToDeskPaced(key, [restore], true);
@@ -361,26 +361,13 @@ function setSolo(auxRaw, chRaw, soloed) {
 // via config.js's targeted updateOverride() (not the full save-config path,
 // which would restart this backend), and broadcasts to already-connected
 // browser clients so labels update live with no reconnect.
+// Live relabeling (Control API / Planning Center) — see shared-handlers.js
 function setChannelLabel(n, label) {
-  const ch = parseInt(n, 10);
-  const chMax = serverCfg.channels || 48;
-  if (!Number.isInteger(ch) || ch < 1 || ch > chMax || typeof label !== 'string') return false;
-  if (!serverCfg.channelOverrides) serverCfg.channelOverrides = {};
-  serverCfg.channelOverrides[String(ch)] = { ...(serverCfg.channelOverrides[String(ch)] || {}), label };
-  config.updateOverride('channel', ch, { label });
-  broadcastToClients({ type: 'channel-relabeled', channel: ch, label });
-  return true;
+  return shared.relabel(serverCfg, 'channel', n, label, 48, broadcastToClients);
 }
 
 function setAuxLabel(n, label) {
-  const aux = parseInt(n, 10);
-  const auxMax = serverCfg.auxes || 16;
-  if (!Number.isInteger(aux) || aux < 1 || aux > auxMax || typeof label !== 'string') return false;
-  if (!serverCfg.auxOverrides) serverCfg.auxOverrides = {};
-  serverCfg.auxOverrides[String(aux)] = { ...(serverCfg.auxOverrides[String(aux)] || {}), label };
-  config.updateOverride('aux', aux, { label });
-  broadcastToClients({ type: 'aux-relabeled', aux, label });
-  return true;
+  return shared.relabel(serverCfg, 'aux', n, label, 16, broadcastToClients);
 }
 
 // The desk reports the physical -150 dB used to implement mute/solo. Keep
@@ -879,15 +866,18 @@ function primeCache() {
 function queueActiveAuxRefresh() {
   const chCount  = cache.get('/Console/Input_Channels').args[0];
   const auxModes = cache.get('/Console/Aux_Outputs/modes').args;
-  const activeAuxes = new Set(connections.map(c => c._activeAux).filter(a => a != null));
-  const queries = [];
+  const activeAuxes = [...new Set(connections.map(c => c._activeAux).filter(a => a != null))];
+  // Every active aux's levels before any pans — levels are what performers
+  // react to. Phones keep showing their previous faders meanwhile (mixer.js
+  // keeps the rows when the channel layout is unchanged).
+  const levels = [], pans = [];
   for (const aux of activeAuxes) {
     for (let ch = 1; ch <= chCount; ch++) {
-      queries.push(`/Input_Channels/${ch}/Aux_Send/${aux}/send_level/?`);
-      if (auxModes[aux - 1] === 2) queries.push(`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan/?`);
+      levels.push(`/Input_Channels/${ch}/Aux_Send/${aux}/send_level/?`);
+      if (auxModes[aux - 1] === 2) pans.push(`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan/?`);
     }
   }
-  queueDeskQueries(queries);
+  queueDeskQueries(levels.concat(pans));
 }
 
 // ── Snapshot tracking ─────────────────────────────────────────────────────
@@ -1594,11 +1584,17 @@ function start(cfg) {
     }
 
     processSnapshotMsg(oscMsg);
+    // iPads get the desk's real value (-150 for a channel JPMixer has muted),
+    // the same as the browser send_level path relays to them — telling them
+    // the logical level made the DiGiCo iPad app show a muted channel as open,
+    // and re-sending that would silently undo the mute. Browser clients and
+    // the cache get the logical level below.
+    const deskMsg = oscMsg;
     oscMsg = processDeskSendLevel(oscMsg);
     maybeCacheResponse(oscMsg);
 
     // Relay all desk messages to every configured iPad regardless of address
-    sendToAllIpads(oscMsg.address, oscMsg.args, null);
+    sendToAllIpads(deskMsg.address, deskMsg.args, null);
 
     if (!loaded) {
       loadNextRequiredParameter();

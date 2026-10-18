@@ -901,9 +901,16 @@ function onMessage(e) {
   // connector naming aux mixes after who's playing them). Updates the same
   // in-memory arrays applyConfig() would, then rebuilds exactly like a
   // normal config load, so nothing else needs to know this update exists.
+  // A rename (Control API / Planning Center) only changes the name text —
+  // rebuilding the channel list reset every fader to -∞ and every pan to
+  // centre mid-service, and dropped the mute/solo highlighting
   if (json.type === 'channel-relabeled') {
     const ch = channelConfig.find(c => c.channel === json.channel);
-    if (ch) { ch.label = json.label; buildChannels(channelConfig); }
+    if (ch) {
+      ch.label = json.label;
+      const cached = channelRowCache.get(json.channel);
+      if (cached && cached.nameEl) cached.nameEl.textContent = json.label || '';
+    }
     return;
   }
   if (json.type === 'aux-relabeled') {
@@ -1146,7 +1153,13 @@ function onMessage(e) {
 
 // ── Apply config ──────────────────────────────────────────────────────────
 
+// Channel rows depend on these fields; labels are updated in place
+function channelLayoutKey(channels) {
+  return JSON.stringify((channels || []).map(c => [c.channel, c.enabled, c.order, c.title, c.icon]));
+}
+
 function applyConfig(config) {
+  const previousLayout = channelLayoutKey(channelConfig);
   auxConfig          = config.aux      || [];
   channelConfig      = config.channels || [];
   allScenes          = config.scenes   || {};
@@ -1157,7 +1170,20 @@ function applyConfig(config) {
 
   document.getElementById('snapshotName').textContent = currentSnapshot;
 
-  buildChannels(channelConfig);
+  // Same channels, order, sections and icons as before (a reconnect, a
+  // session reload, a Settings change that only renamed things): keep the
+  // existing rows — and the levels on them — and just update the names.
+  // Rebuilding put every fader at -∞ until fresh values arrived, which after
+  // a session reload could be a minute or more, and performers would push
+  // "dead" faders up in the meantime.
+  if (channelRowCache.size > 0 && previousLayout === channelLayoutKey(channelConfig)) {
+    for (const ch of channelConfig) {
+      const cached = channelRowCache.get(ch.channel);
+      if (cached && cached.nameEl) cached.nameEl.textContent = ch.label || '';
+    }
+  } else {
+    buildChannels(channelConfig);
+  }
 
   // Try to restore the previously selected aux (handles reconnects + iOS page reloads).
   // A ?aux=N link takes priority on first load — that's how a hidden/link-only
@@ -1568,7 +1594,7 @@ function buildChannels(channels) {
     faderCol.append(volLabel, panLabel);
     row.append(info, msBtns, faderCol);
     list.appendChild(row);
-    channelRowCache.set(ch.channel, { row, muteBtn, soloBtn });
+    channelRowCache.set(ch.channel, { row, muteBtn, soloBtn, nameEl: name });
 
     // Track by 1-based channel index
     volumeInputs[ch.channel - 1] = volSlider;

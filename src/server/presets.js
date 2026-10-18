@@ -218,14 +218,13 @@ function setOwner(deviceId, owner) {
 }
 
 // Wholesale replace — used when restoring from a backup file. Aliases are
-// only replaced when the backup has them (v1 backups predate aliases).
+// replaced too: a v1 backup (from before aliases existed) restores none, so
+// merges made since can't redirect a restored device's own group elsewhere.
 function replaceAll(data, aliases) {
   _presets = toNullProto((data && typeof data === 'object') ? data : {});
   persist();
-  if (aliases && typeof aliases === 'object') {
-    _aliases = toNullProto(aliases);
-    persistAliases();
-  }
+  _aliases = toNullProto((aliases && typeof aliases === 'object') ? aliases : {});
+  persistAliases();
 }
 
 load();

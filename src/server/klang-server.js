@@ -244,26 +244,13 @@ function fireSnapshot(action) {
 // Live relabeling — see osc-server.js's setChannelLabel/setAuxLabel for the
 // full rationale. KLANG mode already supports pulling names from the paired
 // dLive console; this is a separate, JPMixer-side override on top of that.
+// Live relabeling (Control API / Planning Center) — see shared-handlers.js
 function setChannelLabel(n, label) {
-  const ch = parseInt(n, 10);
-  const chMax = serverCfg.channels || 48;
-  if (!Number.isInteger(ch) || ch < 1 || ch > chMax || typeof label !== 'string') return false;
-  if (!serverCfg.channelOverrides) serverCfg.channelOverrides = {};
-  serverCfg.channelOverrides[String(ch)] = { ...(serverCfg.channelOverrides[String(ch)] || {}), label };
-  config.updateOverride('channel', ch, { label });
-  broadcastToClients({ type: 'channel-relabeled', channel: ch, label });
-  return true;
+  return shared.relabel(serverCfg, 'channel', n, label, 48, broadcastToClients);
 }
 
 function setAuxLabel(n, label) {
-  const aux = parseInt(n, 10);
-  const auxMax = serverCfg.auxes || 16;
-  if (!Number.isInteger(aux) || aux < 1 || aux > auxMax || typeof label !== 'string') return false;
-  if (!serverCfg.auxOverrides) serverCfg.auxOverrides = {};
-  serverCfg.auxOverrides[String(aux)] = { ...(serverCfg.auxOverrides[String(aux)] || {}), label };
-  config.updateOverride('aux', aux, { label });
-  broadcastToClients({ type: 'aux-relabeled', aux, label });
-  return true;
+  return shared.relabel(serverCfg, 'aux', n, label, 16, broadcastToClients);
 }
 
 // ── Scene (Ear Scene) recall — keyed by dLive scene NUMBER, same as the

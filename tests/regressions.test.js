@@ -356,7 +356,7 @@ test('a mute goes out ahead of a queued Ear Scene recall', () => {
   assert.equal(firstTick[0].args[0], -150);
 });
 
-test('a mute only writes the channel whose silence changed', () => {
+test('a mute writes only silenced channels, not the whole mix', () => {
   const h = serverHarness();
   h.echo({ address: level(1), args: [-12] });
   h.echo({ address: level(2), args: [-6] });
@@ -364,6 +364,19 @@ test('a mute only writes the channel whose silence changed', () => {
   h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
   h.clock.advance(100);
   assert.deepEqual(h.ports[0].sent.slice(mark).map(m => [m.address, m.args[0]]), [[level(1), -150]]);
+});
+
+test('every mute/solo change re-asserts -150 on channels already silenced', () => {
+  const h = serverHarness();
+  h.echo({ address: level(1), args: [-12] });
+  h.echo({ address: level(2), args: [-6] });
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
+  h.clock.advance(100);
+  const mark = h.ports[0].sent.length; // suppose that -150 was lost on the network
+  h.send({ type: 'set-mute', aux: 1, ch: 2, muted: true });
+  h.clock.advance(100);
+  const sent = h.ports[0].sent.slice(mark).map(m => [m.address, m.args[0]]);
+  assert.deepEqual(sent.sort(), [[level(1), -150], [level(2), -150]].sort());
 });
 
 test('a performer query goes ahead of background polling', () => {
@@ -391,4 +404,40 @@ test('merge and set-name roll back when the disk write fails', () => {
   store.fail(false);
   assert.equal(p.mergeDevices('old', 'new').ok, true);
   assert.equal(p.getByDevice('old').Sunday.levels[1], 0.5, 'old id now reads the merged group');
+});
+
+// ── Second review pass ─────────────────────────────────────────────────────
+
+test('iPads are relayed the real desk value (-150) for a muted channel, browsers the logical level', () => {
+  const h = serverHarness();
+  h.run(`ipadPorts.set('192.0.2.9', { ip: '192.0.2.9', sendPort: 9000, name: 'iPad' })`);
+  h.echo({ address: level(1), args: [-12] });
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
+  h.clock.advance(10);
+  const mark = h.ports[0].sent.length;
+  h.echo({ address: level(1), args: [-150] });
+  const toIpad = h.ports[0].sent.slice(mark).find(m => m.address === level(1));
+  assert.equal(toIpad.args[0], -150);
+  assert.equal(h.cached(level(1)), -12);
+});
+
+test('importing a backup without aliases clears merge aliases', () => {
+  const store = presetStore();
+  const p = store.api;
+  p.savePreset('A', 'Sunday', { 1: 0.5 }, {});
+  p.savePreset('B', 'Rehearsal', { 1: 0.2 }, {});
+  assert.equal(p.mergeDevices('A', 'B').ok, true);
+  p.replaceAll({ A: { Sunday: { levels: { 1: 0.5 }, pans: {} } }, B: { Rehearsal: { levels: { 1: 0.2 }, pans: {} } } }); // v1: no aliases
+  assert.equal(p.resolve('A'), 'A');
+  assert.equal(p.getByDevice('A').Sunday.levels[1], 0.5);
+});
+
+test('relabeling a channel updates the server config and tells pages, without a restart', () => {
+  const h = serverHarness();
+  assert.equal(h.run(`setChannelLabel(2, 'Bass DI')`), true);
+  assert.deepEqual(h.socket.sent.at(-1), { type: 'channel-relabeled', channel: 2, label: 'Bass DI' });
+  assert.equal(h.run(`serverCfg.channelOverrides['2'].label`), 'Bass DI');
+  assert.equal(h.run(`setChannelLabel(99, 'nope')`), false, 'out-of-range channel rejected');
+  assert.equal(h.run(`setAuxLabel(1, 'Drums')`), true);
+  assert.deepEqual(h.socket.sent.at(-1), { type: 'aux-relabeled', aux: 1, label: 'Drums' });
 });
