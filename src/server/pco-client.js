@@ -142,9 +142,8 @@ async function listPositions(serviceTypeId, creds) {
 // one specific server-side "only future plans" filter param whose exact
 // name isn't doc-verified — see file header. Descending matters: ascending
 // would put the OLDEST plans on page 1 for any account with real history,
-// pushing anything relevant thousands of plans deep. Descending keeps every
-// recent/upcoming plan (a small number for a typical weekly service) right
-// at the top, ahead of the entire past.
+// pushing anything relevant thousands of plans deep. Descending lets us
+// traverse the future schedule and stop on reaching the first past plan.
 //
 // Deliberately NOT "soonest plan with a future date" — a church running
 // several same-day services (e.g. Saturday 5pm/7pm, Sunday 9am/11am) needs
@@ -155,18 +154,31 @@ async function listPositions(serviceTypeId, creds) {
 // still closest; between services, the next one becomes closest instead —
 // the transition happens right at the midpoint of the gap between them.
 async function nextPlan(serviceTypeId, creds) {
-  const json = await pcoFetch(`/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans?order=-sort_date&per_page=25`, creds);
   const now = Date.now();
-  const plans = (json.data || [])
-    .map(d => ({
-      id: d.id,
-      date: d.attributes && (d.attributes.sort_date || d.attributes.dates),
-      title: (d.attributes && d.attributes.title) || null,
-    }))
-    .filter(p => p.date && !isNaN(new Date(p.date).getTime()));
-  if (plans.length === 0) return null;
-  plans.sort((a, b) => Math.abs(new Date(a.date).getTime() - now) - Math.abs(new Date(b.date).getTime() - now));
-  return plans[0];
+  let url = `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans?order=-sort_date&per_page=25`;
+  let best = null, bestDistance = Infinity;
+  // Future schedules can span many pages. Follow descending pages until we
+  // reach the present; after the first past plan, subsequent pages can only
+  // be further away. This avoids fetching years of historical services.
+  for (let page = 0; url && page < 50; page++) {
+    const json = await pcoFetch(url, creds);
+    let reachedPast = false;
+    for (const d of json.data || []) {
+      const date = d.attributes && (d.attributes.sort_date || d.attributes.dates);
+      const time = date ? new Date(date).getTime() : NaN;
+      if (!Number.isFinite(time)) continue;
+      const distance = Math.abs(time - now);
+      if (distance < bestDistance) {
+        best = { id: d.id, date, title: (d.attributes && d.attributes.title) || null };
+        bestDistance = distance;
+      }
+      if (time <= now) reachedPast = true;
+    }
+    if (reachedPast) return best;
+    url = (json.links && json.links.next) || null;
+  }
+  if (url) throw new Error('Planning Center plan search exceeded 50 pages; no current plan was reached.');
+  return best;
 }
 
 // Returns [{ personName, positionName, status, confirmed }] for everyone

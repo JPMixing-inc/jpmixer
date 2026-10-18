@@ -714,8 +714,9 @@ function registerIpads(cfg) {
     if (!conn.enabled || !conn.ip) continue;
     const old = previous.get(conn.id);
     const keep = old && old.configuredIp === conn.ip;
-    ipadPorts.set(conn.ip, {
-      id: conn.id, name: conn.name || 'iPad', ip: conn.ip, configuredIp: conn.ip, sendPort: conn.sendPort,
+    const ip = keep ? old.ip : conn.ip;
+    ipadPorts.set(ip, {
+      id: conn.id, name: conn.name || 'iPad', ip, configuredIp: conn.ip, sendPort: conn.sendPort,
       lastHeardAt: keep ? old.lastHeardAt : null, messages: keep ? old.messages : 0
     });
   }

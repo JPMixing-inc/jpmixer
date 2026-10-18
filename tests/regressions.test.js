@@ -569,6 +569,20 @@ test('iPad changes apply live without dropping the relay', () => {
   assert.equal(h.run('loaded'), true);
 });
 
+test('live saves preserve a recovered iPad address until its configured IP changes', () => {
+  const h = serverHarness();
+  h.run(`applyConfigLive({ ...serverCfg, ipadConnections: [{ id: 1, enabled: true, name: 'Pad', ip: '192.0.2.9', sendPort: 7000 }] })`);
+  fromHost(h, '192.0.2.50', { address: '/Console/Name/?', args: [] });
+  h.run('applyConfigLive({ ...serverCfg })');
+  let entry = h.run('getIpadStatus().ipads[0]');
+  assert.equal(entry.ip, '192.0.2.50');
+  assert.equal(entry.configuredIp, '192.0.2.9');
+  assert.equal(entry.messages, 1);
+  h.run(`applyConfigLive({ ...serverCfg, ipadConnections: [{ id: 1, enabled: true, name: 'Pad', ip: '192.0.2.60', sendPort: 7000 }] })`);
+  entry = h.run('getIpadStatus().ipads[0]');
+  assert.equal(entry.ip, '192.0.2.60');
+});
+
 test('a send error (e.g. Wi-Fi dropping) does not stop the server', () => {
   const h = serverHarness();
   h.ports[0].emit('error', Object.assign(new Error('send EADDRNOTAVAIL 192.0.2.9:7000'), { code: 'EADDRNOTAVAIL', syscall: 'send' }));

@@ -89,10 +89,10 @@ function levelKey(ch, aux) { return `${ch}:${aux}`; }
 function sliderToAzimuth(v) { return (v - 0.5) * 180; }
 function azimuthToSlider(deg) { return deg / 180 + 0.5; }
 
-function broadcastToClients(msg) {
+function broadcastToClients(msg, excludeSocket) {
   const payload = typeof msg === 'string' ? msg : JSON.stringify(msg);
   for (const conn of connections) {
-    if (conn.readyState === WebSocket.OPEN) conn.send(payload);
+    if (conn !== excludeSocket && conn.readyState === WebSocket.OPEN) conn.send(payload);
   }
 }
 
@@ -193,7 +193,7 @@ function buildConfig() {
       channels,
       aux: auxilaries,
       controlGroups: [], // Console Controller not implemented for KLANG
-      snapshot: currentSceneNumber != null ? `Scene ${currentSceneNumber}` : '—',
+      snapshot: currentSceneNumber != null ? String(currentSceneNumber) : '—',
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
       scenes: scenes.getAll(),
       mutes: muteState,
@@ -267,10 +267,10 @@ function pushValuesToKlang(auxStr, values, pans) {
     // values/pans come straight from client-controlled recall-scene/
     // apply-preset payloads — reject non-finite input rather than forward
     // it (same NaN-propagation lesson as the dLive work).
-    if (!Number.isFinite(sliderVal)) continue;
-    const db = sliderVal; // Ear Scenes/My Mixes already store dB directly for this backend
+    if (!Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
+    const db = shared.sliderToDb(sliderVal);
     levelCache.set(levelKey(ch, aux), db);
-    outLevels[chStr] = db;
+    outLevels[chStr] = sliderVal;
     klang && klang.setGain(aux, ch, db);
   }
   for (const [chStr, panVal] of Object.entries(pans || {})) {
@@ -461,6 +461,7 @@ function start(cfg) {
       if (kind === 'pan') {
         panCache.set(key, val);
         klang && klang.setPan(aux, ch, sliderToAzimuth(val));
+        broadcastToClients(oscMsg, ws);
         ws._lastActivityAt = Date.now();
         shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'pan', direction: val < 0.5 ? 'left' : val > 0.5 ? 'right' : null }, ws);
         return;
@@ -469,6 +470,7 @@ function start(cfg) {
       const prevDb = levelCache.get(key);
       levelCache.set(key, val);
       klang && klang.setGain(aux, ch, val);
+      broadcastToClients(oscMsg, ws);
 
       ws._lastActivityAt = Date.now();
       let direction = null;
@@ -525,7 +527,7 @@ function start(cfg) {
     dlive.on('sceneRecall', (ev) => {
       currentSceneNumber = ev.sceneNumber;
       logEvent('scene-change', `scene:${ev.sceneNumber}`);
-      broadcastToClients({ address: '/SnapshotName', args: [`Scene ${ev.sceneNumber}`] });
+      broadcastToClients({ address: '/SnapshotName', args: [String(ev.sceneNumber)] });
       applySceneForSceneNumber(ev.sceneNumber);
     });
     dlive.connect();

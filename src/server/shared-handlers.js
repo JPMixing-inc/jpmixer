@@ -10,6 +10,13 @@ const WebSocket = require('ws');
 const presets   = require('./presets');
 const config    = require('./config');
 
+// Saved mixes and Ear Scenes use the browser's 0..1 fader position on every
+// backend. Only values sent to the console (and cached OSC levels) use dB.
+function sliderToDb(value) {
+  if (value === 0) return -150;
+  return 50 * Math.log10(value * 100) - 90;
+}
+
 function send(ws, msg) {
   try { ws.send(JSON.stringify(msg)); } catch (_) {}
 }
@@ -123,4 +130,4 @@ function relabel(serverCfg, kind, n, label, maxDefault, broadcastToClients) {
   return true;
 }
 
-module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets, relabel };
+module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb };

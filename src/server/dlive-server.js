@@ -212,10 +212,10 @@ function stopPriming() {
 
 // ── Broadcast helpers — identical shape/behavior to osc-server.js's ────────
 
-function broadcastToClients(msg) {
+function broadcastToClients(msg, excludeSocket) {
   const payload = typeof msg === 'string' ? msg : JSON.stringify(msg);
   for (const conn of connections) {
-    if (conn.readyState === WebSocket.OPEN) conn.send(payload);
+    if (conn !== excludeSocket && conn.readyState === WebSocket.OPEN) conn.send(payload);
   }
 }
 
@@ -317,7 +317,7 @@ function buildConfig() {
       channels,
       aux: auxilaries,
       controlGroups: [], // control groups not implemented for dLive yet
-      snapshot: currentSceneNumber != null ? `Scene ${currentSceneNumber}` : '—',
+      snapshot: currentSceneNumber != null ? String(currentSceneNumber) : '—',
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
       scenes: scenes.getAll(),
       mutes: muteState,
@@ -328,6 +328,11 @@ function buildConfig() {
 
 // ── Mute / Solo — same algorithm as osc-server.js's applyMuteSolo, using
 // dLive send-level writes in place of sendToDesk() ──────────────────────
+
+function isSilenced(aux, ch) {
+  return !!muteState[aux]?.[ch]
+    || (Object.values(soloState[aux] || {}).some(Boolean) && !soloState[aux]?.[ch]);
+}
 
 function applyMuteSolo(baseN, aux) {
   const anySolo = Object.values(soloState[aux] || {}).some(v => v);
@@ -341,24 +346,30 @@ function applyMuteSolo(baseN, aux) {
 
   for (let ch = 1; ch <= chCount; ch++) {
     const key = levelKey(ch, aux);
-    if (!levelCache.has(key)) continue;
     const muted = !!(muteState[aux]?.[ch]);
     const soloed = !!(soloState[aux]?.[ch]);
     const silenced = muted || (anySolo && !soloed);
     const inputCoord = channelCoord(baseN, ch);
     if (!inputCoord) continue;
+    if (!levelCache.has(key)) {
+      // Fetch the real level before silencing an uncached send so unmute
+      // can restore it. The reply handler applies the active mute/solo.
+      if (silenced) enqueuePrime(() => client && client.requestSendLevel(inputCoord, snd));
+      continue;
+    }
 
     if (silenced) {
       if (premuteState[aux][ch] === undefined) premuteState[aux][ch] = levelCache.get(key);
       client && client.setSendLevel(inputCoord, snd, -Infinity);
-    } else {
-      const restore = premuteState[aux][ch] !== undefined ? premuteState[aux][ch] : levelCache.get(key);
+    } else if (premuteState[aux][ch] !== undefined) {
+      const restore = premuteState[aux][ch];
       client && client.setSendLevel(inputCoord, snd, restore);
       levelCache.set(key, restore);
       restoredLevels[ch] = restore;
       delete premuteState[aux][ch];
     }
   }
+  if (primeQueue.length) startPriming();
 
   broadcastToClients({ type: 'mute-solo-state', aux, mutes: muteState[aux] || {}, solos: soloState[aux] || {}, levels: restoredLevels });
 }
@@ -666,18 +677,24 @@ function start(cfg) {
       if (kind === 'pan') return; // no dLive message for per-send pan — see file header
 
       const db = Array.isArray(oscMsg.args) ? oscMsg.args[0] : undefined;
-      if (typeof db !== 'number') return;
+      if (!Number.isFinite(db)) return;
 
       const key = levelKey(ch, aux);
       const prevDb = levelCache.get(key);
-      levelCache.set(key, db);
       if (!client) return;
       // Nothing upstream of the regex match validates ch/aux are actually
       // in range — this is the most directly client-reachable path, so it's
       // where an out-of-range number is most likely to show up in practice.
       const inputCoord = channelCoord(baseN, ch), sendCoord = auxCoord(baseN, aux);
       if (!inputCoord || !sendCoord) return;
-      client.setSendLevel(inputCoord, sendCoord, db);
+      levelCache.set(key, db);
+      const silenced = isSilenced(aux, ch);
+      if (silenced) {
+        if (!premuteState[aux]) premuteState[aux] = {};
+        premuteState[aux][ch] = db;
+      }
+      client.setSendLevel(inputCoord, sendCoord, silenced ? -Infinity : db);
+      broadcastToClients(oscMsg, ws);
 
       ws._lastActivityAt = Date.now();
       let direction = null;
@@ -775,15 +792,29 @@ function start(cfg) {
     // coordinate byte === channel number - 1, and aux coordinate byte within
     // the monoAux bank === aux number - 1. Reverse that here.
     const ch = ev.ch + 1, aux = ev.sndCh + 1;
+    const input = channelCoord(baseN, ch), snd = auxCoord(baseN, aux);
+    if (!input || !snd) return;
     const key = levelKey(ch, aux);
-    levelCache.set(key, ev.db);
-    broadcastToClients({ address: `/Input_Channels/${ch}/Aux_Send/${aux}/send_level`, args: [ev.db] });
+    // Infinity cannot be represented in JSON. Keep the same -150 "off"
+    // sentinel as DiGiCo, and never replace the real fader with a mute echo.
+    let db = ev.db === -Infinity ? -150 : ev.db;
+    if (!Number.isFinite(db)) return;
+    if (isSilenced(aux, ch)) {
+      if (!premuteState[aux]) premuteState[aux] = {};
+      if (db > -90 || premuteState[aux][ch] === undefined) premuteState[aux][ch] = db;
+      if (db > -90) {
+        client.setSendLevel(input, snd, -Infinity);
+      }
+      db = premuteState[aux][ch];
+    }
+    levelCache.set(key, db);
+    broadcastToClients({ address: `/Input_Channels/${ch}/Aux_Send/${aux}/send_level`, args: [db] });
   });
 
   client.on('sceneRecall', (ev) => {
     currentSceneNumber = ev.sceneNumber;
     logEvent('scene-change', `scene:${ev.sceneNumber}`);
-    broadcastToClients({ address: '/SnapshotName', args: [`Scene ${ev.sceneNumber}`] });
+    broadcastToClients({ address: '/SnapshotName', args: [String(ev.sceneNumber)] });
     applySceneForSceneNumber(baseN, ev.sceneNumber);
   });
 
@@ -803,8 +834,26 @@ function stop() {
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   stopPriming();
   stopSendLevelPolling();
+  // Restore the actual send levels before dropping the mute bookkeeping.
+  // Gracefully end TCP after these writes so shutdown cannot discard them.
+  if (client) {
+    for (const [aux, channels] of Object.entries(premuteState)) {
+      const snd = auxCoord(moduleBaseN, Number(aux));
+      for (const [ch, db] of Object.entries(channels)) {
+        const input = channelCoord(moduleBaseN, Number(ch));
+        if (input && snd) client.setSendLevel(input, snd, db);
+      }
+    }
+  }
   clearMuteSolo();
-  if (client) { client.removeAllListeners(); client.disconnect(); client = null; }
+  let closed = Promise.resolve();
+  if (client) {
+    const closing = client;
+    client = null;
+    closing.removeAllListeners();
+    closing.on('error', () => {}); // socket errors during shutdown must stay handled
+    closed = Promise.resolve(closing.disconnect({ flush: true }));
+  }
   // wss.close() alone only stops accepting new connections — already-
   // upgraded sockets are detached from the HTTP server's own tracking (a
   // known `ws` gotcha) and stay open with their 'message' handler still
@@ -817,6 +866,7 @@ function stop() {
   levelCache.clear();
   connections = [];
   console.log('[JPMixer/dLive] Server stopped');
+  return closed;
 }
 
 function getChannelNames() {

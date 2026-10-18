@@ -139,12 +139,23 @@ class DliveClient extends EventEmitter {
     this._reconnectDelay = Math.min(this._reconnectDelay * 2, 15000);
   }
 
-  disconnect() {
+  disconnect({ flush = false } = {}) {
     this._manuallyStopped = true;
     clearTimeout(this._reconnectTimer);
-    if (this._socket) { try { this._socket.destroy(); } catch (_) {} }
+    const socket = this._socket;
     this._socket = null;
     this.connected = false;
+    if (!socket) return Promise.resolve();
+    if (!flush) {
+      try { socket.destroy(); } catch (_) {}
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); resolve(); };
+      const timer = setTimeout(() => { socket.destroy(); done(); }, 1000);
+      socket.once('close', done);
+      try { socket.end(); } catch (_) { socket.destroy(); done(); }
+    });
   }
 
   _write(bytes) {

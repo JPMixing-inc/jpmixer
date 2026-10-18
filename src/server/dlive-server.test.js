@@ -153,7 +153,7 @@ async function main() {
   });
   mockSocket.write(Buffer.from(P.buildSceneRecall(0, 42)));
   const snap = await snapshotEv;
-  assert.equal(snap.args[0], 'Scene 42');
+  assert.equal(snap.args[0], '42');
   console.log('ok - console scene recall (Bank+ProgramChange) tracked and broadcast as /SnapshotName');
 
   // ── Ear Scene save/recall round-trip using the tracked scene number ───

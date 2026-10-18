@@ -73,6 +73,7 @@ const panCache   = new Map(); // "ch:aux" -> -90..90 pan value
 const nameCache  = new Map(); // "input:N" -> name, from a real GET on connect
 const muteState  = {};        // muteState[aux][ch]
 const soloState  = {};        // soloState[aux][ch]
+const silencedSends = new Set(); // sends JPMixer switched off, independent of fader activity
 
 function levelKey(ch, aux) { return `${ch}:${aux}`; }
 function sliderToAzimuth(v) { return (v - 0.5) * 180; } // matches klang-server.js's own convention
@@ -82,10 +83,10 @@ function sliderToAzimuth(v) { return (v - 0.5) * 180; } // matches klang-server.
 // start() below, and isConsoleConnected()'s own comment.
 let consoleConnected = false;
 
-function broadcastToClients(msg) {
+function broadcastToClients(msg, excludeSocket) {
   const payload = typeof msg === 'string' ? msg : JSON.stringify(msg);
   for (const conn of connections) {
-    if (conn.readyState === WebSocket.OPEN) conn.send(payload);
+    if (conn !== excludeSocket && conn.readyState === WebSocket.OPEN) conn.send(payload);
   }
 }
 
@@ -239,21 +240,23 @@ function setAuxLabel(n, label) {
   return shared.relabel(serverCfg, 'aux', n, label, 16, broadcastToClients);
 }
 
-// Re-derives every tracked channel's send.on state for this aux from the
+// Re-derives every configured channel's send.on state for this aux from the
 // current mute/solo state — WING's send.on is a real per-send toggle, so
 // (unlike DiGiCo/dLive's -inf trick) this never has to touch or remember a
 // "pre-mute level" at all.
 function applySilencing(aux) {
   if (!wing) return;
   const anySolo = Object.values(soloState[aux] || {}).some(v => v);
-  for (const key of levelCache.keys()) {
-    const [chStr, auxStr] = key.split(':');
-    if (parseInt(auxStr, 10) !== aux) continue;
-    const ch = parseInt(chStr, 10);
+  for (let ch = 1; ch <= (serverCfg.channels || 40); ch++) {
+    const key = levelKey(ch, aux);
     const muted = !!(muteState[aux]?.[ch]);
     const soloed = !!(soloState[aux]?.[ch]);
     const silenced = muted || (anySolo && !soloed);
-    wing.setSendOn(ch, aux, !silenced);
+    // An untouched channel can still be audible on the console. Conversely,
+    // don't enable unrelated sends just because another channel was muted.
+    if (silenced || silencedSends.has(key)) wing.setSendOn(ch, aux, !silenced);
+    if (silenced) silencedSends.add(key);
+    else silencedSends.delete(key);
   }
 }
 
@@ -290,6 +293,7 @@ function start(cfg) {
   levelCache.clear();
   panCache.clear();
   nameCache.clear();
+  silencedSends.clear();
   Object.keys(muteState).forEach(k => delete muteState[k]);
   Object.keys(soloState).forEach(k => delete soloState[k]);
 
@@ -411,10 +415,11 @@ function start(cfg) {
         if (Number.isInteger(aux) && aux >= 1) {
           for (const [chStr, sliderVal] of Object.entries(msg.levels || {})) {
             const ch = parseInt(chStr, 10);
-            if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal)) continue;
-            levelCache.set(levelKey(ch, aux), sliderVal);
+            if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
+            const db = shared.sliderToDb(sliderVal);
+            levelCache.set(levelKey(ch, aux), db);
             outLevels[chStr] = sliderVal;
-            wing && wing.setSendLevel(ch, aux, sliderVal);
+            wing && wing.setSendLevel(ch, aux, db);
           }
           for (const [chStr, panVal] of Object.entries(msg.pans || {})) {
             const ch = parseInt(chStr, 10);
@@ -454,6 +459,7 @@ function start(cfg) {
       if (kind === 'pan') {
         panCache.set(key, val);
         wing && wing.setSendPan(ch, aux, sliderToAzimuth(val));
+        broadcastToClients(oscMsg, ws);
         ws._lastActivityAt = Date.now();
         shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'pan', direction: val < 0.5 ? 'left' : val > 0.5 ? 'right' : null }, ws);
         return;
@@ -462,6 +468,7 @@ function start(cfg) {
       const prevDb = levelCache.get(key);
       levelCache.set(key, val);
       wing && wing.setSendLevel(ch, aux, val);
+      broadcastToClients(oscMsg, ws);
 
       ws._lastActivityAt = Date.now();
       let direction = null;
