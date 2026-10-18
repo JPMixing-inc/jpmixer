@@ -41,8 +41,34 @@ function clearOnStartup() {
 // Ear Scenes are kept across launches by default. Wiping them on every launch
 // used to be unconditional — any quit, crash or reboot silently dropped every
 // saved scene — so it's now the opt-in "Clear Ear Scenes on launch" option.
+// Older versions wiped Ear Scenes in memory at launch but kept writing
+// scenes.json on every save, so on the first launch of a version that loads
+// it, the file may hold a past show's scenes — and auto-recall would push
+// them to the desk on the next snapshot change. On that first launch (no
+// scenes-meta.json yet), only a recently saved file is trusted; an older one
+// is copied aside for recovery and the store starts empty.
+const UPGRADE_SCENES_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+function staleOnFirstUpgrade() {
+  const fs = require('fs');
+  if (fs.existsSync(metaPath())) return false;
+  try {
+    const age = Date.now() - fs.statSync(scenesPath()).mtimeMs;
+    if (age <= UPGRADE_SCENES_MAX_AGE_MS) return false;
+    const aside = scenesPath().replace(/\.json$/, '.before-upgrade.json');
+    fs.copyFileSync(scenesPath(), aside);
+    console.error(`[JPMixer] scenes.json last saved ${Math.round(age / 3600000)}h ago — not loading it on this first launch; copied to ${path.basename(aside)}`);
+    return true;
+  } catch (_) {
+    return false; // no scenes.json yet — nothing to skip
+  }
+}
+
 function load() {
   if (config.get('clearScenesOnLaunch')) { clearOnStartup(); return; }
+  // Written empty right away (the old file is already copied aside) so a later
+  // launch can't pick the stale scenes back up
+  if (staleOnFirstUpgrade()) { clearOnStartup(); persist(); return; }
   let corrupt = false;
   const data = loadJsonObject(scenesPath(), app.getPath('userData'), 'scenes',
     (msg) => { corrupt = true; console.error('[JPMixer] ' + msg); });

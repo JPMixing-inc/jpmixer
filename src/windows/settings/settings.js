@@ -1011,19 +1011,27 @@ function collectConfig() {
 // ── Status ────────────────────────────────────────────────────────────────
 
 let localIP = null;
-let port80  = { installed: false, upToDate: true }; // from get-port80-status
+let port80  = { installed: false, upToDate: true, matches: false }; // from get-port80-status
 
-// Port-80 helper state → the button's status text. An installed proxy from
-// before the TCP_NODELAY fix still works, but can add latency to fader moves.
+// Port-80 helper state → the button's status text. The port-80 address is
+// only given to performers when the helper is running and forwards to the
+// current server port (port80.matches); otherwise say what's wrong.
 function renderPort80Status() {
   const status = $('port80Status');
   if (!port80.installed) { status.className = 'ip-status'; status.textContent = ''; return; }
-  if (port80.upToDate) {
-    status.className   = 'ip-status ok';
-    status.textContent = '✓ Port 80 active';
-  } else {
+  const port = Number($('serverPort').value);
+  if (!port80.running) {
+    status.className   = 'ip-status err';
+    status.textContent = 'Port 80 helper isn’t running — click Use Port 80 to restart it';
+  } else if (port80.forwardsTo !== null && port80.forwardsTo !== port) {
+    status.className   = 'ip-status err';
+    status.textContent = `Port 80 forwards to ${port80.forwardsTo}, not ${port} — click Use Port 80 to update it`;
+  } else if (!port80.upToDate) {
     status.className   = 'ip-status err';
     status.textContent = 'Port 80 helper is outdated — click Use Port 80 to update it (fixes fader lag)';
+  } else {
+    status.className   = 'ip-status ok';
+    status.textContent = '✓ Port 80 active';
   }
 }
 
@@ -1053,7 +1061,7 @@ function getBaseUrl() {
   if (!localIP) return `http://localhost:${port}`;
   // With the port-80 helper installed, give out one canonical address — a
   // browser keeps separate storage (and so separate My Mixes) for :80 and :8080
-  return port80.installed ? `http://${localIP}` : `http://${localIP}:${port}`;
+  return port80.matches ? `http://${localIP}` : `http://${localIP}:${port}`;
 }
 
 function setStatus(running) {
@@ -1062,7 +1070,7 @@ function setStatus(running) {
   $('statusLabel').textContent = running ? 'Running' : 'Stopped';
   const base = getBaseUrl();
   $('serverUrl').textContent = base || 'Not running';
-  $('serverUrlHint').style.display = (running && port80.installed && localIP) ? '' : 'none';
+  $('serverUrlHint').style.display = (running && port80.matches && localIP) ? '' : 'none';
   $('monitorUrl').textContent  = base ? `${base}/monitor.html`  : '— (server not running)';
   $('consoleUrl').textContent  = base ? `${base}/console.html`  : '— (server not running)';
   $('devicesUrl').textContent  = base ? `${base}/devices.html`  : '— (server not running)';
@@ -1157,7 +1165,7 @@ async function renderMixesTab() {
   const container = $('mixesByAux');
   container.innerHTML = '<div class="empty-hint">Loading…</div>';
 
-  const allPresets = await window.jpm.getPresets();
+  const [allPresets, groups] = await Promise.all([window.jpm.getPresets(), window.jpm.getPresetGroups()]);
 
   container.innerHTML = '';
 
@@ -1169,18 +1177,16 @@ async function renderMixesTab() {
 
   // Who / when / where for each group, from the owner, savedAt and aux that
   // newer saves record — lets you tell which orphaned device was whose
-  const describe = (deviceId) => {
-    const mixes = Object.values(allPresets[deviceId] || {});
-    const owners = [...new Set(mixes.map(m => m && m.owner).filter(Boolean))];
-    let last = null, lastAux = null;
-    for (const m of mixes) {
-      if (m && m.savedAt && (!last || m.savedAt > last)) { last = m.savedAt; lastAux = m.aux ?? null; }
-    }
-    const parts = [owners.length ? owners.join(' / ') : `Device ${deviceId.slice(0, 8)}…`];
-    if (lastAux != null) parts.push(auxNames[lastAux] || `Aux ${lastAux}`);
-    parts.push(last ? `last saved ${new Date(last).toLocaleDateString()}` : 'older saves');
-    return { label: parts.join(' · '), owner: owners[0] || '' };
-  };
+  // Who / when / where for each group — summarised once by presets.findGroups
+  // (the same summary Find My Mixes shows), then just labelled here
+  const info = new Map();
+  for (const g of groups) {
+    const parts = [g.owners.length ? g.owners.join(' / ') : `Device ${g.deviceId.slice(0, 8)}…`];
+    if (g.lastAux != null) parts.push(auxNames[g.lastAux] || `Aux ${g.lastAux}`);
+    parts.push(g.lastSaved ? `last saved ${new Date(g.lastSaved).toLocaleDateString()}` : 'older saves');
+    info.set(g.deviceId, { label: parts.join(' · '), owner: g.owners[0] || '' });
+  }
+  const describe = (deviceId) => info.get(deviceId) || { label: `Device ${deviceId.slice(0, 8)}…`, owner: '' };
   const listed = deviceIds.filter(id => Object.keys(allPresets[id] || {}).length > 0);
 
   for (const deviceId of listed) {
@@ -1358,6 +1364,7 @@ $('saveBtn').addEventListener('click', async () => {
   const result = await window.jpm.saveConfig(collectConfig());
   // Most changes now apply live; say when phones were disconnected by a restart
   $('saveBtn').textContent = (result && result.restarted) ? 'Saved — server restarted' : 'Saved!';
+  refreshPort80Status(); // a server-port change can stop the helper matching
   setTimeout(() => {
     $('saveBtn').textContent = 'Save & Apply';
     $('saveBtn').disabled    = false;

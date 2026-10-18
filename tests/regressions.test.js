@@ -179,7 +179,10 @@ test('cold queries are deduplicated and paced alongside EQ and cache priming', (
   assert.equal(h.ports[0].sent.length, before);
   h.clock.advance(1);
   assert.equal(h.ports[0].sent.length, before + 1);
-  assert.equal(h.run('deskQueryQueue.length'), 26); // 2 levels + 25 EQ params, minus the 1 just sent
+  // 2 levels + 25 EQ params, minus the 1 just sent — all performer-initiated,
+  // so they wait in the urgent lane ahead of background polling/priming
+  assert.equal(h.run('deskQueryUrgent.length + deskQueryQueue.length'), 26);
+  assert.equal(h.run('deskQueryQueue.length'), 0);
   h.clock.advance(100);
   assert.equal(h.ports[0].sent.length, before + 2);
 });
@@ -325,4 +328,67 @@ test('existing musician and console controls remain available', () => {
   assert.equal(h.socket.sent.at(-1).type, 'preset-loaded');
   h.clock.advance(10);
   assert.equal(h.cached(level(1)), h.run('sliderToDb(0.7)'));
+});
+
+// ── Code-review fixes for 1.8.0 ────────────────────────────────────────────
+
+test('stop sends an unmute restore that was still queued instead of leaving the desk at -150', () => {
+  const h = serverHarness();
+  h.echo({ address: level(1), args: [-12] });
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
+  h.clock.advance(10);
+  assert.equal(h.ports[0].sent.at(-1).args[0], -150);
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: false }); // restore queued, not sent yet
+  h.run('stop()');
+  const last = h.ports[0].sent.filter(m => m.address === level(1)).at(-1);
+  assert.equal(last.args[0], -12);
+});
+
+test('a mute goes out ahead of a queued Ear Scene recall', () => {
+  const h = serverHarness();
+  h.echo({ address: level(1), args: [-12] });
+  h.run(`for (let i = 0; i < 200; i++) sendToDeskPaced('/recall/' + i, [0])`);
+  const mark = h.ports[0].sent.length;
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
+  h.clock.advance(10);
+  const firstTick = h.ports[0].sent.slice(mark);
+  assert.equal(firstTick[0].address, level(1));
+  assert.equal(firstTick[0].args[0], -150);
+});
+
+test('a mute only writes the channel whose silence changed', () => {
+  const h = serverHarness();
+  h.echo({ address: level(1), args: [-12] });
+  h.echo({ address: level(2), args: [-6] });
+  const mark = h.ports[0].sent.length;
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
+  h.clock.advance(100);
+  assert.deepEqual(h.ports[0].sent.slice(mark).map(m => [m.address, m.args[0]]), [[level(1), -150]]);
+});
+
+test('a performer query goes ahead of background polling', () => {
+  const h = serverHarness();
+  h.run(`queueDeskQueries(['/background/1/?', '/background/2/?', '/background/3/?'])`);
+  h.send({ address: `${level(2)}/?`, args: [] });
+  h.clock.advance(100);
+  assert.equal(h.ports[0].sent.at(-1).address, `${level(2)}/?`);
+  h.clock.advance(100);
+  assert.equal(h.ports[0].sent.at(-1).address, '/background/1/?');
+});
+
+test('merge and set-name roll back when the disk write fails', () => {
+  const store = presetStore();
+  const p = store.api;
+  p.savePreset('old', 'Sunday', { 1: 0.5 }, {});
+  p.savePreset('new', 'Rehearsal', { 1: 0.2 }, {});
+  store.fail(true);
+  assert.equal(p.mergeDevices('old', 'new').ok, false);
+  assert.equal(p.getByDevice('old').Sunday.levels[1], 0.5, 'source group still there');
+  assert.equal(p.getByDevice('new').Sunday, undefined, 'target unchanged');
+  assert.equal(p.resolve('old'), 'old', 'no alias left behind');
+  assert.equal(p.setOwner('new', 'Travis').ok, false);
+  assert.equal(p.getByDevice('new').Rehearsal.owner, undefined);
+  store.fail(false);
+  assert.equal(p.mergeDevices('old', 'new').ok, true);
+  assert.equal(p.getByDevice('old').Sunday.levels[1], 0.5, 'old id now reads the merged group');
 });

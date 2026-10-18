@@ -427,19 +427,62 @@ const PORT80_PROXY_MARKER = 'jpmixing-proxy v2 (TCP_NODELAY)';
 // each with its own My Mixes — and to offer re-running setup when the
 // installed proxy predates TCP_NODELAY (updating it needs admin rights, so it
 // can't be done silently).
-ipcMain.handle('get-port80-status', () => new Promise(resolve => {
-  if (process.platform === 'win32') {
-    exec('netsh interface portproxy show v4tov4', (err, stdout) => {
-      const installed = !err && /\b0\.0\.0\.0\s+80\b/.test(stdout || '');
-      resolve({ installed, upToDate: true });
-    });
-    return;
-  }
-  fs.readFile(PORT80_PROXY_DEST, 'utf8', (err, text) => {
-    if (err) return resolve({ installed: false, upToDate: false });
-    resolve({ installed: true, upToDate: text.includes(PORT80_PROXY_MARKER) });
+const PORT80_PLIST_DEST = '/Library/LaunchDaemons/com.jpmixing.port80.plist';
+
+// Is anything accepting connections on port 80 right now?
+function port80Listening() {
+  return new Promise(resolve => {
+    const sock = require('net').connect({ host: '127.0.0.1', port: 80 });
+    const done = (ok) => { sock.destroy(); resolve(ok); };
+    sock.setTimeout(500, () => done(false));
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
   });
-}));
+}
+
+// Which server port the installed helper forwards port 80 to (null if unknown)
+function port80ForwardTarget() {
+  return new Promise(resolve => {
+    if (process.platform === 'win32') {
+      exec('netsh interface portproxy show v4tov4', (err, stdout) => {
+        const m = !err && /\b0\.0\.0\.0\s+80\s+\S+\s+(\d+)/.exec(stdout || '');
+        resolve(m ? Number(m[1]) : null);
+      });
+      return;
+    }
+    // ProgramArguments = python3, the proxy script, the port
+    fs.readFile(PORT80_PLIST_DEST, 'utf8', (err, text) => {
+      const m = !err && /jpmixing-proxy\.py<\/string>\s*<string>(\d+)<\/string>/.exec(text || '');
+      resolve(m ? Number(m[1]) : null);
+    });
+  });
+}
+
+// Port-80 helper state for Settings. Settings gives performers the port-80
+// address — http://<ip>/ and http://<ip>:8080/ are separate sites to a
+// browser, each with its own My Mixes — but only when the helper is actually
+// running and forwards to the current server port; a stale helper (server
+// port changed since, daemon unloaded) would otherwise send phones to a dead
+// address. Also flags a macOS proxy from before the TCP_NODELAY fix
+// (updating it needs admin rights, so it can't be done silently).
+ipcMain.handle('get-port80-status', async () => {
+  let installed, upToDate = true;
+  if (process.platform === 'win32') {
+    installed = (await port80ForwardTarget()) !== null;
+  } else {
+    try {
+      const text = await fs.promises.readFile(PORT80_PROXY_DEST, 'utf8');
+      installed = true;
+      upToDate = text.includes(PORT80_PROXY_MARKER);
+    } catch (_) {
+      installed = false;
+    }
+  }
+  if (!installed) return { installed: false, upToDate: false, running: false, forwardsTo: null, matches: false };
+  const [forwardsTo, running] = await Promise.all([port80ForwardTarget(), port80Listening()]);
+  const serverPort = Number(config.get('serverPort'));
+  return { installed, upToDate, running, forwardsTo, matches: running && forwardsTo === serverPort };
+});
 
 ipcMain.handle('setup-port-80', async (_, serverPort) => {
   // Validate before embedding in scripts that run as root
@@ -483,7 +526,7 @@ ipcMain.handle('setup-port-80', async (_, serverPort) => {
   const plistTmp    = path.join(macTmpDir, 'com.jpmixing.port80.plist');
   const setupTmp    = path.join(macTmpDir, 'jpmixing-setup.sh');
   const proxyDest   = PORT80_PROXY_DEST;
-  const plistDest   = '/Library/LaunchDaemons/com.jpmixing.port80.plist';
+  const plistDest   = PORT80_PLIST_DEST;
 
   // Raw TCP proxy — forwards port 80 → server port, handles HTTP + WebSocket
   // TCP_NODELAY on both legs — without it Nagle's algorithm can hold back the
@@ -845,6 +888,10 @@ ipcMain.handle('import-backup', async () => {
 // ── Settings → My Mixes admin ──────────────────────────────────────────────
 
 ipcMain.handle('get-preset-aliases', () => presets.getAliases());
+
+// Settings' per-group summary (owners, last aux, last saved) — the same one
+// Find My Mixes uses, every group, newest first
+ipcMain.handle('get-preset-groups', () => presets.findGroups('', null, Infinity));
 
 ipcMain.handle('set-preset-owner', (_, deviceId, owner) => presets.setOwner(deviceId, owner));
 

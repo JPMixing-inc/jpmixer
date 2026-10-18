@@ -178,15 +178,28 @@ const deskQueryQueue  = [];
 const deskQueryQueued = new Set();
 let deskQueryTimer    = null;
 
-function queueDeskQueries(addresses) {
+// `urgent` = a performer waiting on it right now (opening an aux, the EQ
+// panel): those go ahead of background work like Console-page polling,
+// session refresh and cache priming, which could otherwise sit in front of
+// them for tens of seconds. The rate is the same either way.
+const deskQueryUrgent = [];
+
+function queueDeskQueries(addresses, urgent = false) {
   for (const a of addresses) {
-    if (deskQueryQueued.has(a)) continue;
+    if (deskQueryQueued.has(a)) {
+      if (!urgent) continue;
+      const i = deskQueryQueue.indexOf(a); // already waiting in the background lane — promote it
+      if (i < 0) continue;
+      deskQueryQueue.splice(i, 1);
+      deskQueryUrgent.push(a);
+      continue;
+    }
     deskQueryQueued.add(a);
-    deskQueryQueue.push(a);
+    (urgent ? deskQueryUrgent : deskQueryQueue).push(a);
   }
-  if (deskQueryTimer || deskQueryQueue.length === 0) return;
+  if (deskQueryTimer || (deskQueryQueue.length === 0 && deskQueryUrgent.length === 0)) return;
   deskQueryTimer = setInterval(() => {
-    const next = deskQueryQueue.shift();
+    const next = deskQueryUrgent.length ? deskQueryUrgent.shift() : deskQueryQueue.shift();
     if (next === undefined) {
       clearInterval(deskQueryTimer);
       deskQueryTimer = null;
@@ -200,6 +213,7 @@ function queueDeskQueries(addresses) {
 function clearDeskQueries() {
   if (deskQueryTimer) { clearInterval(deskQueryTimer); deskQueryTimer = null; }
   deskQueryQueue.length = 0;
+  deskQueryUrgent.length = 0;
   deskQueryQueued.clear();
 }
 
@@ -273,17 +287,17 @@ function applyMuteSolo(aux) {
     const soloed   = !!(soloState[aux]?.[ch]);
     const silenced = muted || (anySolo && !soloed);
 
-    // Paced: a solo toggle rewrites every channel in the mix
+    // Only channels whose silenced state actually changes are written — a
+    // mute is one message, not a rewrite of the whole mix — and they take the
+    // paced queue's urgent lane (see sendToDeskPaced).
     if (silenced) {
       if (premuteState[aux][ch] === undefined) {
         premuteState[aux][ch] = cache.get(key).args[0];
+        sendToDeskPaced(key, [-150], true);
       }
-      sendToDeskPaced(key, [-150]);
-    } else {
-      const restore = premuteState[aux][ch] !== undefined
-        ? premuteState[aux][ch]
-        : cache.get(key).args[0];
-      sendToDeskPaced(key, [restore]);
+    } else if (premuteState[aux][ch] !== undefined) {
+      const restore = premuteState[aux][ch];
+      sendToDeskPaced(key, [restore], true);
       cache.set(key, { address: key, args: [restore] });
       restoredLevels[ch] = restore;
       delete premuteState[aux][ch];
@@ -608,32 +622,58 @@ function maybeCacheResponse(msg) {
 // ~70ms, a full 800-message recall in ~1s.
 const DESK_SET_BATCH   = 8;
 const DESK_SET_TICK_MS = 10;
-const deskSetQueue = new Map(); // address → args
-let deskSetTimer   = null;
+const deskSetQueue  = new Map(); // address → args
+// Mute/solo writes jump the queue — a performer killing feedback must not
+// wait behind a snapshot's worth of Ear Scene writes (up to ~1s).
+const deskSetUrgent = new Map();
+let deskSetTimer    = null;
 
-function sendToDeskPaced(address, args) {
-  deskSetQueue.delete(address); // re-insert so send order follows the latest write
-  deskSetQueue.set(address, args);
+function sendToDeskPaced(address, args, urgent = false) {
+  // re-insert so send order follows the latest write; an address lives in one lane only
+  deskSetQueue.delete(address);
+  deskSetUrgent.delete(address);
+  (urgent ? deskSetUrgent : deskSetQueue).set(address, args);
   if (deskSetTimer) return;
   deskSetTimer = setInterval(() => {
     let sent = 0;
-    for (const [addr, a] of deskSetQueue) {
-      deskSetQueue.delete(addr);
-      rawSendToDesk(addr, a);
-      if (++sent >= DESK_SET_BATCH) break;
+    for (const lane of [deskSetUrgent, deskSetQueue]) {
+      for (const [addr, a] of lane) {
+        if (sent >= DESK_SET_BATCH) break;
+        lane.delete(addr);
+        rawSendToDesk(addr, a);
+        sent++;
+      }
     }
-    if (deskSetQueue.size === 0) { clearInterval(deskSetTimer); deskSetTimer = null; }
+    if (deskSetQueue.size === 0 && deskSetUrgent.size === 0) { clearInterval(deskSetTimer); deskSetTimer = null; }
   }, DESK_SET_TICK_MS);
 }
 
 function clearDeskSetQueue() {
   if (deskSetTimer) { clearInterval(deskSetTimer); deskSetTimer = null; }
-  if (deskSetQueue.size) logEvent('desk-set-dropped', `${deskSetQueue.size} queued writes discarded`);
+  const dropped = deskSetQueue.size + deskSetUrgent.size;
+  if (dropped) logEvent('desk-set-dropped', `${dropped} queued writes discarded`);
   deskSetQueue.clear();
+  deskSetUrgent.clear();
+}
+
+// On stop, queued writes are the desk state people asked for — an unmute's
+// restore, the rest of a recall. Dropping them left unmuted channels at -150
+// on the desk (their premute level was already handed to the queue). Sending
+// the remainder at once is a burst, but only of whatever hadn't drained yet
+// (the queue empties at ~800/s), and only at shutdown or a restart.
+function flushDeskSetQueue() {
+  if (deskSetTimer) { clearInterval(deskSetTimer); deskSetTimer = null; }
+  const pending = [...deskSetUrgent, ...deskSetQueue];
+  deskSetUrgent.clear();
+  deskSetQueue.clear();
+  if (pending.length) logEvent('desk-set-flush', `${pending.length} queued writes sent on stop`);
+  for (const [addr, a] of pending) rawSendToDesk(addr, a);
 }
 
 function sendToDesk(address, args) {
-  if (deskSetQueue.size) deskSetQueue.delete(address); // supersedes a queued paced write
+  // supersedes a queued paced write to the same address
+  if (deskSetQueue.size) deskSetQueue.delete(address);
+  if (deskSetUrgent.size) deskSetUrgent.delete(address);
   rawSendToDesk(address, args);
 }
 
@@ -801,11 +841,12 @@ function loadNextRequiredParameter() {
 // can't be trusted with that much concurrent query load. The Monitor view
 // takes longer to fully populate in the background as a result, but the
 // mixer/console pages are already usable well before priming finishes, and
-// requestAuxValues() in mixer.js queries a given aux directly the moment a
-// performer opens it anyway. Do not raise this without confirming on real
+// requestAuxValues() in mixer.js asks for a given aux the moment a performer
+// opens it — those queries take the paced queue's urgent lane, ahead of this
+// background priming. Do not raise this without confirming on real
 // hardware, not just a demo-mode/local test.
 function primeCache() {
-  if (deskQueryQueue.length > 0) return; // yield the tick — keeps the combined query rate at one per 100ms
+  if (deskQueryQueue.length > 0 || deskQueryUrgent.length > 0) return; // yield the tick — keeps the combined query rate at one per 100ms
 
   const chCount  = cache.has('/Console/Input_Channels')
     ? cache.get('/Console/Input_Channels').args[0]
@@ -1062,7 +1103,7 @@ function startWebSocketServer() {
             }
           }
           if (!cache.has(`${prefix}eq_in`)) missingEq.push(`${prefix}eq_in/?`);
-          queueDeskQueries(missingEq);
+          queueDeskQueries(missingEq, true);
           return;
         }
 
@@ -1262,7 +1303,7 @@ function startWebSocketServer() {
           if (cache.has(key)) {
             ws.send(JSON.stringify(cache.get(key)));
           } else {
-            queueDeskQueries([oscMsg.address]);
+            queueDeskQueries([oscMsg.address], true); // a performer is waiting on this one
           }
           return;
         }
@@ -1651,7 +1692,7 @@ function stop() {
       }
     }
   }
-  clearDeskSetQueue();
+  flushDeskSetQueue();
   clearMuteSolo();
   clearConsoleState();
   if (udpPort) { try { udpPort.close(); } catch (_) {} udpPort = null; }

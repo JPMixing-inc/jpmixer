@@ -52,9 +52,16 @@ function persist() {
 }
 
 function persistAliases() {
-  try { writeFileAtomic(dataPath('preset-aliases.json'), JSON.stringify(_aliases, null, 2)); }
-  catch (e) { console.error('[JPMixer] Preset alias save error:', e); }
+  try {
+    writeFileAtomic(dataPath('preset-aliases.json'), JSON.stringify(_aliases, null, 2));
+    return true;
+  } catch (e) {
+    console.error('[JPMixer] Preset alias save error:', e);
+    return false;
+  }
 }
+
+const SAVE_FAILED = { ok: false, error: 'Could not save to disk — nothing was changed.' };
 
 // Follows merge aliases to the device id that actually holds the mixes
 function resolve(deviceId) {
@@ -116,7 +123,7 @@ function getAliases() { return _aliases; }
 // owner name or mix name instead (empty query lists everything), one result
 // per device, newest first. Names and metadata only — the phone fetches the
 // levels with getByDevice() once the musician picks a result.
-function findGroups(query, excludeDeviceId) {
+function findGroups(query, excludeDeviceId, limit = 50) {
   const q = String(query || '').trim().toLowerCase();
   const exclude = excludeDeviceId ? resolve(excludeDeviceId) : null;
   const groups = [];
@@ -148,7 +155,7 @@ function findGroups(query, excludeDeviceId) {
   }
   // Newest first; older saves with no savedAt sort to the bottom
   groups.sort((a, b) => (b.lastSaved || '').localeCompare(a.lastSaved || ''));
-  return groups.slice(0, 50);
+  return groups.slice(0, limit);
 }
 
 // Settings → My Mixes → Merge. Moves every mix from one device group into
@@ -160,8 +167,11 @@ function mergeDevices(fromId, toId) {
   if (!from || !to || from === to) return { ok: false, error: 'Pick two different devices.' };
   const source = _presets[from];
   if (!source) return { ok: false, error: 'That device has no mixes.' };
-  if (!_presets[to]) _presets[to] = Object.create(null);
-  const target = _presets[to];
+  // Work on a copy of the target and commit only once both files are written,
+  // so a failed write (disk full, file locked) leaves memory and disk as they were
+  const hadTarget = !!_presets[to];
+  const previousTarget = _presets[to];
+  const target = copyBucket(previousTarget);
 
   let moved = 0, renamed = 0;
   for (const [name, mix] of Object.entries(source)) {
@@ -172,11 +182,18 @@ function mergeDevices(fromId, toId) {
     target[newName] = mix;
     moved++;
   }
+  const previousAlias = _aliases[from];
+  _presets[to] = target;
   delete _presets[from];
   _aliases[from] = to;
+  if (persist() && persistAliases()) return { ok: true, moved, renamed, toId: to };
+
+  // Roll back memory, then put presets.json back to match it
+  _presets[from] = source;
+  if (hadTarget) _presets[to] = previousTarget; else delete _presets[to];
+  if (previousAlias === undefined) delete _aliases[from]; else _aliases[from] = previousAlias;
   persist();
-  persistAliases();
-  return { ok: true, moved, renamed, toId: to };
+  return SAVE_FAILED;
 }
 
 // Settings → My Mixes → Set Name. Stamps the musician's name on every mix in
@@ -186,13 +203,18 @@ function setOwner(deviceId, owner) {
   const mixes = _presets[id];
   if (!mixes) return { ok: false, error: 'That device has no mixes.' };
   const clean = String(owner || '').trim().slice(0, 64);
-  for (const mix of Object.values(mixes)) {
+  const updated = copyBucket(mixes);
+  for (const [name, mix] of Object.entries(updated)) {
     if (!mix || typeof mix !== 'object') continue;
-    if (clean) mix.owner = clean;
-    else delete mix.owner;
+    const next = { ...mix };
+    if (clean) next.owner = clean;
+    else delete next.owner;
+    updated[name] = next;
   }
-  persist();
-  return { ok: true };
+  _presets[id] = updated;
+  if (persist()) return { ok: true };
+  _presets[id] = mixes;
+  return SAVE_FAILED;
 }
 
 // Wholesale replace — used when restoring from a backup file. Aliases are

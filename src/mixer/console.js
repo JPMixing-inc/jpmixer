@@ -49,20 +49,28 @@ function connect() {
   // socket would keep receiving updates and send its own request-console-state.
   clearTimeout(reconnectTimer);
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  // (a CLOSING socket is replaced; its own late close event is ignored below)
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}`);
+  const sock = new WebSocket(`${proto}//${location.host}`);
+  ws = sock;
 
-  ws.addEventListener('open', () => {
+  // Every handler checks it still belongs to the current socket: a stale one
+  // (e.g. left CLOSING by the heartbeat while a new one opened) firing late
+  // would otherwise clear the live socket's heartbeat and put the
+  // "Reconnecting…" overlay over a page that is actually connected.
+  sock.addEventListener('open', () => {
+    if (sock !== ws) return;
     hasConnected = true;
     clearTimeout(disconnectTimer);
     document.body.classList.remove('disconnected');
     document.getElementById('connDot').classList.add('connected');
     resetHeartbeat();
-    ws.send(JSON.stringify({ type: 'request-console-state' }));
+    sock.send(JSON.stringify({ type: 'request-console-state' }));
   });
 
-  ws.addEventListener('close', () => {
+  sock.addEventListener('close', () => {
+    if (sock !== ws) return;
     clearTimeout(heartbeatTimer);
     document.getElementById('connDot').classList.remove('connected');
     clearTimeout(disconnectTimer);
@@ -73,11 +81,12 @@ function connect() {
     reconnectTimer = setTimeout(connect, 1000);
   });
 
-  ws.addEventListener('message', e => {
+  sock.addEventListener('message', e => {
+    if (sock !== ws) return;
     try {
       const json = JSON.parse(e.data);
       resetHeartbeat();
-      if (json.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
+      if (json.type === 'ping') { sock.send(JSON.stringify({ type: 'pong' })); return; }
       onMessage(json);
     } catch (_) {}
   });
@@ -225,9 +234,19 @@ function throttle(fn, ms) {
 // While a fader is held (and briefly after release), incoming values for it
 // are ignored — desk echoes of older positions arrive mid-drag and would
 // otherwise yank the thumb and dB readout back.
+// Values that arrive during the hold still update the stored state, so when
+// the hold ends the fader is redrawn from it (`_resync`, set per strip) —
+// otherwise a real desk move landing just after release was lost on screen.
+// The last value in by then is the desk's echo of the final position, or a
+// genuine later move.
 const ECHO_HOLD_MS = 400;
-function holdFader(fader)    { fader._held = true; }
-function releaseFader(fader) { fader._held = false; fader._holdUntil = Date.now() + ECHO_HOLD_MS; }
+function holdFader(fader)    { fader._held = true; clearTimeout(fader._resyncTimer); }
+function releaseFader(fader) {
+  fader._held = false;
+  fader._holdUntil = Date.now() + ECHO_HOLD_MS;
+  clearTimeout(fader._resyncTimer);
+  fader._resyncTimer = setTimeout(() => { if (!isFaderHeld(fader) && fader._resync) fader._resync(); }, ECHO_HOLD_MS + 20);
+}
 function isFaderHeld(fader)  { return fader._held || Date.now() < (fader._holdUntil || 0); }
 
 // Thumb-only vertical fader control via a transparent touch/mouse overlay.
@@ -387,6 +406,7 @@ function buildChStrip(ch) {
   });
   fader.addEventListener('change', sendFader); // final position on release
   lockToThumb(fader, faderWrap, '.strips-scroll');
+  fader._resync = () => { if (consoleFaders[ch.channel] !== undefined) updateChFader(ch.channel, consoleFaders[ch.channel]); };
 
   faderWrap.append(track, fill, fader);
 
@@ -474,9 +494,17 @@ function buildAuxStrip(aux) {
   });
   fader.addEventListener('change', sendFader); // final position on release
   // Native range input (no lockToThumb overlay) — hold it via pointer events
-  fader.addEventListener('pointerdown',   () => holdFader(fader));
-  fader.addEventListener('pointerup',     () => releaseFader(fader));
-  fader.addEventListener('pointercancel', () => releaseFader(fader));
+  // Capturing the pointer means the release reaches this fader even when the
+  // mouse is let go off it — otherwise the hold never ended and the strip
+  // ignored every later desk update.
+  fader.addEventListener('pointerdown', (e) => {
+    holdFader(fader);
+    try { fader.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  fader.addEventListener('pointerup',          () => releaseFader(fader));
+  fader.addEventListener('pointercancel',      () => releaseFader(fader));
+  fader.addEventListener('lostpointercapture', () => { if (fader._held) releaseFader(fader); });
+  fader._resync = () => { if (auxFaders[aux.channel] !== undefined) updateAuxFader(aux.channel, auxFaders[aux.channel]); };
   faderWrap.appendChild(fader);
 
   const dbEl = document.createElement('div');
@@ -545,6 +573,7 @@ function buildCGStrip(cg) {
   });
   fader.addEventListener('change', sendFader); // final position on release
   lockToThumb(fader, faderWrap, '.cg-scroll');
+  fader._resync = () => { if (cgFaders[cg.channel] !== undefined) updateCGFader(cg.channel, cgFaders[cg.channel]); };
 
   faderWrap.append(track, fill, fader);
 

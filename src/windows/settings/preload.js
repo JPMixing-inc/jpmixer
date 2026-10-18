@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('jpm', {
   getPresets:             ()            => ipcRenderer.invoke('get-presets'),
   deletePreset:           (deviceId, name) => ipcRenderer.invoke('delete-preset', deviceId, name),
   getPresetAliases:       ()               => ipcRenderer.invoke('get-preset-aliases'),
+  getPresetGroups:        ()               => ipcRenderer.invoke('get-preset-groups'),
   setPresetOwner:         (deviceId, owner) => ipcRenderer.invoke('set-preset-owner', deviceId, owner),
   mergePresets:           (fromId, toId)   => ipcRenderer.invoke('merge-presets', fromId, toId),
   getPort80Status:        ()               => ipcRenderer.invoke('get-port80-status'),
