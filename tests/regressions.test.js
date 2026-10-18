@@ -462,8 +462,30 @@ test('the startup loader sends each query once even when the desk answers with s
   // The harness console has no channel count cached, so the loader's next
   // query is /Console/Channels/? — which the desk answers with 9 messages,
   // each of which re-runs the loader
-  h.run(`loaded = false; cache.delete('/Console/Input_Channels');
+  // (lastLoadQuery reset: the harness's own startup just sent this query)
+  h.run(`loaded = false; cache.delete('/Console/Input_Channels'); lastLoadQuery = null;
     for (let i = 0; i < 9; i++) loadNextRequiredParameter();`);
   const sent = h.ports[0].sent.slice(mark).filter(m => m.address === '/Console/Channels/?');
   assert.equal(sent.length, 1);
+});
+
+test('the metadata retry re-asks for what the loader is waiting on, not the console summary', () => {
+  const h = serverHarness();
+  h.run(`loaded = false; cache.set('/Console/Input_Channels', { address: '/Console/Input_Channels', args: [2] });
+    cache.delete('/Console/Aux_Outputs/modes');`);
+  const mark = h.ports[0].sent.length;
+  h.run('fetchValues()');
+  h.clock.advance(3000); // one retry
+  const sent = h.ports[0].sent.slice(mark).map(m => m.address);
+  assert.ok(!sent.includes('/Console/Channels/?'), sent.join(', '));
+  assert.ok(sent.includes('/Console/Aux_Outputs/modes/?'));
+});
+
+test('a session change stops querying the old session immediately', () => {
+  const h = serverHarness();
+  h.run(`queueDeskQueries(['/old/1/?', '/old/2/?']); cachePrimeInterval = setInterval(primeCache, 100)`);
+  h.echo({ address: '/Console/Session/!', args: [0] });
+  const mark = h.ports[0].sent.length;
+  h.clock.advance(400); // still inside the 500ms debounce
+  assert.deepEqual(h.ports[0].sent.slice(mark).map(m => m.address), []);
 });

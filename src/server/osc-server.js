@@ -777,13 +777,18 @@ function broadcast(oscMsg, excludeIpOrSocket) {
 
 // ── Sequential loader — polls desk until all metadata is cached ───────────
 
+// Retry timer for the metadata load: re-asks for whatever the loader is
+// waiting on — the channel count at first, then the name whose reply was
+// lost. Always re-asking for /Console/Channels/? made the desk re-send its
+// 9-message console summary every 3s for the whole name load (seen against
+// the offline editor after a session change).
 function fetchValues() {
   clearTimeout(metadataFetchTimer);
   metadataFetchTimer = null;
   if (loaded) return;
-  sendToDesk('/Console/Channels/?', []);
   console.log('[JPMixer] Requesting console metadata…');
-  metadataFetchTimer = setTimeout(fetchValues, 3000);
+  loadNextRequiredParameter();
+  if (!loaded) metadataFetchTimer = setTimeout(fetchValues, 3000);
 }
 
 // The loader below re-runs on every incoming message, and the desk answers
@@ -1603,6 +1608,10 @@ function start(cfg) {
     if (oscMsg.address === '/Console/Session/!') {
       cancelSceneRecall();
       clearDeskSetQueue();
+      // Stop asking about the old session right away — the desk is busy
+      // loading the new one, and those answers would be discarded anyway
+      clearDeskQueries();
+      if (cachePrimeInterval) { clearInterval(cachePrimeInterval); cachePrimeInterval = null; }
       clearTimeout(metadataFetchTimer);
       metadataFetchTimer = null;
       currentSnapshot = -1;
