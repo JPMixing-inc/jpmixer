@@ -7,8 +7,8 @@
     "test": "node --test tests/*.test.js",
     "start": "electron .",
     "dev": "NODE_ENV=development electron .",
-    "build": "rm -rf dist && electron-builder --mac dmg --universal --publish never",
-    "build:dmg": "rm -rf dist && electron-builder --mac dmg --universal --publish never",
+    "build": "rm -rf dist && electron-builder --mac dmg --universal --publish never && rm -rf dist/mac-universal dist/*.blockmap dist/builder-debug.yml dist/latest-mac.yml",
+    "build:dmg": "rm -rf dist && electron-builder --mac dmg --universal --publish never && rm -rf dist/mac-universal dist/*.blockmap dist/builder-debug.yml dist/latest-mac.yml",
     "build:win": "electron-builder --win --publish never"
   },
   "build": {
