@@ -441,3 +441,29 @@ test('relabeling a channel updates the server config and tells pages, without a 
   assert.equal(h.run(`setAuxLabel(1, 'Drums')`), true);
   assert.deepEqual(h.socket.sent.at(-1), { type: 'aux-relabeled', aux: 1, label: 'Drums' });
 });
+
+// ── Found against the DiGiCo offline editor ───────────────────────────────
+
+test('priming never re-sends a query that is still awaiting its reply', () => {
+  const h = serverHarness();
+  const mark = h.ports[0].sent.length;
+  h.run('cachePrimeInterval = setInterval(primeCache, 100)');
+  h.clock.advance(1000); // no replies at all — over a real network they take a while
+  const sent = h.ports[0].sent.slice(mark).map(m => m.address);
+  const counts = {};
+  for (const a of sent) counts[a] = (counts[a] || 0) + 1;
+  assert.ok(sent.length > 0);
+  assert.deepEqual(Object.values(counts).filter(n => n > 1), [], `re-sent: ${JSON.stringify(counts)}`);
+});
+
+test('the startup loader sends each query once even when the desk answers with several messages', () => {
+  const h = serverHarness();
+  const mark = h.ports[0].sent.length;
+  // The harness console has no channel count cached, so the loader's next
+  // query is /Console/Channels/? — which the desk answers with 9 messages,
+  // each of which re-runs the loader
+  h.run(`loaded = false; cache.delete('/Console/Input_Channels');
+    for (let i = 0; i < 9; i++) loadNextRequiredParameter();`);
+  const sent = h.ports[0].sent.slice(mark).filter(m => m.address === '/Console/Channels/?');
+  assert.equal(sent.length, 1);
+});

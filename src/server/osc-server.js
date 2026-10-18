@@ -184,8 +184,22 @@ let deskQueryTimer    = null;
 // them for tens of seconds. The rate is the same either way.
 const deskQueryUrgent = [];
 
+// Queries sent recently and probably still awaiting the desk's reply. Over a
+// real network the reply takes long enough that background priming (which
+// re-checks every 100ms) used to queue the same query again before the
+// answer arrived — every priming query went to the desk twice. A query is
+// not re-queued while it's in flight; a lost reply is retried after this.
+const QUERY_IN_FLIGHT_MS = 1000;
+const deskQuerySentAt = new Map(); // address → ms
+
+function queryInFlight(address) {
+  const at = deskQuerySentAt.get(address);
+  return at !== undefined && Date.now() - at < QUERY_IN_FLIGHT_MS;
+}
+
 function queueDeskQueries(addresses, urgent = false) {
   for (const a of addresses) {
+    if (queryInFlight(a)) continue;
     if (deskQueryQueued.has(a)) {
       if (!urgent) continue;
       const i = deskQueryQueue.indexOf(a); // already waiting in the background lane — promote it
@@ -206,6 +220,10 @@ function queueDeskQueries(addresses, urgent = false) {
       return;
     }
     deskQueryQueued.delete(next);
+    deskQuerySentAt.set(next, Date.now());
+    if (deskQuerySentAt.size > 2000) {
+      for (const [a, at] of deskQuerySentAt) if (Date.now() - at >= QUERY_IN_FLIGHT_MS) deskQuerySentAt.delete(a);
+    }
     sendToDesk(next, []);
   }, 100);
 }
@@ -215,6 +233,8 @@ function clearDeskQueries() {
   deskQueryQueue.length = 0;
   deskQueryUrgent.length = 0;
   deskQueryQueued.clear();
+  deskQuerySentAt.clear();
+  primeAttempts.clear();
 }
 
 // Connection watchdog — pings clients to detect silent disconnects
@@ -766,14 +786,26 @@ function fetchValues() {
   metadataFetchTimer = setTimeout(fetchValues, 3000);
 }
 
+// The loader below re-runs on every incoming message, and the desk answers
+// some queries with several messages (/Console/Channels/? → 9), so the same
+// next query used to go out up to 9 times in a burst. Send each at most once
+// per half second; fetchValues()'s 3s retry still covers a lost reply.
+let lastLoadQuery = null, lastLoadQueryAt = 0;
+function sendLoadQuery(address) {
+  if (address === lastLoadQuery && Date.now() - lastLoadQueryAt < 500) return;
+  lastLoadQuery = address;
+  lastLoadQueryAt = Date.now();
+  sendToDesk(address, []);
+}
+
 function loadNextRequiredParameter() {
   if (!cache.has('/Console/Input_Channels')) {
-    sendToDesk('/Console/Channels/?', []);
+    sendLoadQuery('/Console/Channels/?');
     return;
   }
 
   if (!cache.has('/Console/Aux_Outputs/modes')) {
-    sendToDesk('/Console/Aux_Outputs/modes/?', []);
+    sendLoadQuery('/Console/Aux_Outputs/modes/?');
     return;
   }
 
@@ -786,7 +818,7 @@ function loadNextRequiredParameter() {
   const auxCount = cache.get('/Console/Aux_Outputs/modes').args.length;
   for (let i = 1; i <= auxCount; i++) {
     if (!cache.has(`/Aux_Outputs/${i}/Buss_Trim/name`)) {
-      sendToDesk(`/Aux_Outputs/${i}/Buss_Trim/name/?`, []);
+      sendLoadQuery(`/Aux_Outputs/${i}/Buss_Trim/name/?`);
       return;
     }
   }
@@ -794,7 +826,7 @@ function loadNextRequiredParameter() {
   const chCount = cache.get('/Console/Input_Channels').args[0];
   for (let i = 1; i <= chCount; i++) {
     if (!cache.has(`/Input_Channels/${i}/Channel_Input/name`)) {
-      sendToDesk(`/Input_Channels/${i}/Channel_Input/name/?`, []);
+      sendLoadQuery(`/Input_Channels/${i}/Channel_Input/name/?`);
       return;
     }
   }
@@ -832,6 +864,11 @@ function loadNextRequiredParameter() {
 // opens it — those queries take the paced queue's urgent lane, ahead of this
 // background priming. Do not raise this without confirming on real
 // hardware, not just a demo-mode/local test.
+// Tries per value before priming gives up on it (a desk that never answers
+// one address must not stall priming of everything after it)
+const PRIME_MAX_ATTEMPTS = 3;
+const primeAttempts = new Map(); // query address → tries
+
 function primeCache() {
   if (deskQueryQueue.length > 0 || deskQueryUrgent.length > 0) return; // yield the tick — keeps the combined query rate at one per 100ms
 
@@ -842,22 +879,28 @@ function primeCache() {
     ? cache.get('/Console/Aux_Outputs/modes').args.length
     : (serverCfg.auxes || 16);
 
+  let waiting = false; // something is still in flight — not finished yet
   for (let aux = 1; aux <= auxCount; aux++) {
     for (let ch = 1; ch <= chCount; ch++) {
-      if (!cache.has(`/Input_Channels/${ch}/Aux_Send/${aux}/send_level`)) {
-        queueDeskQueries([`/Input_Channels/${ch}/Aux_Send/${aux}/send_level/?`]);
-        return;
-      }
-      if (!cache.has(`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan`)) {
-        queueDeskQueries([`/Input_Channels/${ch}/Aux_Send/${aux}/send_pan/?`]);
+      for (const prop of ['send_level', 'send_pan']) {
+        const key = `/Input_Channels/${ch}/Aux_Send/${aux}/${prop}`;
+        if (cache.has(key)) continue;
+        const query = `${key}/?`;
+        if (queryInFlight(query)) { waiting = true; continue; }
+        const tries = primeAttempts.get(query) || 0;
+        if (tries >= PRIME_MAX_ATTEMPTS) continue; // the desk doesn't answer this one
+        primeAttempts.set(query, tries + 1);
+        queueDeskQueries([query]);
         return;
       }
     }
   }
+  if (waiting) return;
 
   clearInterval(cachePrimeInterval);
   cachePrimeInterval = null;
-  console.log('[JPMixer] Cache fully primed');
+  const skipped = [...primeAttempts.values()].filter(n => n >= PRIME_MAX_ATTEMPTS).length;
+  console.log(`[JPMixer] Cache fully primed${skipped ? ` (${skipped} values never answered by the desk)` : ''}`);
 }
 
 // After a session reload, re-query send levels (and pans, for stereo auxes) for
