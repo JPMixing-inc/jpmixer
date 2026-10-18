@@ -623,6 +623,7 @@ function renderIpadConnections() {
         <input type="checkbox" class="toggle ipad-enabled" data-id="${conn.id}" ${conn.enabled ? 'checked' : ''} />
         <button class="btn btn-sm btn-danger ipad-remove" data-id="${conn.id}">Remove</button>
       </div>
+      <div class="ipad-status" data-status-id="${conn.id}"></div>
       <div class="ipad-row-fields">
         <div>
           <label>IP Address</label>
@@ -636,7 +637,81 @@ function renderIpadConnections() {
     `;
     list.appendChild(row);
   }
+  renderIpadStatus();
 }
+
+// ── iPad relay health — refreshed every 3s while Settings is open ──
+// Shows whether each iPad is actually talking to JPMixer, follows an iPad
+// whose address changed, and lists devices sending OSC that aren't the
+// console or a configured iPad (most often an iPad on a new DHCP address).
+let ipadStatus = null;
+
+function ago(ms) {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s ago` : `${Math.round(s / 60)} min ago`;
+}
+
+function useIpForIpad(id, ip) {
+  const conn = ipadConnections.find(c => c.id === id);
+  if (!conn) return;
+  conn.ip = ip;
+  renderIpadConnections();
+  renderIpadStatus();
+}
+
+function renderIpadStatus() {
+  const now = Date.now();
+  const byId = new Map(((ipadStatus && ipadStatus.ipads) || []).map(e => [e.id, e]));
+  document.querySelectorAll('.ipad-status[data-status-id]').forEach(el => {
+    const id = Number(el.dataset.statusId);
+    const conn = ipadConnections.find(c => c.id === id);
+    const st = byId.get(id);
+    el.className = 'ipad-status';
+    el.innerHTML = '';
+    if (!ipadStatus || !conn || !conn.enabled) return;
+    if (!st) { el.textContent = 'Not relaying yet — click Save & Apply.'; return; }
+    if (st.ip !== st.configuredIp) {
+      el.classList.add('warn');
+      el.textContent = `⚠ Now sending from ${st.ip} (set to ${st.configuredIp}) — JPMixer is following it for now.`;
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = `Use ${st.ip}`;
+      btn.addEventListener('click', () => useIpForIpad(id, st.ip));
+      el.appendChild(btn);
+    } else if (st.lastHeardAt && now - st.lastHeardAt < 15000) {
+      el.classList.add('ok');
+      el.textContent = `● Connected — last message ${ago(now - st.lastHeardAt)}`;
+    } else if (st.lastHeardAt) {
+      el.textContent = `○ Last heard ${ago(now - st.lastHeardAt)}`;
+    } else {
+      el.textContent = `○ Not heard from yet — the app should send to ${localIP || 'this computer'} on port ${$('deskListenPort').value}`;
+    }
+  });
+
+  const box = $('ipadUnknown');
+  box.innerHTML = '';
+  for (const u of ((ipadStatus && ipadStatus.unknownSenders) || [])) {
+    const row = document.createElement('div');
+    row.className = 'ipad-unknown';
+    const text = document.createElement('span');
+    text.textContent = `${u.ip} is sending OSC (${u.messages} message${u.messages === 1 ? '' : 's'}, last ${ago(now - u.lastAt)}) but isn't the console or a configured iPad, so it's ignored.`;
+    row.appendChild(text);
+    for (const conn of ipadConnections) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.textContent = `Use for ${conn.name || 'iPad'}`;
+      btn.addEventListener('click', () => useIpForIpad(conn.id, u.ip));
+      row.appendChild(btn);
+    }
+    box.appendChild(row);
+  }
+}
+
+async function refreshIpadStatus() {
+  try { ipadStatus = await window.jpm.getIpadStatus(); } catch (_) { ipadStatus = null; }
+  renderIpadStatus();
+}
+setInterval(refreshIpadStatus, 3000);
 
 $('addIpadBtn').addEventListener('click', () => {
   ipadConnections.push({

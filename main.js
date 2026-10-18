@@ -650,7 +650,9 @@ launchctl bootstrap system '${plistDest}' 2>/dev/null || launchctl load -w '${pl
 // recall…) is pushed to connected pages live. Restarting for every change
 // dropped every phone and re-primed the whole console — minutes, mid-service.
 const RESTART_KEYS = [
-  'serverPort', 'deskIp', 'deskSendPort', 'deskListenPort', 'consoleType', 'demoMode', 'ipadConnections',
+  // (ipadConnections is applied live by osc-server — adding or fixing an iPad
+  // mid-service no longer drops every phone)
+  'serverPort', 'deskIp', 'deskSendPort', 'deskListenPort', 'consoleType', 'demoMode',
   // dLive / KLANG / WING connection settings
   'dliveBaseChannel', 'dliveTlsEnabled', 'dliveUsername', 'dlivePassword', 'dliveMidiPort',
   'dliveListenSendLevels', 'dlivePollSendLevels', 'klangIp', 'klangPort', 'wingPort'
@@ -694,6 +696,9 @@ ipcMain.handle('save-config', async (_, incoming) => {
   rebuildTrayMenu();
   return { ok: true, restarted };
 });
+
+// iPad relay health for Settings — DiGiCo backend only (the others have no relay)
+ipcMain.handle('get-ipad-status', () => (serverRunning && server.getIpadStatus) ? server.getIpadStatus() : null);
 
 ipcMain.handle('start-server', () => startServer());
 ipcMain.handle('stop-server', () => stopServer());

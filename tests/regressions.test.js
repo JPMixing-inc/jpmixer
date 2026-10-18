@@ -528,3 +528,49 @@ test('stop sends muted channels\' real levels before closing the socket', async 
   const restoreAt = events.findIndex(e => e[1] === level(1) && e[2] === -12);
   assert.ok(restoreAt >= 0 && closeAt > restoreAt, JSON.stringify(events.slice(-4)));
 });
+
+// ── iPad relay reliability ────────────────────────────────────────────────
+
+const fromHost = (h, ip, message) => h.ports.at(-1).emit('message', message, null, { address: ip });
+
+test('a session change is relayed to iPads so the app re-syncs', () => {
+  const h = serverHarness();
+  h.run(`registerIpads({ ipadConnections: [{ id: 1, enabled: true, name: 'iPad', ip: '192.0.2.9', sendPort: 7000 }] })`);
+  const mark = h.ports[0].sent.length;
+  h.echo({ address: '/Console/Session/!', args: [0] });
+  assert.ok(h.ports[0].sent.slice(mark).some(m => m.address === '/Console/Session/!'));
+});
+
+test('OSC from an unknown device is ignored, not treated as the desk', () => {
+  const h = serverHarness();
+  h.echo({ address: level(1), args: [-12] });
+  fromHost(h, '192.0.2.77', { address: level(1), args: [5] });
+  assert.equal(h.cached(level(1)), -12, 'a stray device must not change what JPMixer thinks the desk holds');
+  const st = h.run('getIpadStatus()');
+  assert.equal(st.unknownSenders[0].ip, '192.0.2.77');
+});
+
+test('an iPad that changed address is followed when it is the only, quiet iPad', () => {
+  const h = serverHarness();
+  h.run(`registerIpads({ ipadConnections: [{ id: 1, enabled: true, name: 'iPad', ip: '192.0.2.9', sendPort: 7000 }] })`);
+  const mark = h.ports[0].sent.length;
+  fromHost(h, '192.0.2.50', { address: '/Console/Name/?', args: [] });
+  const st = h.run('getIpadStatus()');
+  assert.equal(st.ipads[0].ip, '192.0.2.50');
+  assert.equal(st.ipads[0].configuredIp, '192.0.2.9');
+  assert.ok(h.ports[0].sent.slice(mark).some(m => m.address === '/Console/Name/?'), 'its query reached the desk');
+  assert.equal(st.unknownSenders.length, 0);
+});
+
+test('iPad changes apply live without dropping the relay', () => {
+  const h = serverHarness();
+  h.run(`applyConfigLive({ ...serverCfg, ipadConnections: [{ id: 2, enabled: true, name: 'Stage iPad', ip: '192.0.2.10', sendPort: 7000 }] })`);
+  assert.equal(h.run('getIpadStatus()').ipads[0].name, 'Stage iPad');
+  assert.equal(h.run('loaded'), true);
+});
+
+test('a send error (e.g. Wi-Fi dropping) does not stop the server', () => {
+  const h = serverHarness();
+  h.ports[0].emit('error', Object.assign(new Error('send EADDRNOTAVAIL 192.0.2.9:7000'), { code: 'EADDRNOTAVAIL', syscall: 'send' }));
+  assert.equal(h.run('loaded'), true);
+});

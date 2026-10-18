@@ -617,6 +617,16 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
 .ipad-row-header .ch-label-input { flex: 1; }
 
+/* Live relay health under each iPad row, and devices sending OSC that
+   aren't the console or a configured iPad */
+.ipad-status { font-size: 11px; color: var(--sub); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ipad-status.ok   { color: var(--green); }
+.ipad-status.warn { color: var(--red); }
+.ipad-unknown {
+  font-size: 11px; color: var(--sub); border: 1px dashed var(--border); border-radius: 10px;
+  padding: 8px 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
 .ipad-row-fields {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;

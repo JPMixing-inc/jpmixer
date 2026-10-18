@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('jpm', {
   setPresetOwner:         (deviceId, owner) => ipcRenderer.invoke('set-preset-owner', deviceId, owner),
   mergePresets:           (fromId, toId)   => ipcRenderer.invoke('merge-presets', fromId, toId),
   getPort80Status:        ()               => ipcRenderer.invoke('get-port80-status'),
+  getIpadStatus:          ()               => ipcRenderer.invoke('get-ipad-status'),
   exportBackup:           ()            => ipcRenderer.invoke('export-backup'),
   importBackup:           ()   => ipcRenderer.invoke('import-backup'),
   getAutoBackupStatus:    ()   => ipcRenderer.invoke('get-auto-backup-status'),

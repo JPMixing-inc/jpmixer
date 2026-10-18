@@ -695,12 +695,78 @@ function rawSendToDesk(address, args) {
 }
 
 function sendToAllIpads(address, args, excludeIp) {
+  if (!udpPort) return;
   for (const { ip, sendPort } of ipadPorts.values()) {
     if (ip === excludeIp) continue;
     try {
       udpPort.send({ address, args: args || [] }, ip, sendPort);
     } catch (e) {}
   }
+}
+
+// (Re)builds the iPad registry from config — at start, and live from
+// applyConfigLive() so adding or fixing an iPad no longer restarts the server
+// (which dropped every phone). Health stats survive for an unchanged entry.
+function registerIpads(cfg) {
+  const previous = new Map([...ipadPorts.values()].map(e => [e.id, e]));
+  ipadPorts.clear();
+  for (const conn of (cfg.ipadConnections || [])) {
+    if (!conn.enabled || !conn.ip) continue;
+    const old = previous.get(conn.id);
+    const keep = old && old.configuredIp === conn.ip;
+    ipadPorts.set(conn.ip, {
+      id: conn.id, name: conn.name || 'iPad', ip: conn.ip, configuredIp: conn.ip, sendPort: conn.sendPort,
+      lastHeardAt: keep ? old.lastHeardAt : null, messages: keep ? old.messages : 0
+    });
+  }
+}
+
+// OSC arriving from an address that's neither the desk nor a configured iPad.
+// Its messages used to go through the desk path, so a stray device (or an iPad
+// whose DHCP address changed) could make JPMixer record levels the desk never
+// had. Now they're ignored and listed for Settings — except that a sender
+// asking the console questions (".../?", which a desk never sends) while
+// exactly one configured iPad has gone quiet is that iPad at a new address,
+// and is followed automatically.
+const IPAD_QUIET_MS = 60000;
+const unknownSenders = new Map(); // ip → { lastAt, messages, lastAddress, asksQuestions }
+
+function adoptMovedIpad(ip, oscMsg) {
+  if (!oscMsg.address.endsWith('/?')) return null;
+  const now = Date.now();
+  const quiet = [...ipadPorts.values()].filter(e => !e.lastHeardAt || now - e.lastHeardAt > IPAD_QUIET_MS);
+  if (quiet.length !== 1 || ipadPorts.size !== 1) return null;
+  const entry = quiet[0];
+  ipadPorts.delete(entry.ip);
+  logEvent('ipad-moved', `"${entry.name}" now sending from ${ip} (configured ${entry.configuredIp}) — following it`);
+  entry.ip = ip;
+  ipadPorts.set(ip, entry);
+  unknownSenders.delete(ip);
+  return entry;
+}
+
+function noteUnknownSender(ip, oscMsg) {
+  const rec = unknownSenders.get(ip) || { messages: 0, asksQuestions: false };
+  if (!unknownSenders.has(ip)) logEvent('osc-unknown-sender', `${ip} is sending OSC but isn't the console or a configured iPad (${oscMsg.address})`);
+  rec.lastAt = Date.now();
+  rec.messages++;
+  rec.lastAddress = oscMsg.address;
+  if (oscMsg.address.endsWith('/?')) rec.asksQuestions = true;
+  unknownSenders.set(ip, rec);
+}
+
+// For Settings: each configured iPad's state, plus unknown senders
+function getIpadStatus() {
+  const now = Date.now();
+  return {
+    ipads: [...ipadPorts.values()].map(e => ({
+      id: e.id, name: e.name, ip: e.ip, configuredIp: e.configuredIp, sendPort: e.sendPort,
+      lastHeardAt: e.lastHeardAt, messages: e.messages
+    })),
+    unknownSenders: [...unknownSenders.entries()]
+      .filter(([, r]) => now - r.lastAt < 5 * 60000)
+      .map(([ip, r]) => ({ ip, lastAt: r.lastAt, messages: r.messages, lastAddress: r.lastAddress, asksQuestions: r.asksQuestions }))
+  };
 }
 
 // Counts how many connected mixer clients currently have each aux selected —
@@ -1590,14 +1656,24 @@ function start(cfg) {
   });
 
   const onUdpMessage = (oscMsg, timeTag, info) => {
-    allSeenAddresses.set(oscMsg.address, oscMsg.args);
+    // Who sent it: a configured iPad, the desk, or an unknown device
+    let fromIpad = ipadPorts.get(info.address);
+    if (!fromIpad && info.address !== serverCfg.deskIp) {
+      fromIpad = adoptMovedIpad(info.address, oscMsg);
+      if (!fromIpad) {
+        noteUnknownSender(info.address, oscMsg);
+        logOscTraffic('in', oscMsg.address, oscMsg.args, `unknown:${info.address}`);
+        return;
+      }
+    }
 
-    logOscTraffic('in', oscMsg.address, oscMsg.args, ipadPorts.has(info.address) ? `ipad:${ipadPorts.get(info.address).name}` : 'desk');
+    allSeenAddresses.set(oscMsg.address, oscMsg.args);
+    logOscTraffic('in', oscMsg.address, oscMsg.args, fromIpad ? `ipad:${fromIpad.name}` : 'desk');
 
     // Message from a configured iPad — forward to desk and browser clients, skip desk handling
-    const fromIpad = ipadPorts.get(info.address);
     if (fromIpad) {
-      console.log(`[JPMixer] iPad "${fromIpad.name}" ← ${oscMsg.address}`);
+      fromIpad.lastHeardAt = Date.now();
+      fromIpad.messages++;
       maybeCacheResponse(oscMsg);
       const iPadMsMatch = oscMsg.address.match(/^\/Input_Channels\/(\d+)\/Aux_Send\/(\d+)\/send_level$/);
       if (iPadMsMatch) {
@@ -1622,6 +1698,9 @@ function start(cfg) {
 
     // Session change — reload data without dropping clients
     if (oscMsg.address === '/Console/Session/!') {
+      // iPads need this too — the DiGiCo app re-syncs on it. It used to return
+      // below before anything was relayed, leaving iPads on the old session.
+      sendToAllIpads(oscMsg.address, oscMsg.args, null);
       cancelSceneRecall();
       clearDeskSetQueue();
       // Stop asking about the old session right away — the desk is busy
@@ -1734,7 +1813,9 @@ function start(cfg) {
     // handler above already guards against, e.g. the stop+immediately-
     // start cycle Save & Apply and Import Backup both do) leaves no working
     // UDP socket, so stop and surface it, like httpServer's error handling.
-    if (UDP_FATAL_CODES.has(err.code)) {
+    // Only when binding: the same codes on a *send* (e.g. EADDRNOTAVAIL while
+    // Wi-Fi briefly drops, or an unreachable iPad) are transient
+    if (UDP_FATAL_CODES.has(err.code) && err.syscall !== 'send') {
       console.error('[JPMixer] UDP error:', err.message || err.code);
       logEvent('udp-error', `${err.code} — desk socket failed`);
       stop();
@@ -1761,11 +1842,8 @@ function start(cfg) {
 
   // iPad OSC relay — shares the main UDP port. iPads send to JPMixer's main listen port;
   // messages are routed by source IP. JPMixer sends replies to each iPad's sendPort.
-  for (const conn of (cfg.ipadConnections || [])) {
-    if (!conn.enabled || !conn.ip) continue;
-    ipadPorts.set(conn.ip, { id: conn.id, name: conn.name || 'iPad', ip: conn.ip, sendPort: conn.sendPort });
-    console.log(`[JPMixer] iPad "${conn.name}" registered → ${conn.ip}:${conn.sendPort} (receives from main port)`);
-  }
+  registerIpads(cfg);
+  for (const e of ipadPorts.values()) console.log(`[JPMixer] iPad "${e.name}" registered → ${e.ip}:${e.sendPort} (receives from main port)`);
 }
 
 function stop() {
@@ -1809,6 +1887,7 @@ function stop() {
     });
   }
   ipadPorts.clear();
+  unknownSenders.clear();
   // wss.close() only stops accepting *new* connections — already-upgraded
   // WebSocket sockets are detached from the HTTP server's own connection
   // tracking (a known `ws` gotcha) and are left open otherwise. A client
@@ -1874,6 +1953,7 @@ function setServerErrorCallback(cb) { onServerError = cb; }
 // cache on a liveUpdate config, so this sends nothing to the desk.
 function applyConfigLive(cfg) {
   serverCfg = cfg;
+  registerIpads(cfg);
   logEvent('config-live', `pushed to ${connections.length} clients`);
   if (wss) broadcastToClients(buildConfig({ liveUpdate: true }));
 }
@@ -1886,4 +1966,4 @@ function pushDevicePresets(deviceId) {
 function getOscLog() { return oscLog; }
 function setOscTrafficCallback(cb) { onOscTraffic = cb; }
 
-module.exports = { start, stop, applyConfigLive, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };
+module.exports = { start, stop, applyConfigLive, getIpadStatus, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };
