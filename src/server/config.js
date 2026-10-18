@@ -43,7 +43,24 @@ const DEFAULTS = {
   // Behringer WING — only read when consoleType is 'wing'. Reuses deskIp
   // above for the console's address, same as the DiGiCo/dLive paths do —
   // WING is self-contained, no secondary connection needed.
-  wingPort: 0 // 0 = use the documented default (2223)
+  wingPort: 0, // 0 = use the documented default (2223)
+  // External Control API (Companion/Stream Deck/Planning Center) — a
+  // separate always-on server, independent of the console backend. See
+  // api-server.js. Off by default; apiToken is generated on first enable.
+  apiEnabled: false,
+  apiPort: 9096,
+  apiToken: '',
+  // Planning Center Services — auto-labels aux mixes from the schedule
+  // (Settings' "Planning Center" tab). Credentials stored the same way
+  // dlivePassword/apiToken already are; see pco-client.js.
+  pcoAppId: '',
+  pcoSecret: '',
+  pcoServiceTypeId: '',
+  pcoTeamId: '',           // '' = all teams. Narrows both the Position mapping table (display only)
+                           // and the Green Room display (actually filters who's shown there).
+  pcoPositionMapping: {}, // { "PCO position name": auxNumber }
+  pcoIncludeUnconfirmed: false,
+  pcoGreenRoomHidden: [] // PCO position names to exclude from the Green Room display; empty = show everyone
 };
 
 let _config = { ...DEFAULTS };
@@ -85,5 +102,23 @@ function getAll() {
   return { ..._config };
 }
 
+// Targeted write for one channel/aux override field — used by the Control
+// API's live relabeling path (api-server.js + each backend's
+// setChannelLabel/setAuxLabel). Deliberately separate from save(): it patches
+// just one entry in-place rather than replacing the whole config, so callers
+// never need to go through the main.js save-config IPC path that restarts
+// the active console backend.
+function updateOverride(kind, n, patch) {
+  const key = kind === 'aux' ? 'auxOverrides' : 'channelOverrides';
+  const bucket = { ..._config[key] };
+  bucket[String(n)] = { ...(bucket[String(n)] || {}), ...patch };
+  _config = { ..._config, [key]: bucket };
+  try {
+    fs.writeFileSync(configPath(), JSON.stringify(_config, null, 2));
+  } catch (e) {
+    console.error('Config save error:', e);
+  }
+}
+
 load();
-module.exports = { get, getAll, save };
+module.exports = { get, getAll, save, updateOverride };

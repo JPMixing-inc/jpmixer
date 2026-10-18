@@ -30,6 +30,8 @@
     <button class="tab" data-tab="mixes">My Mixes</button>
     <button class="tab" data-tab="backup">Backup</button>
     <button class="tab" data-tab="osclog">OSC Log</button>
+    <button class="tab" data-tab="api">Control API</button>
+    <button class="tab" data-tab="pco">Planning Center</button>
   </nav>
 
   <main>
@@ -423,6 +425,116 @@
             <button class="btn btn-sm btn-primary" id="oscLogRecordBtn">Start Logging</button>
           </div>
         </div>
+      </section>
+
+    </div>
+
+    <!-- ── Control API tab — external control for Companion/Stream Deck/etc ── -->
+    <div class="tab-panel" id="tab-api">
+
+      <section class="card">
+        <h2>External Control API</h2>
+        <div class="sub" style="margin-bottom:10px">Lets external tools — Bitfocus Companion, Elgato Stream Deck (via Companion or a plain HTTP action), or anything else that can make an HTTP request — mute channels, fire snapshots, and rename channel/aux labels. Anyone with the token below can do all of that, so treat it like a password. (Planning Center has its own tab — it doesn't need this API enabled.)</div>
+        <div class="card-row">
+          <div>
+            <label class="toggle-label" for="apiEnabled">Enable Control API</label>
+            <div class="sub">Runs independently of the console connection — enabling or disabling this never restarts or interrupts it.</div>
+          </div>
+          <input type="checkbox" id="apiEnabled" class="toggle" />
+        </div>
+
+        <div id="apiFieldsRow" style="display:none">
+          <div class="field-row">
+            <label for="apiPort">Port</label>
+            <input type="number" id="apiPort" min="1" max="65535" placeholder="9096" />
+          </div>
+          <div class="field-row">
+            <label for="apiToken">Token</label>
+            <input type="text" id="apiToken" readonly class="mono" />
+          </div>
+          <div class="card-row space-between" style="margin-top:6px">
+            <div class="sub" id="apiTokenStatus"></div>
+            <div class="osclog-controls">
+              <button class="btn btn-sm" id="apiCopyTokenBtn">Copy Token</button>
+              <button class="btn btn-sm" id="apiRegenTokenBtn">Regenerate</button>
+            </div>
+          </div>
+          <div class="sub" style="margin-top:14px"><strong>Auth:</strong> send the token as <code>Authorization: Bearer &lt;token&gt;</code>, or as a <code>?token=</code> query parameter if your tool can't set headers.</div>
+          <div class="sub" style="margin-top:6px"><strong>Endpoints</strong> (all under <code>http://&lt;this Mac's IP&gt;:&lt;port&gt;/api/v1/</code>):</div>
+          <div class="sub">
+            <code>GET  /status</code> · <code>GET  /channels</code> · <code>GET  /auxes</code><br/>
+            <code>POST /channels/:n/label</code> <code>{label}</code><br/>
+            <code>POST /auxes/:n/label</code> <code>{label}</code><br/>
+            <code>POST /auxes/:n/mute</code> <code>{channel, muted}</code> · <code>POST /auxes/:n/solo</code> <code>{channel, soloed}</code><br/>
+            <code>POST /scenes/fire</code> <code>{action: "next"|"prev"}</code>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ── Planning Center tab — auto-label auxes from the service schedule ── -->
+    <div class="tab-panel" id="tab-pco">
+
+      <section class="card">
+        <h2>Planning Center Services</h2>
+        <div class="sub" style="margin-bottom:10px">Pulls who's scheduled on the next upcoming service and renames the matching aux mixes for you — "Acoustic Guitar - John Smith" instead of just "AUX 3". Nothing runs automatically; use <strong>Sync Now</strong> below whenever you want it applied.</div>
+        <div class="sub" style="margin-bottom:14px">⚠️ Stored the same way your console password is — in JPMixer's local config file. This is a credential to your Planning Center account specifically, generated at <span class="mono">api.planningcenteronline.com/personal_access_tokens</span>.</div>
+
+        <div class="card-row space-between" style="margin-bottom:14px">
+          <div>
+            <div class="label">Green Room Display</div>
+            <div class="sub mono" id="pcoGreenRoomUrl">—</div>
+          </div>
+          <button class="btn btn-sm" id="pcoOpenGreenRoomBtn">Open</button>
+        </div>
+
+        <div class="field-row two-col">
+          <div>
+            <label for="pcoAppId">Application ID</label>
+            <input type="text" id="pcoAppId" autocomplete="off" />
+          </div>
+          <div>
+            <label for="pcoSecret">Secret</label>
+            <input type="password" id="pcoSecret" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label for="pcoServiceType">Service Type</label>
+          <select id="pcoServiceType"><option value="">— load service types —</option></select>
+        </div>
+        <div class="card-row space-between" style="margin-bottom:14px">
+          <div class="sub" id="pcoServiceTypeStatus"></div>
+          <button class="btn btn-sm" id="pcoRefreshTypesBtn">Refresh Service Types</button>
+        </div>
+
+        <div class="field-row">
+          <label for="pcoTeam">Team</label>
+          <select id="pcoTeam"><option value="">— All Teams —</option></select>
+        </div>
+        <div class="card-row space-between" style="margin-bottom:14px">
+          <div class="sub" id="pcoTeamStatus">Narrows the Position mapping table below, and — once saved with Save & Apply — the Green Room display too. Sync Now still applies every saved mapping regardless of team.</div>
+          <button class="btn btn-sm" id="pcoRefreshTeamsBtn">Refresh Teams</button>
+        </div>
+
+        <div class="card-row space-between">
+          <h2 style="font-size:14px">Position → Aux Mapping</h2>
+          <button class="btn btn-sm" id="pcoRefreshPositionsBtn">Refresh Positions</button>
+        </div>
+        <div class="sub" style="margin-bottom:10px">One row per Team Position — filtered to the Team selected above, or every team if left on "— All Teams —". Anyone scheduled to a position left as "— unmapped —" is skipped and listed as a warning after Sync Now, rather than silently doing nothing.</div>
+        <div id="pcoPositionsList" class="sub">Pick a Service Type above, then click Refresh Positions.</div>
+
+        <div class="card-row" style="margin-top:10px">
+          <label class="toggle-label" for="pcoIncludeUnconfirmed">Include unconfirmed team members</label>
+          <input type="checkbox" id="pcoIncludeUnconfirmed" class="toggle" />
+        </div>
+
+        <div class="card-row space-between" style="margin-top:14px">
+          <div class="sub" id="pcoSyncStatus"></div>
+          <button class="btn btn-primary" id="pcoSyncNowBtn">Sync Now</button>
+        </div>
+        <div id="pcoSyncResults"></div>
       </section>
 
     </div>

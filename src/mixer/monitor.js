@@ -155,6 +155,21 @@ function onMessage(json) {
     return;
   }
 
+  // Live relabel — from the External Control API (e.g. a Planning Center
+  // connector naming aux mixes after who's playing them). Same in-memory
+  // arrays applyConfig() populates, then a full grid rebuild — cheap and
+  // matches how every other config change already refreshes this view.
+  if (json.type === 'channel-relabeled') {
+    const ch = chConfig.find(c => c.channel === json.channel);
+    if (ch) { ch.label = json.label; buildGrid(); applyActiveMixerCounts(); }
+    return;
+  }
+  if (json.type === 'aux-relabeled') {
+    const opt = auxConfig.find(a => a.channel === json.aux);
+    if (opt) { opt.label = json.label; buildGrid(); applyActiveMixerCounts(); }
+    return;
+  }
+
   if (json.type === 'scene-recalled') {
     if (json.levels) {
       for (const [auxStr, auxLevels] of Object.entries(json.levels)) {

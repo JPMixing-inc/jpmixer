@@ -85,6 +85,8 @@ const scenes    = require('./scenes');
 const presets   = require('./presets');
 const P         = require('./dlive-protocol');
 const { DliveClient } = require('./dlive-client');
+const config    = require('./config');
+const { mountGreenRoom } = require('./greenroom');
 
 let httpServer = null;
 let wss        = null;
@@ -92,6 +94,11 @@ let client     = null;
 let serverCfg  = {};
 let connections = [];
 let pingInterval = null;
+// Mirrors the `baseN` local inside start() — kept in sync there — so the
+// External Control API's setMute/setSolo/fireSnapshot below (called from
+// outside any single WS connection's closure) can reuse the exact same
+// dLive addressing logic the browser WS handler already uses.
+let moduleBaseN = 0;
 
 let onConsoleStatusChange = null;
 let onConnectionCountChange = null;
@@ -361,6 +368,64 @@ function clearMuteSolo() {
   Object.keys(premuteState).forEach(k => delete premuteState[k]);
 }
 
+// Shared entry points for both the browser WS handler below and the
+// External Control API (api-server.js) — same validation/dispatch either
+// way, so a Companion/Stream Deck button behaves identically to a browser
+// mute button.
+function setMute(auxRaw, chRaw, muted) {
+  const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
+  const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
+  if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
+  if (!muteState[aux]) muteState[aux] = {};
+  muteState[aux][ch] = !!muted;
+  applyMuteSolo(moduleBaseN, aux);
+  return true;
+}
+
+function setSolo(auxRaw, chRaw, soloed) {
+  const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
+  const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
+  if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
+  if (!soloState[aux]) soloState[aux] = {};
+  soloState[aux][ch] = !!soloed;
+  applyMuteSolo(moduleBaseN, aux);
+  return true;
+}
+
+function fireSnapshot(action) {
+  if (currentSceneNumber == null || !client) return false;
+  const next = action === 'next' ? currentSceneNumber + 1 : currentSceneNumber - 1;
+  if (next < 1 || next > 500) return false;
+  client.recallScene(next);
+  return true;
+}
+
+// Live relabeling — see osc-server.js's setChannelLabel/setAuxLabel for the
+// full rationale (Planning Center connector use case). dLive has no live
+// name-push of its own, so this only ever affects JPMixer's own label —
+// consistent with how channelOverrides/auxOverrides already work here.
+function setChannelLabel(n, label) {
+  const ch = parseInt(n, 10);
+  const chMax = serverCfg.channels || 48;
+  if (!Number.isInteger(ch) || ch < 1 || ch > chMax || typeof label !== 'string') return false;
+  if (!serverCfg.channelOverrides) serverCfg.channelOverrides = {};
+  serverCfg.channelOverrides[String(ch)] = { ...(serverCfg.channelOverrides[String(ch)] || {}), label };
+  config.updateOverride('channel', ch, { label });
+  broadcastToClients({ type: 'channel-relabeled', channel: ch, label });
+  return true;
+}
+
+function setAuxLabel(n, label) {
+  const aux = parseInt(n, 10);
+  const auxMax = serverCfg.auxes || 16;
+  if (!Number.isInteger(aux) || aux < 1 || aux > auxMax || typeof label !== 'string') return false;
+  if (!serverCfg.auxOverrides) serverCfg.auxOverrides = {};
+  serverCfg.auxOverrides[String(aux)] = { ...(serverCfg.auxOverrides[String(aux)] || {}), label };
+  config.updateOverride('aux', aux, { label });
+  broadcastToClients({ type: 'aux-relabeled', aux, label });
+  return true;
+}
+
 // ── Scene (Ear Scene) recall — keyed by scene NUMBER, not name ───────────
 
 function pushSceneValuesToDesk(baseN, auxStr, values) {
@@ -450,9 +515,11 @@ function start(cfg) {
   // (scene recall doesn't go through coordinate() at all), so an out-of-range
   // value here would silently corrupt the status byte instead of erroring.
   const baseN = Number.isInteger(cfg.dliveBaseChannel) ? Math.max(0, Math.min(11, cfg.dliveBaseChannel)) : 0;
+  moduleBaseN = baseN;
 
   const appExpress = express();
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
+  mountGreenRoom(appExpress);
 
   const diagOnly = (req, res, next) => {
     const addr = req.socket.remoteAddress;
@@ -610,32 +677,9 @@ function start(cfg) {
         return;
       }
 
-      if (msg.type === 'set-mute') {
-        const aux = parseInt(msg.aux, 10), ch = parseInt(msg.ch, 10);
-        const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
-        if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return;
-        if (!muteState[aux]) muteState[aux] = {};
-        muteState[aux][ch] = !!msg.muted;
-        applyMuteSolo(baseN, aux);
-        return;
-      }
-      if (msg.type === 'set-solo') {
-        const aux = parseInt(msg.aux, 10), ch = parseInt(msg.ch, 10);
-        const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
-        if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return;
-        if (!soloState[aux]) soloState[aux] = {};
-        soloState[aux][ch] = !!msg.soloed;
-        applyMuteSolo(baseN, aux);
-        return;
-      }
-
-      if (msg.type === 'fire-snapshot') {
-        if (currentSceneNumber == null || !client) return;
-        const next = msg.action === 'next' ? currentSceneNumber + 1 : currentSceneNumber - 1;
-        if (next < 1 || next > 500) return;
-        client.recallScene(next);
-        return;
-      }
+      if (msg.type === 'set-mute') { setMute(msg.aux, msg.ch, msg.muted); return; }
+      if (msg.type === 'set-solo') { setSolo(msg.aux, msg.ch, msg.soloed); return; }
+      if (msg.type === 'fire-snapshot') { fireSnapshot(msg.action); return; }
 
       // Raw OSC-address-shaped messages from mixer.js (send_level / send_pan)
       const oscMsg = msg;
@@ -836,4 +880,5 @@ module.exports = {
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,
   startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder,
+  fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel,
 };

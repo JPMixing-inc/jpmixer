@@ -108,6 +108,10 @@ const fields = {
   klangIp:          { el: $('klangIp'),          key: 'klangIp',          parse: String },
   klangPort:        { el: $('klangPort'),        key: 'klangPort',        parse: Number },
   wingPort:         { el: $('wingPort'),         key: 'wingPort',         parse: Number },
+  apiPort:          { el: $('apiPort'),          key: 'apiPort',          parse: Number },
+  apiToken:         { el: $('apiToken'),          key: 'apiToken',        parse: String },
+  pcoAppId:         { el: $('pcoAppId'),          key: 'pcoAppId',        parse: String },
+  pcoSecret:        { el: $('pcoSecret'),         key: 'pcoSecret',       parse: String },
 };
 
 // Only one console's connection fields are relevant at a time — DiGiCo's
@@ -154,6 +158,238 @@ $('dliveTlsEnabled').addEventListener('change', updateConsoleTypeFields);
 $('wingPort').addEventListener('change', () => {
   const raw = Number($('wingPort').value) || 0;
   $('wingPort').value = (raw === 0) ? 0 : Math.max(1, Math.min(65535, raw));
+});
+
+// ── External Control API ────────────────────────────────────────────────
+
+function updateApiFieldsVisibility() {
+  const enabled = $('apiEnabled').checked;
+  $('apiFieldsRow').style.display = enabled ? '' : 'none';
+  $('apiTokenStatus').textContent = enabled && !$('apiToken').value
+    ? 'No token yet — click Regenerate to create one before enabling any external tool.'
+    : '';
+}
+$('apiEnabled').addEventListener('change', updateApiFieldsVisibility);
+
+$('apiPort').addEventListener('change', () => {
+  const raw = Number($('apiPort').value) || 9096;
+  $('apiPort').value = Math.max(1, Math.min(65535, raw));
+});
+
+$('apiCopyTokenBtn').addEventListener('click', async () => {
+  if (!$('apiToken').value) return;
+  try {
+    await navigator.clipboard.writeText($('apiToken').value);
+    $('apiTokenStatus').textContent = 'Copied.';
+    setTimeout(updateApiFieldsVisibility, 1500);
+  } catch (_) {}
+});
+
+$('apiRegenTokenBtn').addEventListener('click', async () => {
+  const { token } = await window.jpm.generateApiToken();
+  $('apiToken').value = token;
+  updateApiFieldsVisibility();
+});
+
+// ── Planning Center ────────────────────────────────────────────────────
+
+let pcoPositionMapping = {};   // { "PCO position name": auxNumber } — saved to config on Save & Apply
+let pcoGreenRoomHidden = [];   // PCO position names excluded from the Green Room display
+let pcoSavedServiceTypeId = ''; // restored into the dropdown once a live fetch populates it
+let pcoSavedTeamId = '';        // ditto, for the Team dropdown
+let pcoAllPositions = [];      // full result of the last Refresh Positions fetch (every team) — the Team
+                                // dropdown re-filters this in place, no new network call per team switch
+
+function updatePcoGreenRoomUrl() {
+  const url = localIP ? `http://${localIP}:${$('serverPort').value || 8080}/greenroom.html` : null;
+  $('pcoGreenRoomUrl').textContent = url || 'Waiting for local IP…';
+  $('pcoOpenGreenRoomBtn').disabled = !url;
+  return url;
+}
+
+$('pcoOpenGreenRoomBtn').addEventListener('click', () => {
+  const url = updatePcoGreenRoomUrl();
+  if (url) window.jpm.openGreenRoom(url);
+});
+
+function pcoAuxOptionsHtml(selectedAux) {
+  const auxCount = parseInt($('auxes').value) || 16;
+  let html = '<option value="">— unmapped —</option>';
+  for (let i = 1; i <= auxCount; i++) {
+    const name = (auxOverrides[String(i)] && auxOverrides[String(i)].label) || auxNames[String(i)] || `AUX ${i}`;
+    const sel = String(selectedAux) === String(i) ? ' selected' : '';
+    html += `<option value="${i}"${sel}>${i} — ${name}</option>`;
+  }
+  return html;
+}
+
+// Shown before any live "Refresh Positions" fetch this session — the saved
+// mapping as plain text, since we don't yet know the live PCO position list
+// to build editable rows against.
+function renderPcoPositionsFallback() {
+  const container = $('pcoPositionsList');
+  const entries = Object.entries(pcoPositionMapping);
+  if (entries.length === 0) {
+    container.textContent = 'Pick a Service Type above, then click Refresh Positions.';
+    return;
+  }
+  container.innerHTML = entries.map(([pos, aux]) => `<div>${pos} → Aux ${aux}</div>`).join('')
+    + '<div style="margin-top:6px">Click Refresh Positions to edit this mapping.</div>';
+}
+
+// Always uses whatever's currently typed in the App ID/Secret fields, not
+// whatever was last saved — otherwise Refresh/Sync would silently 401 using
+// stale (or blank) credentials until the user thought to click Save & Apply
+// first, which isn't an obvious step before testing a connection.
+function pcoCredsFromFields() {
+  return { appId: $('pcoAppId').value.trim(), secret: $('pcoSecret').value.trim() };
+}
+
+function renderPcoPositionsEditable(positions) {
+  const container = $('pcoPositionsList');
+  if (positions.length === 0) {
+    container.textContent = 'No Team Positions found for this Service Type.';
+    return;
+  }
+  container.innerHTML = '';
+  for (const pos of positions) {
+    const row = document.createElement('div');
+    row.className = 'pco-position-row';
+    const hidden = pcoGreenRoomHidden.some((p) => p.toLowerCase() === pos.name.toLowerCase());
+    row.innerHTML = `
+      <span class="pco-position-name">${pos.name}</span>
+      <select data-pco-position="${pos.name}">${pcoAuxOptionsHtml(pcoPositionMapping[pos.name])}</select>
+      <label class="pco-hide-toggle"><input type="checkbox" data-pco-hide="${pos.name}"${hidden ? ' checked' : ''} /> Hide from Green Room</label>
+    `;
+    container.appendChild(row);
+  }
+  container.querySelectorAll('select[data-pco-position]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const pos = sel.dataset.pcoPosition;
+      if (sel.value) pcoPositionMapping[pos] = Number(sel.value);
+      else delete pcoPositionMapping[pos];
+    });
+  });
+  container.querySelectorAll('input[data-pco-hide]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const pos = cb.dataset.pcoHide;
+      pcoGreenRoomHidden = pcoGreenRoomHidden.filter((p) => p.toLowerCase() !== pos.toLowerCase());
+      if (cb.checked) pcoGreenRoomHidden.push(pos);
+    });
+  });
+}
+
+function renderPcoPositionsForSelectedTeam() {
+  const teamId = $('pcoTeam').value;
+  const filtered = teamId ? pcoAllPositions.filter((p) => p.teamId === teamId) : pcoAllPositions;
+  renderPcoPositionsEditable(filtered);
+}
+
+$('pcoTeam').addEventListener('change', () => {
+  if (pcoAllPositions.length) renderPcoPositionsForSelectedTeam();
+});
+
+// Factored out of the button click handlers so the init flow can call the
+// exact same logic automatically on window open (see initPcoAutoSelect
+// below) — App opens, saved Service Type/Team are already selected, no
+// manual Refresh clicks needed.
+async function refreshPcoTeams() {
+  const serviceTypeId = $('pcoServiceType').value;
+  if (!serviceTypeId) { $('pcoTeamStatus').textContent = 'Pick a Service Type first.'; return; }
+  $('pcoTeamStatus').textContent = 'Loading…';
+  const res = await window.jpm.pcoListTeams(serviceTypeId, pcoCredsFromFields());
+  if (!res.ok) {
+    $('pcoTeamStatus').textContent = `Error: ${res.error}${res.status ? ' (' + res.status + ')' : ''}`;
+    return;
+  }
+  const sel = $('pcoTeam');
+  sel.innerHTML = '<option value="">— All Teams —</option>'
+    + res.teams.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+  if (pcoSavedTeamId && res.teams.some((t) => t.id === pcoSavedTeamId)) {
+    sel.value = pcoSavedTeamId;
+  }
+  $('pcoTeamStatus').textContent = `${res.teams.length} team(s) loaded.`;
+}
+
+async function refreshPcoServiceTypes() {
+  $('pcoServiceTypeStatus').textContent = 'Loading…';
+  const res = await window.jpm.pcoListServiceTypes(pcoCredsFromFields());
+  if (!res.ok) {
+    $('pcoServiceTypeStatus').textContent = `Error: ${res.error}${res.status ? ' (' + res.status + ')' : ''}`;
+    return;
+  }
+  const sel = $('pcoServiceType');
+  sel.innerHTML = res.types.length
+    ? res.types.map((t) => `<option value="${t.id}">${t.name}</option>`).join('')
+    : '<option value="">— none found —</option>';
+  if (pcoSavedServiceTypeId && res.types.some((t) => t.id === pcoSavedServiceTypeId)) {
+    sel.value = pcoSavedServiceTypeId;
+    await refreshPcoTeams(); // saved Service Type is already selected — chain into Teams too
+  }
+  $('pcoServiceTypeStatus').textContent = `${res.types.length} service type(s) loaded.`;
+}
+
+$('pcoRefreshTeamsBtn').addEventListener('click', refreshPcoTeams);
+$('pcoRefreshTypesBtn').addEventListener('click', refreshPcoServiceTypes);
+
+// On window open, if credentials + a saved Service Type already exist,
+// auto-populate and re-select everything without waiting for a manual
+// Refresh click — matches autoSyncPlanningCenter() in main.js, which
+// already applies the saved mapping automatically whenever the console
+// backend starts, independent of whether Settings is even open.
+async function initPcoAutoSelect() {
+  const creds = pcoCredsFromFields();
+  if (!creds.appId || !creds.secret || !pcoSavedServiceTypeId) return;
+  await refreshPcoServiceTypes();
+}
+
+$('pcoRefreshPositionsBtn').addEventListener('click', async () => {
+  const serviceTypeId = $('pcoServiceType').value;
+  if (!serviceTypeId) { $('pcoServiceTypeStatus').textContent = 'Pick a Service Type first.'; return; }
+  $('pcoPositionsList').textContent = 'Loading…';
+  const res = await window.jpm.pcoListPositions(serviceTypeId, pcoCredsFromFields());
+  if (!res.ok) {
+    $('pcoPositionsList').textContent = `Error: ${res.error}${res.status ? ' (' + res.status + ')' : ''}${res.body ? ' — ' + res.body.slice(0, 200) : ''}`;
+    return;
+  }
+  pcoAllPositions = res.positions;
+  renderPcoPositionsForSelectedTeam();
+});
+
+$('pcoSyncNowBtn').addEventListener('click', async () => {
+  const serviceTypeId = $('pcoServiceType').value;
+  if (!serviceTypeId) { $('pcoSyncStatus').textContent = 'Pick a Service Type first.'; return; }
+  $('pcoSyncStatus').textContent = 'Syncing…';
+  $('pcoSyncResults').innerHTML = '';
+  const res = await window.jpm.pcoSyncNow({
+    serviceTypeId,
+    mapping: pcoPositionMapping,
+    includeUnconfirmed: $('pcoIncludeUnconfirmed').checked,
+    creds: pcoCredsFromFields(),
+  });
+  if (!res.ok) {
+    $('pcoSyncStatus').textContent = `Error: ${res.error}${res.status ? ' (' + res.status + ')' : ''}`;
+    if (res.body) {
+      const pre = document.createElement('pre');
+      pre.className = 'sub mono';
+      pre.textContent = res.body.slice(0, 500);
+      $('pcoSyncResults').appendChild(pre);
+    }
+    return;
+  }
+  $('pcoSyncStatus').textContent = `Synced from "${res.plan.title || res.plan.id}".`;
+  const parts = [];
+  if (res.applied.length) {
+    parts.push(`<div class="sub"><strong>Updated:</strong> ${res.applied.map((a) => `Aux ${a.aux} → "${a.label}"`).join(', ')}</div>`);
+  }
+  if (res.unmapped.length) {
+    parts.push(`<div class="sub">⚠️ Scheduled but unmapped: ${res.unmapped.join(', ')}</div>`);
+  }
+  if (res.errors.length) {
+    parts.push(`<div class="sub">Errors: ${res.errors.join(', ')}</div>`);
+  }
+  if (!parts.length) parts.push('<div class="sub">No one relevant is scheduled yet, or nothing matched a mapping.</div>');
+  $('pcoSyncResults').innerHTML = parts.join('');
 });
 
 $('klangPort').addEventListener('change', () => {
@@ -212,6 +448,17 @@ document.querySelectorAll('.tab').forEach(btn => {
       });
     }
     if (btn.dataset.tab === 'mixes') renderMixesTab();
+    if (btn.dataset.tab === 'pco') {
+      // Position → Aux dropdown falls back to the console's own live aux
+      // names (see pcoAuxOptionsHtml) — refresh them here too, the same way
+      // the Auxes tab does, so picking an aux doesn't show stale/generic
+      // "AUX N" labels just because this tab was opened before ever
+      // visiting Auxes in this session.
+      window.jpm.getAuxNames().then((names) => {
+        auxNames = names || {};
+        if (pcoAllPositions.length) renderPcoPositionsForSelectedTeam();
+      });
+    }
   });
 });
 
@@ -685,6 +932,14 @@ function applyConfig(cfg) {
   $('dliveTlsEnabled').checked    = !!cfg.dliveTlsEnabled;
   $('dliveListenSendLevels').checked = cfg.dliveListenSendLevels !== false;
   $('dlivePollSendLevels').checked   = cfg.dlivePollSendLevels !== false;
+  $('apiEnabled').checked = !!cfg.apiEnabled;
+  updateApiFieldsVisibility();
+  $('pcoIncludeUnconfirmed').checked = !!cfg.pcoIncludeUnconfirmed;
+  pcoPositionMapping = (cfg.pcoPositionMapping && typeof cfg.pcoPositionMapping === 'object') ? { ...cfg.pcoPositionMapping } : {};
+  pcoGreenRoomHidden = Array.isArray(cfg.pcoGreenRoomHidden) ? [...cfg.pcoGreenRoomHidden] : [];
+  pcoSavedServiceTypeId = cfg.pcoServiceTypeId || '';
+  pcoSavedTeamId = cfg.pcoTeamId || '';
+  renderPcoPositionsFallback();
   updateConsoleTypeFields();
   isDemoMode = !!cfg.demoMode;
   $('demoMode').checked = isDemoMode;
@@ -727,9 +982,18 @@ function collectConfig() {
   if (out.wingPort !== 0 && (!Number.isInteger(out.wingPort) || out.wingPort < 1 || out.wingPort > 65535)) {
     out.wingPort = 0; // 0 = use the documented default port (2223)
   }
+  if (out.apiPort !== undefined && (!Number.isInteger(out.apiPort) || out.apiPort < 1 || out.apiPort > 65535)) {
+    out.apiPort = 9096; // documented default
+  }
   out.autoStart           = $('autoStart').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;
   out.autoBackupEnabled   = $('autoBackupEnabled').checked;
+  out.apiEnabled          = $('apiEnabled').checked;
+  out.pcoServiceTypeId    = $('pcoServiceType').value || '';
+  out.pcoTeamId           = $('pcoTeam').value || '';
+  out.pcoIncludeUnconfirmed = $('pcoIncludeUnconfirmed').checked;
+  out.pcoPositionMapping  = pcoPositionMapping;
+  out.pcoGreenRoomHidden  = pcoGreenRoomHidden;
   out.demoMode            = $('demoMode').checked;
   out.dliveTlsEnabled     = $('dliveTlsEnabled').checked;
   out.dliveListenSendLevels = $('dliveListenSendLevels').checked;
@@ -1214,7 +1478,9 @@ async function init() {
   consoleNames = names  || {};
   auxNames     = anames || {};
   $('localIp').textContent = ip || 'Not found';
+  updatePcoGreenRoomUrl();
   applyConfig(cfg);
+  initPcoAutoSelect(); // fire-and-forget — a PCO round trip shouldn't block the rest of window init
   await syncLiveCounts();
   renderChannels();
   renderAuxes();

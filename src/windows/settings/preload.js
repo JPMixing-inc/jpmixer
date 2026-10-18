@@ -32,5 +32,11 @@ contextBridge.exposeInMainWorld('jpm', {
   startOscLogRecording:      ()   => ipcRenderer.invoke('start-osc-log-recording'),
   stopOscLogRecording:       ()   => ipcRenderer.invoke('stop-osc-log-recording'),
   getOscLogRecordingStatus:  ()   => ipcRenderer.invoke('get-osc-log-recording-status'),
-  openOscLogsFolder:         ()   => ipcRenderer.invoke('open-osc-logs-folder')
+  openOscLogsFolder:         ()   => ipcRenderer.invoke('open-osc-logs-folder'),
+  generateApiToken:          ()   => ipcRenderer.invoke('generate-api-token'),
+  pcoListServiceTypes:       (creds) => ipcRenderer.invoke('pco-list-service-types', creds),
+  pcoListTeams:              (serviceTypeId, creds) => ipcRenderer.invoke('pco-list-teams', serviceTypeId, creds),
+  pcoListPositions:          (serviceTypeId, creds) => ipcRenderer.invoke('pco-list-positions', serviceTypeId, creds),
+  pcoSyncNow:                (args) => ipcRenderer.invoke('pco-sync-now', args),
+  openGreenRoom:             (url) => ipcRenderer.invoke('open-greenroom', url)
 });

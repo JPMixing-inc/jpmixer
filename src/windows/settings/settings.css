@@ -715,6 +715,41 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   color: var(--accent);
 }
 
+.mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+.pco-position-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.pco-position-row:last-child {
+  border-bottom: none;
+}
+
+.pco-position-name {
+  flex: 1;
+  font-size: 13px;
+}
+
+.pco-position-row select {
+  flex: 0 0 auto;
+  min-width: 160px;
+}
+
+.pco-hide-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--sub);
+  white-space: nowrap;
+}
+
 .osclog-terminal {
   height: 380px;
   overflow-y: auto;

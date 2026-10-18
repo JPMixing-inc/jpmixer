@@ -47,6 +47,8 @@ const WebSocket = require('ws');
 const path      = require('path');
 const scenes    = require('./scenes');
 const presets   = require('./presets');
+const config    = require('./config');
+const { mountGreenRoom } = require('./greenroom');
 const { KlangClient } = require('./klang-client');
 const { DliveClient } = require('./dlive-client');
 
@@ -205,18 +207,62 @@ function applyMuteSolo(aux) {
   broadcastToClients({ type: 'mute-solo-state', aux, mutes: muteState[aux] || {}, solos: soloState[aux] || {}, levels: {} });
 }
 
-function sendMute(aux, ch, on) {
+// Validation lives here (not just in the WS handler) so the External
+// Control API (api-server.js) gets the exact same guarantees a browser
+// mute button does.
+function sendMute(auxRaw, chRaw, on) {
+  const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
+  const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
+  if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
   if (!muteState[aux]) muteState[aux] = {};
   muteState[aux][ch] = !!on;
   klang && klang.setMute(aux, ch, on);
   applyMuteSolo(aux);
+  return true;
 }
 
-function sendSolo(aux, ch, on) {
+function sendSolo(auxRaw, chRaw, on) {
+  const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
+  const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
+  if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
   if (!soloState[aux]) soloState[aux] = {};
   soloState[aux][ch] = !!on;
   klang && klang.setSolo(aux, ch, on);
   applyMuteSolo(aux);
+  return true;
+}
+
+function fireSnapshot(action) {
+  if (currentSceneNumber == null || !dlive) return false; // no paired dLive connection — nothing to fire
+  const next = action === 'next' ? currentSceneNumber + 1 : currentSceneNumber - 1;
+  if (next < 1 || next > 500) return false;
+  dlive.recallScene(next);
+  return true;
+}
+
+// Live relabeling — see osc-server.js's setChannelLabel/setAuxLabel for the
+// full rationale. KLANG mode already supports pulling names from the paired
+// dLive console; this is a separate, JPMixer-side override on top of that.
+function setChannelLabel(n, label) {
+  const ch = parseInt(n, 10);
+  const chMax = serverCfg.channels || 48;
+  if (!Number.isInteger(ch) || ch < 1 || ch > chMax || typeof label !== 'string') return false;
+  if (!serverCfg.channelOverrides) serverCfg.channelOverrides = {};
+  serverCfg.channelOverrides[String(ch)] = { ...(serverCfg.channelOverrides[String(ch)] || {}), label };
+  config.updateOverride('channel', ch, { label });
+  broadcastToClients({ type: 'channel-relabeled', channel: ch, label });
+  return true;
+}
+
+function setAuxLabel(n, label) {
+  const aux = parseInt(n, 10);
+  const auxMax = serverCfg.auxes || 16;
+  if (!Number.isInteger(aux) || aux < 1 || aux > auxMax || typeof label !== 'string') return false;
+  if (!serverCfg.auxOverrides) serverCfg.auxOverrides = {};
+  serverCfg.auxOverrides[String(aux)] = { ...(serverCfg.auxOverrides[String(aux)] || {}), label };
+  config.updateOverride('aux', aux, { label });
+  broadcastToClients({ type: 'aux-relabeled', aux, label });
+  return true;
 }
 
 // ── Scene (Ear Scene) recall — keyed by dLive scene NUMBER, same as the
@@ -278,6 +324,7 @@ function start(cfg) {
 
   const appExpress = express();
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
+  mountGreenRoom(appExpress);
 
   httpServer = http.createServer(appExpress);
   httpServer.on('error', (err) => {
@@ -420,28 +467,9 @@ function start(cfg) {
         return;
       }
 
-      if (msg.type === 'set-mute') {
-        const aux = parseInt(msg.aux, 10), ch = parseInt(msg.ch, 10);
-        const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
-        if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return;
-        sendMute(aux, ch, !!msg.muted);
-        return;
-      }
-      if (msg.type === 'set-solo') {
-        const aux = parseInt(msg.aux, 10), ch = parseInt(msg.ch, 10);
-        const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
-        if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return;
-        sendSolo(aux, ch, !!msg.soloed);
-        return;
-      }
-
-      if (msg.type === 'fire-snapshot') {
-        if (currentSceneNumber == null || !dlive) return; // no paired dLive connection — nothing to fire
-        const next = msg.action === 'next' ? currentSceneNumber + 1 : currentSceneNumber - 1;
-        if (next < 1 || next > 500) return;
-        dlive.recallScene(next);
-        return;
-      }
+      if (msg.type === 'set-mute') { sendMute(msg.aux, msg.ch, !!msg.muted); return; }
+      if (msg.type === 'set-solo') { sendSolo(msg.aux, msg.ch, !!msg.soloed); return; }
+      if (msg.type === 'fire-snapshot') { fireSnapshot(msg.action); return; }
 
       // Raw OSC-address-shaped messages from mixer.js (send_level / send_pan)
       const oscMsg = msg;
@@ -578,4 +606,5 @@ module.exports = {
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,
   startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder,
+  fireSnapshot, setMute: sendMute, setSolo: sendSolo, setChannelLabel, setAuxLabel,
 };

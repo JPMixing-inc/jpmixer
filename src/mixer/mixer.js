@@ -689,6 +689,27 @@ function onMessage(e) {
     return;
   }
 
+  // Live relabel — from the External Control API (e.g. a Planning Center
+  // connector naming aux mixes after who's playing them). Updates the same
+  // in-memory arrays applyConfig() would, then rebuilds exactly like a
+  // normal config load, so nothing else needs to know this update exists.
+  if (json.type === 'channel-relabeled') {
+    const ch = channelConfig.find(c => c.channel === json.channel);
+    if (ch) { ch.label = json.label; buildChannels(channelConfig); }
+    return;
+  }
+  if (json.type === 'aux-relabeled') {
+    const opt = auxConfig.find(a => a.channel === json.aux);
+    if (opt) {
+      opt.label = json.label;
+      buildAux(auxConfig);
+      if (selectedAux === json.aux) {
+        document.getElementById('auxBarName').textContent = json.label || `AUX ${json.aux}`;
+      }
+    }
+    return;
+  }
+
   if (json.type === 'scene-recalled') {
     if (selectedAux !== null && json.levels && json.levels[String(selectedAux)]) {
       const auxLevels = json.levels[String(selectedAux)];

@@ -42,6 +42,8 @@ const WebSocket = require('ws');
 const path      = require('path');
 const scenes    = require('./scenes');
 const presets   = require('./presets');
+const config    = require('./config');
+const { mountGreenRoom } = require('./greenroom');
 const { WingClient } = require('./wing-client');
 
 let httpServer = null;
@@ -198,18 +200,55 @@ function applyMuteSolo(aux) {
   broadcastToClients({ type: 'mute-solo-state', aux, mutes: muteState[aux] || {}, solos: soloState[aux] || {}, levels: {} });
 }
 
-function sendMute(aux, ch, on) {
+// Validation lives here (not just in the WS handler) so the External
+// Control API (api-server.js) gets the exact same guarantees a browser
+// mute button does.
+function sendMute(auxRaw, chRaw, on) {
+  const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
+  const chMax = serverCfg.channels || 40, auxMax = serverCfg.auxes || 16;
+  if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
   if (!muteState[aux]) muteState[aux] = {};
   muteState[aux][ch] = !!on;
   applySilencing(aux);
   applyMuteSolo(aux);
+  return true;
 }
 
-function sendSolo(aux, ch, on) {
+function sendSolo(auxRaw, chRaw, on) {
+  const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
+  const chMax = serverCfg.channels || 40, auxMax = serverCfg.auxes || 16;
+  if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
   if (!soloState[aux]) soloState[aux] = {};
   soloState[aux][ch] = !!on;
   applySilencing(aux);
   applyMuteSolo(aux);
+  return true;
+}
+
+function fireSnapshot() { return false; } // no scene signal for WING — see file header
+
+// Live relabeling — see osc-server.js's setChannelLabel/setAuxLabel for the
+// full rationale (Planning Center connector use case).
+function setChannelLabel(n, label) {
+  const ch = parseInt(n, 10);
+  const chMax = serverCfg.channels || 40;
+  if (!Number.isInteger(ch) || ch < 1 || ch > chMax || typeof label !== 'string') return false;
+  if (!serverCfg.channelOverrides) serverCfg.channelOverrides = {};
+  serverCfg.channelOverrides[String(ch)] = { ...(serverCfg.channelOverrides[String(ch)] || {}), label };
+  config.updateOverride('channel', ch, { label });
+  broadcastToClients({ type: 'channel-relabeled', channel: ch, label });
+  return true;
+}
+
+function setAuxLabel(n, label) {
+  const aux = parseInt(n, 10);
+  const auxMax = serverCfg.auxes || 16;
+  if (!Number.isInteger(aux) || aux < 1 || aux > auxMax || typeof label !== 'string') return false;
+  if (!serverCfg.auxOverrides) serverCfg.auxOverrides = {};
+  serverCfg.auxOverrides[String(aux)] = { ...(serverCfg.auxOverrides[String(aux)] || {}), label };
+  config.updateOverride('aux', aux, { label });
+  broadcastToClients({ type: 'aux-relabeled', aux, label });
+  return true;
 }
 
 // Re-derives every tracked channel's send.on state for this aux from the
@@ -268,6 +307,7 @@ function start(cfg) {
 
   const appExpress = express();
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
+  mountGreenRoom(appExpress);
 
   httpServer = http.createServer(appExpress);
   httpServer.on('error', (err) => {
@@ -420,21 +460,8 @@ function start(cfg) {
         return;
       }
 
-      if (msg.type === 'set-mute') {
-        const aux = parseInt(msg.aux, 10), ch = parseInt(msg.ch, 10);
-        const chMax = serverCfg.channels || 40, auxMax = serverCfg.auxes || 16;
-        if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return;
-        sendMute(aux, ch, !!msg.muted);
-        return;
-      }
-      if (msg.type === 'set-solo') {
-        const aux = parseInt(msg.aux, 10), ch = parseInt(msg.ch, 10);
-        const chMax = serverCfg.channels || 40, auxMax = serverCfg.auxes || 16;
-        if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return;
-        sendSolo(aux, ch, !!msg.soloed);
-        return;
-      }
-
+      if (msg.type === 'set-mute') { sendMute(msg.aux, msg.ch, !!msg.muted); return; }
+      if (msg.type === 'set-solo') { sendSolo(msg.aux, msg.ch, !!msg.soloed); return; }
       if (msg.type === 'fire-snapshot') return; // no scene signal for WING — see file header
 
       // Raw OSC-address-shaped messages from mixer.js (send_level / send_pan)
@@ -552,4 +579,5 @@ module.exports = {
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,
   startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder,
+  fireSnapshot, setMute: sendMute, setSolo: sendSolo, setChannelLabel, setAuxLabel,
 };

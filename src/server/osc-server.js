@@ -9,6 +9,8 @@ const fs       = require('fs');
 const { app }  = require('electron');
 const scenes   = require('./scenes');
 const presets  = require('./presets');
+const config   = require('./config');
+const { mountGreenRoom } = require('./greenroom');
 
 let httpServer    = null;
 let wss           = null;
@@ -252,6 +254,69 @@ function clearMuteSolo() {
   Object.keys(muteState).forEach(k => delete muteState[k]);
   Object.keys(soloState).forEach(k => delete soloState[k]);
   Object.keys(premuteState).forEach(k => delete premuteState[k]);
+}
+
+// Shared entry points for both the browser WS handler above and the
+// External Control API (api-server.js) — same validation/dispatch either
+// way, so a Companion/Stream Deck button behaves identically to a browser
+// mute button.
+function fireSnapshot(action) {
+  const addrMap = {
+    prev: '/Snapshots/Fire_Prev_Snapshot',
+    next: '/Snapshots/Fire_Next_Snapshot',
+  };
+  const addr = addrMap[action];
+  if (addr) sendToDesk(addr, [1]);
+}
+
+function setMute(auxRaw, chRaw, muted) {
+  const aux = parseInt(auxRaw), ch = parseInt(chRaw);
+  const chMax  = cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
+  const auxMax = cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
+  if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
+  if (!muteState[aux]) muteState[aux] = {};
+  muteState[aux][ch] = !!muted;
+  applyMuteSolo(aux);
+  return true;
+}
+
+function setSolo(auxRaw, chRaw, soloed) {
+  const aux = parseInt(auxRaw), ch = parseInt(chRaw);
+  const chMax  = cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
+  const auxMax = cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
+  if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
+  if (!soloState[aux]) soloState[aux] = {};
+  soloState[aux][ch] = !!soloed;
+  applyMuteSolo(aux);
+  return true;
+}
+
+// Live relabeling — the External Control API's main use case (e.g. a
+// Planning Center connector naming aux mixes after who's playing them for a
+// service). Updates the in-memory config this session is using, persists
+// via config.js's targeted updateOverride() (not the full save-config path,
+// which would restart this backend), and broadcasts to already-connected
+// browser clients so labels update live with no reconnect.
+function setChannelLabel(n, label) {
+  const ch = parseInt(n, 10);
+  const chMax = serverCfg.channels || 48;
+  if (!Number.isInteger(ch) || ch < 1 || ch > chMax || typeof label !== 'string') return false;
+  if (!serverCfg.channelOverrides) serverCfg.channelOverrides = {};
+  serverCfg.channelOverrides[String(ch)] = { ...(serverCfg.channelOverrides[String(ch)] || {}), label };
+  config.updateOverride('channel', ch, { label });
+  broadcastToClients({ type: 'channel-relabeled', channel: ch, label });
+  return true;
+}
+
+function setAuxLabel(n, label) {
+  const aux = parseInt(n, 10);
+  const auxMax = serverCfg.auxes || 16;
+  if (!Number.isInteger(aux) || aux < 1 || aux > auxMax || typeof label !== 'string') return false;
+  if (!serverCfg.auxOverrides) serverCfg.auxOverrides = {};
+  serverCfg.auxOverrides[String(aux)] = { ...(serverCfg.auxOverrides[String(aux)] || {}), label };
+  config.updateOverride('aux', aux, { label });
+  broadcastToClients({ type: 'aux-relabeled', aux, label });
+  return true;
 }
 
 // ── Scene recall ───────────────────────────────────────────────────────────
@@ -1024,37 +1089,9 @@ function startWebSocketServer() {
           return;
         }
 
-        if (msg.type === 'fire-snapshot') {
-          const addrMap = {
-            prev: '/Snapshots/Fire_Prev_Snapshot',
-            next: '/Snapshots/Fire_Next_Snapshot',
-          };
-          const addr = addrMap[msg.action];
-          if (addr) sendToDesk(addr, [1]);
-          return;
-        }
-
-        if (msg.type === 'set-mute') {
-          const aux = parseInt(msg.aux), ch = parseInt(msg.ch);
-          const chMax  = cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
-          const auxMax = cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
-          if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return;
-          if (!muteState[aux]) muteState[aux] = {};
-          muteState[aux][ch] = !!msg.muted;
-          applyMuteSolo(aux);
-          return;
-        }
-
-        if (msg.type === 'set-solo') {
-          const aux = parseInt(msg.aux), ch = parseInt(msg.ch);
-          const chMax  = cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
-          const auxMax = cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
-          if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return;
-          if (!soloState[aux]) soloState[aux] = {};
-          soloState[aux][ch] = !!msg.soloed;
-          applyMuteSolo(aux);
-          return;
-        }
+        if (msg.type === 'fire-snapshot') { fireSnapshot(msg.action); return; }
+        if (msg.type === 'set-mute') { setMute(msg.aux, msg.ch, msg.muted); return; }
+        if (msg.type === 'set-solo') { setSolo(msg.aux, msg.ch, msg.soloed); return; }
 
         const oscMsg = msg;
         if (!oscMsg.address) return;
@@ -1237,6 +1274,7 @@ function start(cfg) {
   app.use(express.static(path.join(__dirname, '..', 'mixer')));
   app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '1-To-70-SVG-Files-MusicalInstrumentsBundle')));
   app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '71-To-120-SVG-Files-MusicalInstrumentsBundle')));
+  mountGreenRoom(app);
 
   // Diagnostic endpoints — localhost only to keep rig topology off the venue network
   const diagOnly = (req, res, next) => {
@@ -1524,4 +1562,4 @@ function setServerErrorCallback(cb) { onServerError = cb; }
 function getOscLog() { return oscLog; }
 function setOscTrafficCallback(cb) { onOscTraffic = cb; }
 
-module.exports = { start, stop, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder };
+module.exports = { start, stop, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };

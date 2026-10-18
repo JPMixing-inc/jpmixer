@@ -84,6 +84,14 @@ let config, server, presets, scenes, autoBackup;
 // startServer(). Each is a fully separate module from the others; picking
 // between them here is the only place any of them meet.
 let oscServer, dliveServer, klangServer, wingServer;
+// External Control API (Companion/Stream Deck/Planning Center) — a
+// separate, always-on server independent of the console backend above.
+// See api-server.js's file header for why it's kept entirely decoupled.
+let apiServer;
+// Planning Center Services client — pure HTTP wrapper, no server lifecycle
+// of its own (unlike apiServer above), just required alongside everything
+// else for consistency.
+let pcoClient;
 // Tracks which Ear Scenes keying scheme ('name' vs 'number') was last
 // active, so a Console Type change that crosses that boundary (not just a
 // Start/Stop of the same one) can clear stale entries — see startServer().
@@ -106,6 +114,10 @@ app.whenReady().then(() => {
     s.setServerErrorCallback(handleServerError);
     s.setOscTrafficCallback(broadcastOscTraffic);
   }
+
+  apiServer = require('./src/server/api-server');
+  apiServer.applyConfig(config.getAll());
+  pcoClient  = require('./src/server/pco-client');
 
   createTray();
 
@@ -228,6 +240,12 @@ function startServer() {
   try {
     server.start(config.getAll());
     serverRunning = true;
+    apiServer.setActiveBackend(server);
+    // Fire-and-forget — a Planning Center round trip shouldn't block the
+    // tray menu/status broadcast below. Covers both auto-launch (autoStart)
+    // and a manual Start Server click uniformly, so a saved setup stays in
+    // sync without anyone needing to open Settings.
+    autoSyncPlanningCenter().catch((err) => console.error('[JPMixer/PCO] auto-sync error:', err));
   } catch (err) {
     console.error('Server start failed:', err);
     serverRunning = false;
@@ -239,6 +257,7 @@ function startServer() {
 function stopServer() {
   server.stop();
   serverRunning = false;
+  apiServer.setActiveBackend(null);
   rebuildTrayMenu();
   broadcastStatus();
 }
@@ -504,12 +523,144 @@ ipcMain.handle('save-config', (_, incoming) => {
     stopServer();
     startServer();
   }
+  // Reconciled separately from the console-backend restart above — the
+  // Control API's own enable/port state should never force a console
+  // reconnect, and vice versa. See api-server.js's file header.
+  apiServer.applyConfig(config.getAll());
   rebuildTrayMenu();
   return { ok: true };
 });
 
 ipcMain.handle('start-server', () => startServer());
 ipcMain.handle('stop-server', () => stopServer());
+
+// Generates and persists a new Control API token — the crypto.randomBytes
+// call lives here (not in the Settings renderer) since Node's crypto isn't
+// exposed to a contextIsolated renderer, and a token shouldn't be
+// generated client-side anyway.
+ipcMain.handle('generate-api-token', () => {
+  const token = require('crypto').randomBytes(24).toString('hex');
+  config.save({ ...config.getAll(), apiToken: token });
+  apiServer.applyConfig(config.getAll());
+  return { token };
+});
+
+// ── Planning Center Services ────────────────────────────────────────────
+// See pco-client.js's file header for what's confirmed vs. assumed about
+// Planning Center's API. Every handler here returns { ok:false, error,
+// status, body } on failure rather than throwing across the IPC boundary,
+// so the Settings UI can show the raw status/body for diagnosis if a real
+// account's response shape doesn't match what pco-client.js expects.
+
+// Prefers credentials passed explicitly from the Settings renderer (the
+// live App ID/Secret field values, so Refresh/Sync work immediately without
+// requiring Save & Apply first) and trims whitespace — a pasted secret with
+// a trailing space/newline is a common, silent cause of a 401 that looks
+// identical to genuinely wrong credentials. Falls back to the persisted
+// config only if the renderer didn't pass anything (defensive, shouldn't
+// normally happen since settings.js always passes the live fields).
+function pcoCreds(explicit) {
+  const appId  = (explicit && explicit.appId)  || config.get('pcoAppId')  || '';
+  const secret = (explicit && explicit.secret) || config.get('pcoSecret') || '';
+  return { appId: appId.trim(), secret: secret.trim() };
+}
+
+function lookupAux(mapping, positionName) {
+  const key = Object.keys(mapping || {}).find(k => k.toLowerCase() === positionName.toLowerCase());
+  return key !== undefined ? mapping[key] : undefined;
+}
+
+ipcMain.handle('pco-list-service-types', async (_, creds) => {
+  try {
+    return { ok: true, types: await pcoClient.listServiceTypes(pcoCreds(creds)) };
+  } catch (err) {
+    return { ok: false, error: err.message, status: err.status || null, body: err.body || null };
+  }
+});
+
+ipcMain.handle('pco-list-teams', async (_, serviceTypeId, creds) => {
+  try {
+    return { ok: true, teams: await pcoClient.listTeams(serviceTypeId, pcoCreds(creds)) };
+  } catch (err) {
+    return { ok: false, error: err.message, status: err.status || null, body: err.body || null };
+  }
+});
+
+ipcMain.handle('pco-list-positions', async (_, serviceTypeId, creds) => {
+  try {
+    return { ok: true, positions: await pcoClient.listPositions(serviceTypeId, pcoCreds(creds)) };
+  } catch (err) {
+    return { ok: false, error: err.message, status: err.status || null, body: err.body || null };
+  }
+});
+
+// Shared by the manual "Sync Now" IPC handler and autoSyncPlanningCenter()
+// (fired automatically when the console backend starts, see startServer())
+// — one implementation either way applies to.
+async function runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, creds }) {
+  try {
+    const plan = await pcoClient.nextPlan(serviceTypeId, creds);
+    if (!plan) return { ok: false, error: 'No upcoming plan found for this Service Type.' };
+
+    const members = await pcoClient.planTeamMembers(serviceTypeId, plan.id, creds);
+    const relevant = members.filter(m => includeUnconfirmed || m.confirmed);
+
+    const applied = [], unmapped = [], errors = [];
+    for (const m of relevant) {
+      if (!m.positionName) continue;
+      const auxNum = lookupAux(mapping, m.positionName);
+      if (auxNum === undefined) {
+        if (!unmapped.includes(m.positionName)) unmapped.push(m.positionName);
+        continue;
+      }
+      if (!serverRunning || !server) { errors.push(`${m.positionName}: no console backend is running`); continue; }
+      const label = `${m.positionName} - ${m.personName}`;
+      if (server.setAuxLabel(auxNum, label)) applied.push({ aux: auxNum, label });
+      else errors.push(`Aux ${auxNum}: rejected (out of range?)`);
+    }
+
+    return { ok: true, plan: { id: plan.id, title: plan.title, date: plan.date }, applied, unmapped, errors };
+  } catch (err) {
+    return { ok: false, error: err.message, status: err.status || null, body: err.body || null };
+  }
+}
+
+// Fires automatically whenever the console backend (re)starts — see
+// startServer() — so a saved Planning Center setup is always in sync
+// without anyone needing to open Settings and click Sync Now. Silently
+// does nothing if Planning Center isn't configured yet, or nothing is
+// mapped yet (a fresh setup with an empty pcoPositionMapping would
+// otherwise "succeed" at applying zero labels, which isn't worth a log
+// line or a wasted API call).
+async function autoSyncPlanningCenter() {
+  const appId = config.get('pcoAppId');
+  const secret = config.get('pcoSecret');
+  const serviceTypeId = config.get('pcoServiceTypeId');
+  const mapping = config.get('pcoPositionMapping') || {};
+  if (!appId || !secret || !serviceTypeId || Object.keys(mapping).length === 0) return;
+
+  const result = await runPcoSync({
+    serviceTypeId,
+    mapping,
+    includeUnconfirmed: !!config.get('pcoIncludeUnconfirmed'),
+    creds: pcoCreds(),
+  });
+  if (result.ok) {
+    console.log(`[JPMixer/PCO] auto-sync: ${result.applied.length} aux label(s) updated from "${result.plan.title || result.plan.id}"`);
+  } else {
+    console.log(`[JPMixer/PCO] auto-sync skipped: ${result.error}`);
+  }
+}
+
+ipcMain.handle('pco-sync-now', async (_, { serviceTypeId, mapping, includeUnconfirmed, creds: explicitCreds }) => {
+  return runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, creds: pcoCreds(explicitCreds) });
+});
+
+// Opens the Green Room display in the system's default browser (not an
+// in-app BrowserWindow, unlike Open Monitor/Open Devices) — this is meant
+// for a separate iPad/TV on the network, so a preview in the system browser
+// makes more sense than an Electron window only the engineer sees.
+ipcMain.handle('open-greenroom', (_, url) => { shell.openExternal(url); return { ok: true }; });
 
 ipcMain.handle('get-presets',       () => presets.getAll());
 ipcMain.handle('delete-preset', (_, deviceId, name) => { presets.deletePreset(deviceId, name); return { ok: true }; });

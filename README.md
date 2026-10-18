@@ -58,6 +58,8 @@ JPMixer is a Mac and Windows desktop app that runs a local web server, letting m
 - Automatic + manual backups, one-click export/import
 - Live OSC traffic log in Settings, with optional recording to a file
 - iPad OSC relay (TouchOSC, Lemur, etc.)
+- [External Control API](#external-control-api) — token-gated HTTP endpoints for Bitfocus Companion, Elgato Stream Deck, and other external tools
+- [Planning Center Services integration](#planning-center-services) — auto-label aux mixes from who's actually scheduled
 - Auto-update check, tray app, optional port-80 forwarding
 
 ---
@@ -227,6 +229,63 @@ Unlike dLive/KLANG, WING confirms it's actually reachable with a real round-trip
 
 </details>
 
+<details>
+<summary><b>🔌 External Control API — click to expand</b></summary>
+
+### External Control API
+
+A token-gated HTTP API for external tools — Bitfocus Companion, Elgato Stream Deck, a Planning Center Services connector, or anything that can make an HTTP request. It runs as a separate, always-on server, completely independent of whichever console backend is active: enabling/disabling it, or regenerating its token, never restarts or interrupts the console connection, and vice versa.
+
+**Setup:** Settings → **Control API** tab → **Enable Control API** → **Regenerate** to create a token. Anyone with that token can rename channels, mute mixes, and fire snapshots — treat it like a password.
+
+**Auth:** send the token as `Authorization: Bearer <token>`, or as a `?token=` query parameter if your tool can't set custom headers (covers most Stream Deck HTTP actions and Companion's generic HTTP module).
+
+**Endpoints** (all under `http://<this Mac's IP>:<port>/api/v1/`, port `9096` by default):
+
+| Method & path | Body | What it does |
+|---|---|---|
+| `GET /status` | — | Connection state, console type, channel/aux counts |
+| `GET /channels` / `GET /auxes` | — | Current label overrides |
+| `POST /channels/:n/label` | `{"label": "..."}` | Rename channel *n* — live, no restart |
+| `POST /auxes/:n/label` | `{"label": "..."}` | Rename aux *n* — live, no restart |
+| `POST /auxes/:n/mute` | `{"channel": N, "muted": true}` | Mute/unmute one channel's send into aux *n* |
+| `POST /auxes/:n/solo` | `{"channel": N, "soloed": true}` | Solo/unsolo one channel within aux *n* |
+| `POST /scenes/fire` | `{"action": "next"}` or `"prev"` | Relative snapshot navigation — same as the mixer UI's own prev/next |
+
+A relabel takes effect immediately on every connected musician's/monitor engineer's screen with no reconnect needed — this is what makes the Planning Center use case work: name aux mixes after who's actually playing them for a given service, without touching the console connection at all.
+
+**Not implemented:** recalling a specific snapshot by name/number directly (only relative prev/next exists today, matching the mixer UI's own capability). If the console backend isn't currently running, endpoints other than `/status` return `503` rather than erroring.
+
+</details>
+
+<details>
+<summary><b>📅 Planning Center Services — click to expand</b></summary>
+
+### Planning Center Services
+
+Pulls who's scheduled on the current or next service and renames the matching aux mixes for you — "Acoustic Guitar - John Smith" instead of just "AUX 3". Runs entirely inside JPMixer (Settings → **Planning Center** tab) — no separate tool.
+
+**Auto-sync on launch:** once set up, JPMixer re-applies your saved position mapping automatically every time the console connection starts — on app launch (with Start server automatically on), and on every manual Start Server too. You never have to open Settings or click Sync Now for it to stay current; it's there if you want to force a re-check (e.g. right before a service, if PCO's schedule changed since launch) or see a summary of what got applied. Settings itself also auto-selects your saved Service Type and Team the moment you open the Planning Center tab, with no Refresh clicks needed.
+
+**Setup:**
+1. Generate a Personal Access Token at `api.planningcenteronline.com/personal_access_tokens` — the App ID and Secret it gives you go in the Application ID / Secret fields. Stored the same way JPMixer already stores your console password: locally, in plain text, in JPMixer's own config file. This is a credential to your Planning Center account specifically, so treat it accordingly.
+2. **Refresh Service Types**, then pick the one you run services under.
+3. **Refresh Teams**, then optionally pick one (e.g. "Worship") to narrow the Position mapping list below, and — once saved with **Save & Apply** — the Green Room display too. Leave it on "— All Teams —" to see everything. Either way, this never changes what Sync Now applies — every saved position mapping still fires regardless of which team is selected here.
+4. **Refresh Positions** — lists every Team Position under the selected Team (or all of them), each with a dropdown to map it to one of your JPMixer aux mixes ("— unmapped —" by default). Switching the Team dropdown afterward just re-filters this same list instantly — no new fetch needed. This mapping is saved with **Save & Apply**, the same as everything else in Settings.
+5. That's it — this mapping now auto-applies every time the console connects (see above). **Sync Now** is there for a manual re-check any time. Either way, it finds the plan closest to right now for your Service Type — currently running or next upcoming, not just "soonest future" — pulls who's scheduled, and relabels every aux with a mapped position live, with no console restart, the same mechanism the [External Control API](#external-control-api) uses.
+
+**What it does and doesn't do:** only confirmed team members are included by default ("Include unconfirmed team members" changes that); anyone scheduled to a position you haven't mapped is skipped and listed as a warning after syncing, rather than silently doing nothing; it only ever reads from Planning Center, never writes back to it.
+
+**Green Room display** — open `http://<this Mac's IP>:<server port>/greenroom.html` on an iPad, TV, or any browser on the network (e.g. a computer set up in front of the green room mics) for a full-screen, read-only grid of everyone scheduled for the next service — photo, name, and role. No token needed, unlike the Control API — it's informational, not a control surface. Auto-refreshes every 2 minutes, so it can just be left open. Uses the same Service Type and "Include unconfirmed" setting configured above; if a **Team** is selected and saved (e.g. "Worship"), only that team shows here — leave it on "— All Teams —" to keep showing everyone scheduled, the default. Each row in the Position → Aux Mapping table also has a **Hide from Green Room** checkbox for excluding individual positions regardless of team.
+
+**Multiple same-day services (e.g. Saturday 5pm/7pm, Sunday 9am/11am):** handled automatically. JPMixer always picks whichever plan is closest to right now — currently running or next up — rather than just the soonest future one, so it doesn't jump ahead to the 7pm plan the moment 5pm starts. The switch happens right at the midpoint between two services, not at either one's start time.
+
+**Multiple teams (Worship, Production, etc.):** fully supported. Refresh Positions and Sync Now both follow Planning Center's pagination, so every team's positions and everyone scheduled show up regardless of how many teams a Service Type has — earlier versions only read the first page and could silently cut off a team. The **Team** dropdown lets you narrow the Position → Aux Mapping table to just one team (e.g. Worship only, hiding Production/Host positions) instead of scrolling through everyone at once — applied instantly against the already-fetched list, no new fetch needed when switching teams. Once saved, it also narrows the Green Room display to that same team.
+
+**Note on API details:** Planning Center's endpoint/field names here are based on their stable, documented schema, but weren't independently re-verified against a live response line-by-line (their interactive API explorer is a JS app, not a static doc). If Refresh Service Types or Sync Now ever shows an error with a raw status code and response body instead of working normally, that's most likely a real mismatch worth reporting.
+
+</details>
+
 ---
 
-*JPMixer is not affiliated with DiGiCo, Allen & Heath, KLANG:technologies, or Behringer/MUSIC Tribe. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen & Heath Limited. KLANG is a trademark of KLANG:technologies GmbH. WING is a trademark of MUSIC Tribe Global Brands Ltd.*
+*JPMixer is not affiliated with DiGiCo, Allen & Heath, KLANG:technologies, Behringer/MUSIC Tribe, or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen & Heath Limited. KLANG is a trademark of KLANG:technologies GmbH. WING is a trademark of MUSIC Tribe Global Brands Ltd. Planning Center is a trademark of Ministry Centered Technologies.*
