@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>JPMixer</title>
+<style>
+  /* JPMixer's own message box (showPrompt in main.js). A native message box
+     with no parent window blocks the main process on macOS, which froze the
+     phone server for as long as it stayed open. */
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #15171c; color: #e8e9ec; font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; cursor: default; }
+  body { padding: 22px 24px 20px; }
+  .head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .head img { width: 30px; height: auto; filter: drop-shadow(0 0 5px rgba(255, 40, 88, .35)); }
+  #message { font-size: 14px; font-weight: 600; }
+  #detail { color: #b5b9c2; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow-y: auto; }
+  body.error #message { color: #ff6b85; }
+  .buttons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  button { font: inherit; padding: 6px 14px; border-radius: 7px; border: 1px solid #343842; background: #22252d; color: #e8e9ec; }
+  button:hover { background: #2b2f38; }
+  button.primary { background: #e8003c; border-color: #e8003c; color: #fff; font-weight: 600; }
+  button.primary:hover { background: #ff2858; }
+  button:focus-visible { outline: 2px solid #ff2858; outline-offset: 2px; }
+</style>
+</head>
+<body>
+  <div class="head"><img src="../../mixer/brand/jp-monogram.svg" alt=""><div id="message"></div></div>
+  <div id="detail"></div>
+  <div class="buttons" id="buttons"></div>
+  <script>
+    // Called by main.js with the message's options. Text only (textContent),
+    // since the detail can be release notes from GitHub.
+    function render(opts) {
+      document.title = opts.title || 'JPMixer';
+      document.body.classList.toggle('error', opts.type === 'error');
+      document.getElementById('message').textContent = opts.message || '';
+      document.getElementById('detail').textContent = opts.detail || '';
+      const box = document.getElementById('buttons');
+      box.textContent = '';
+      // Primary button last (rightmost), as macOS lays them out
+      const order = opts.buttons.map((label, index) => ({ label, index })).sort((a, b) => (a.index === opts.defaultId) - (b.index === opts.defaultId));
+      for (const { label, index } of order) {
+        const b = document.createElement('button');
+        b.textContent = label;
+        if (index === opts.defaultId) b.className = 'primary';
+        b.addEventListener('click', () => window.jpmPrompt.choose(index));
+        box.appendChild(b);
+      }
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') window.jpmPrompt.choose(opts.cancelId);
+        if (e.key === 'Enter' && !(document.activeElement instanceof HTMLButtonElement)) window.jpmPrompt.choose(opts.defaultId);
+      });
+      box.querySelector('.primary')?.focus();
+      requestAnimationFrame(() => window.jpmPrompt.resize(Math.ceil(document.documentElement.scrollHeight)));
+    }
+  </script>
+</body>
+</html>

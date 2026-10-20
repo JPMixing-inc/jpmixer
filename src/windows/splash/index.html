@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<title>JPMixer</title>
+<style>
+  /* Launch splash — the wordmark pops in on a transparent window, a glare
+     sweeps across the letters, then main.js adds .out to fade it away. The
+     glyphs are the same paths as assets/brand/jpmixer-wordmark.svg. It stays
+     JPMixer even when custom branding is set. */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; -webkit-user-select: none; cursor: default; }
+  body { display: grid; place-items: center; }
+  .stage { display: grid; justify-items: center; gap: 22px; animation: pop 900ms cubic-bezier(.2, .9, .25, 1.25) both; }
+  /* The fade-out is an animation too: the pop's held end frame would
+     override a plain transition, so the splash just vanished on close */
+  .stage.out { animation: away 900ms cubic-bezier(.33, 0, .2, 1) forwards; }
+  svg.logo { width: 460px; height: auto; overflow: visible; filter: drop-shadow(0 0 14px rgba(255, 40, 88, .45)) drop-shadow(0 0 2px rgba(255, 40, 88, .6)); }
+  /* One animation, two passes: a second animation on the same property
+     would hold its start frame over the first */
+  .shine { transform: translateX(-260px) skewX(-22deg); animation: sweep 2300ms linear 450ms both; }
+  .flare { transform-box: fill-box; transform-origin: 50% 50%; opacity: 0; animation: flare 900ms ease-out 850ms both; }
+  .loader { width: 140px; height: 3px; border-radius: 3px; background: rgba(232, 0, 60, .18); overflow: hidden; opacity: 0; animation: fade 400ms ease 650ms forwards; }
+  .loader::after { content: ''; display: block; width: 40%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, transparent, #ff2858, transparent); animation: load 1200ms ease-in-out infinite; }
+  @keyframes pop { 0% { opacity: 0; transform: scale(.78); filter: blur(8px); } 60% { opacity: 1; transform: scale(1.035); filter: blur(0); } 100% { opacity: 1; transform: scale(1); } }
+  @keyframes sweep {
+    0%    { transform: translateX(-260px) skewX(-22deg); animation-timing-function: cubic-bezier(.45, 0, .25, 1); }
+    45%   { transform: translateX(820px) skewX(-22deg); }
+    45.1% { transform: translateX(-260px) skewX(-22deg); }
+    60%   { transform: translateX(-260px) skewX(-22deg); animation-timing-function: cubic-bezier(.45, 0, .25, 1); }
+    100%  { transform: translateX(820px) skewX(-22deg); }
+  }
+  @keyframes flare { 0% { opacity: 0; transform: scale(.4); } 35% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
+  @keyframes fade { to { opacity: 1; } }
+  @keyframes away { from { opacity: 1; transform: scale(1); filter: blur(0); } to { opacity: 0; transform: scale(1.03); filter: blur(3px); } }
+  @keyframes fadeAway { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes load { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+  @media (prefers-reduced-motion: reduce) {
+    .stage { animation: fade 400ms ease both; }
+    .stage.out { animation: fadeAway 700ms ease forwards; }
+    .shine, .flare, .loader::after { animation: none; }
+    .shine, .flare { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <svg class="logo" viewBox="-2 -2 712 104" role="img" aria-label="JPMixer">
+      <defs>
+        <linearGradient id="red" x1="0" y1="0" x2="0.2" y2="1"><stop stop-color="#ff2858"/><stop offset="1" stop-color="#e8003c"/></linearGradient>
+        <linearGradient id="glare" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+          <stop offset=".45" stop-color="#fff" stop-opacity=".55"/>
+          <stop offset=".5" stop-color="#fff" stop-opacity=".95"/>
+          <stop offset=".55" stop-color="#fff" stop-opacity=".55"/>
+          <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+        </linearGradient>
+        <radialGradient id="flareGlow"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".25" stop-color="#ffd0da" stop-opacity=".6"/><stop offset="1" stop-color="#ff2858" stop-opacity="0"/></radialGradient>
+        <!-- The letters as a clip: the red fill and the glare are both drawn
+             through it. (A clip path can't point at a <g> via <use>, which
+             left the glare clipped to nothing.) -->
+        <clipPath id="letters">
+          <path clip-rule="evenodd" transform="translate(0 0)" d="M0 0H96V78L74 100H22L0 78V54H26V70L32 76H64L70 70V24H0Z"/>
+          <path clip-rule="evenodd" transform="translate(108 0)" d="M0 0H76L96 20V46L76 66H26V100H0Z M26 24V42H66L70 38V28L66 24Z"/>
+          <path clip-rule="evenodd" transform="translate(228 0)" d="M0 100V0H24L48 28L72 0H96V100H70V42L48 66L26 42V100Z"/>
+          <path clip-rule="evenodd" transform="translate(336 0)" d="M0 0H44V24H34V76H44V100H0V76H10V24H0Z"/>
+          <path clip-rule="evenodd" transform="translate(392 0)" d="M0 0H30L48 28L66 0H96L64 50L96 100H66L48 72L30 100H0L32 50Z"/>
+          <path clip-rule="evenodd" transform="translate(500 0)" d="M16 0H96V24H26V38H84V62H26V76H96V100H16L0 84V16Z"/>
+          <path clip-rule="evenodd" transform="translate(608 0)" d="M0 0H76L96 20V46L78 64L100 100H69L48 66H26V100H0Z M26 24V42H66L70 38V28L66 24Z"/>
+        </clipPath>
+      </defs>
+      <g clip-path="url(#letters)">
+        <rect x="-2" y="-2" width="712" height="104" fill="url(#red)"/>
+        <rect class="shine" x="0" y="-40" width="150" height="180" fill="url(#glare)"/>
+      </g>
+      <ellipse class="flare" cx="610" cy="8" rx="70" ry="70" fill="url(#flareGlow)"/>
+    </svg>
+    <div class="loader" aria-hidden="true"></div>
+  </div>
+</body>
+</html>

@@ -12,9 +12,12 @@ const config    = require('./config');
 
 // Saved mixes and Ear Scenes use the browser's 0..1 fader position on every
 // backend. Only values sent to the console (and cached OSC levels) use dB.
+// Out-of-range input is made safe here as well as rejected by callers: a
+// negative or NaN position used to reach the desk as NaN, and anything above
+// 1 as more than +10 dB.
 function sliderToDb(value) {
-  if (value === 0) return -150;
-  return 50 * Math.log10(value * 100) - 90;
+  if (!Number.isFinite(value) || value <= 0) return -150;
+  return 50 * Math.log10(Math.min(value, 1) * 100) - 90;
 }
 
 function send(ws, msg) {
@@ -41,9 +44,9 @@ function handleSharedMessage(ws, msg, ctx) {
         owner,
         aux: isNaN(presetAux) ? (ws._activeAux ?? null) : presetAux
       });
-      if (!saved) { send(ws, { type: 'preset-sync-error', name, seq: msg.seq }); return true; }
+      if (!saved) { send(ws, { type: 'preset-sync-error', deviceId: msg.deviceId, name, seq: msg.seq }); return true; }
       // Confirm to the phone so it can drop this from its unsynced queue
-      send(ws, { type: 'preset-synced', name, seq: msg.seq });
+      send(ws, { type: 'preset-synced', deviceId: msg.deviceId, name, seq: msg.seq });
       ws._lastActivityAt = Date.now();
       ctx.onActivity({ type: 'device-activity', deviceId: ws._deviceId || null, aux: ws._activeAux ?? null, kind: 'save-mix', name }, ws);
       return true;
@@ -52,15 +55,15 @@ function handleSharedMessage(ws, msg, ctx) {
       if (!msg.deviceId) return true;
       ctx.logEvent('preset-delete', `device:${String(msg.deviceId).slice(0, 8)} name:"${msg.name}"`);
       if (!presets.deletePreset(msg.deviceId, msg.name)) {
-        send(ws, { type: 'preset-sync-error', name: msg.name, seq: msg.seq });
+        send(ws, { type: 'preset-sync-error', deviceId: msg.deviceId, name: msg.name, seq: msg.seq });
         return true;
       }
-      send(ws, { type: 'preset-synced', name: msg.name, seq: msg.seq });
+      send(ws, { type: 'preset-synced', deviceId: msg.deviceId, name: msg.name, seq: msg.seq });
       return true;
     }
     // The phone's server backup, merged into its list on every connect
     case 'request-device-presets':
-      if (msg.deviceId) send(ws, { type: 'device-presets', presets: presets.getByDevice(msg.deviceId) });
+      if (msg.deviceId) send(ws, { type: 'device-presets', deviceId: msg.deviceId, presets: presets.getByDevice(msg.deviceId) });
       return true;
     // Find My Mixes — search every device's backed-up mixes by owner or mix
     // name, then fetch one picked result's mixes to copy onto this phone.
@@ -69,7 +72,11 @@ function handleSharedMessage(ws, msg, ctx) {
       send(ws, { type: 'found-presets', query: msg.query || '', groups: presets.findGroups(msg.query, msg.deviceId) });
       return true;
     case 'request-found-presets':
-      if (msg.fromDeviceId) send(ws, { type: 'found-device-presets', fromDeviceId: msg.fromDeviceId, presets: presets.getByDevice(msg.fromDeviceId) });
+      // deviceId here is the requester's own identity at request time (see
+      // mixer.js's confirmImportGroup) — echoed back so a reply that arrives
+      // after the requester switched identity can be told apart from one
+      // meant for whichever identity is active now.
+      if (msg.fromDeviceId) send(ws, { type: 'found-device-presets', fromDeviceId: msg.fromDeviceId, deviceId: msg.requesterDeviceId, presets: presets.getByDevice(msg.fromDeviceId) });
       return true;
     // Devices view asking for the activity feed (see broadcastActivity)
     case 'subscribe-activity':
@@ -105,7 +112,7 @@ function pushDevicePresets(connections, deviceId) {
   const target = presets.resolve(deviceId);
   for (const conn of connections) {
     if (conn._deviceId && presets.resolve(conn._deviceId) === target && conn.readyState === WebSocket.OPEN) {
-      send(conn, { type: 'device-presets', presets: presets.getByDevice(target) });
+      send(conn, { type: 'device-presets', deviceId: conn._deviceId, presets: presets.getByDevice(target) });
     }
   }
 }
@@ -130,4 +137,62 @@ function relabel(serverCfg, kind, n, label, maxDefault, broadcastToClients) {
   return true;
 }
 
-module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb };
+// Wraps a phone/browser message handler so a malformed message logs an
+// error instead of throwing out of the socket's event handler and taking
+// the server down mid-service (osc-server.js has its own try/catch).
+function guarded(logEvent, handler) {
+  return (...args) => {
+    try { handler(...args); }
+    catch (err) { logEvent('ws-error', (err && err.message) || String(err)); }
+  };
+}
+
+// The channel groups a mix shows by default on performers' phones (Settings
+// → Aux mixes), as group names to match the channel list's `group`. Stored
+// as group ids so a renamed group keeps its place; a removed one drops out.
+function auxGroupNames(ov, cfg) {
+  const ids = new Set((Array.isArray(ov && ov.groups) ? ov.groups : []).map(String));
+  return (cfg.channelGroups || []).filter(g => ids.has(String(g.id))).map(g => g.name);
+}
+
+// The phone/monitor channel list, the same on every console: Settings'
+// overrides applied, sorted by group then custom order, with each group's
+// name as a heading on its first channel. `consoleName(n)` gives the desk's
+// own name for channel n. This used to be copied into all four backends.
+function buildChannelList(chCount, cfg, consoleName) {
+  const groups = cfg.channelGroups || [];
+  const overrides = cfg.channelOverrides || {};
+  const groupOrder = {};
+  groups.forEach((g, i) => { groupOrder[String(g.id)] = i; });
+
+  const raw = [];
+  for (let i = 1; i <= chCount; i++) {
+    const ov = overrides[String(i)] || {};
+    raw.push({
+      channel: i,
+      enabled: ov.enabled !== false,
+      label:   ov.label || consoleName(i) || '',
+      icon:    ov.icon || '',
+      groupId: ov.groupId || null,
+      order:   ov.order !== undefined ? ov.order : i,
+    });
+  }
+  raw.sort((a, b) => {
+    const ga = a.groupId !== null ? (groupOrder[String(a.groupId)] ?? 9999) : 9999;
+    const gb = b.groupId !== null ? (groupOrder[String(b.groupId)] ?? 9999) : 9999;
+    if (ga !== gb) return ga - gb;
+    return a.order - b.order;
+  });
+
+  let lastGroupId;
+  return raw.map((ch, idx) => {
+    const isFirst = ch.groupId !== lastGroupId;
+    lastGroupId = ch.groupId;
+    const group = groups.find(g => String(g.id) === String(ch.groupId));
+    // `group` on every channel (not only the heading's first one) lets the
+    // phone page filter by group; '' for channels in no group
+    return { enabled: ch.enabled, label: ch.label, channel: ch.channel, order: idx, title: (isFirst && group) ? group.name : '', group: group ? group.name : '', icon: ch.icon };
+  });
+}
+
+module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb, guarded, buildChannelList, auxGroupNames };

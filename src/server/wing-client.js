@@ -92,9 +92,11 @@ class WingClient extends EventEmitter {
     });
   }
 
-  _send(msg) {
+  // Takes a builder so a bad value (e.g. Infinity) that makes the protocol
+  // encoder throw is caught here as a failed send, not thrown at the caller.
+  _send(build) {
     if (!this._udp || !this.ready) return false;
-    try { this._udp.send(msg, this.host, this.port); return true; }
+    try { this._udp.send(build(), this.host, this.port); return true; }
     catch (_) { return false; }
   }
 
@@ -105,15 +107,22 @@ class WingClient extends EventEmitter {
   }
 
   // ── Outbound API ─────────────────────────────────────────────────────────
-  setSendLevel(ch, bus, db)  { return this._send(W.sendLevelSet(ch, bus, db)); }
-  setSendPan(ch, bus, pan)   { return this._send(W.sendPanSet(ch, bus, pan)); }
-  setSendOn(ch, bus, on)     { return this._send(W.sendOnSet(ch, bus, on)); }
-  setChannelFader(ch, db)    { return this._send(W.channelFaderSet(ch, db)); }
-  setChannelMute(ch, on)     { return this._send(W.channelMuteSet(ch, on)); }
+  setSendLevel(ch, bus, db)  { return this._send(() => W.sendLevelSet(ch, bus, db)); }
+  setSendPan(ch, bus, pan)   { return this._send(() => W.sendPanSet(ch, bus, pan)); }
+  setSendOn(ch, bus, on)     { return this._send(() => W.sendOnSet(ch, bus, on)); }
+  setChannelFader(ch, db)    { return this._send(() => W.channelFaderSet(ch, db)); }
+  setChannelMute(ch, on)     { return this._send(() => W.channelMuteSet(ch, on)); }
 
   getChannelName(ch) { return this._get(`/ch/${ch}/name`); }
   getBusName(bus)     { return this._get(`/bus/${bus}/name`); }
   getSendLevel(ch, bus) { return this._get(`/ch/${ch}/send/${bus}/lvl`); }
+  // true/false, or null if the console didn't answer
+  async getSendOn(ch, bus) {
+    const v = await this._get(`/ch/${ch}/send/${bus}/on`);
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number') return v !== 0;
+    return /^(on|1|true)$/i.test(String(v).trim());
+  }
 }
 
 module.exports = { WingClient };

@@ -194,7 +194,7 @@ body {
 
 .ch-strip.muted   { background: rgba(255,59,48,0.08); }
 .ch-strip.soloed  { background: rgba(255,159,10,0.1); }
-.ch-strip.solo-off { opacity: 0.35; }
+.ch-strip.solo-off { opacity: 1; }
 
 .ch-num {
   font-size: 9px;

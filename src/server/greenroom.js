@@ -23,9 +23,16 @@
 // each member's position name against listPositions()'s own team
 // resolution — reusing already-proven parsing rather than guessing at a
 // second, deeper `include` path.
+//
+// A weekend plan (Saturday + Sunday, or any multi-day schedule) can have
+// "split team" scheduling, where different people serve different days —
+// Settings' Day selector (pcoDay) narrows to one. A person with no
+// day-specific scheduling info (most plans aren't split-team) always
+// passes the filter rather than being hidden — see pco-client.js's days
+// field.
 
 const config = require('./config');
-const pco = require('./pco-client');
+const pco = require('./pco-client').shared; // 20s shared cache — see pco-client.js
 
 function mountGreenRoom(app) {
   app.get('/greenroom-data', async (req, res) => {
@@ -57,11 +64,22 @@ function mountGreenRoom(app) {
         positionTeam = new Map(positions.map((p) => [p.name.toLowerCase(), p.teamId]));
       }
 
+      // "auto" resolves against this plan's own PlanTimes (whichever is
+      // closest to right now), not literally today's calendar date — see
+      // pco-client.js's resolveAutoDay() for why that distinction matters.
+      const rawDay = config.get('pcoDay');
+      const day = rawDay === 'auto' ? await pco.resolveAutoDay(serviceTypeId, plan.id, creds) : rawDay;
+
       const relevant = members
         .filter((m) => {
+          // A decline is a definite no — never shown, regardless of
+          // includeUnconfirmed (that setting means "also show people who
+          // haven't responded yet," not "also show people who said no").
+          if (m.declined) return false;
           if (!(includeUnconfirmed || m.confirmed)) return false;
           if (hidden.has((m.positionName || '').toLowerCase())) return false;
           if (positionTeam && positionTeam.get((m.positionName || '').toLowerCase()) !== teamId) return false;
+          if (day && m.days.length > 0 && !m.days.includes(day)) return false;
           return true;
         })
         .map((m) => ({ name: m.personName, position: m.positionName || 'Team', photoUrl: m.photoUrl }));

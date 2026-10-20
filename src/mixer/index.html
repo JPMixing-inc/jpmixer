@@ -1,19 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-jpm-view="performer">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#101216" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>JPMixer</title>
   <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/logo.png" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
   <link rel="stylesheet" href="mixer.css" />
+  <link rel="stylesheet" href="studio.css" />
+  <link rel="stylesheet" href="wordmark-fx.css" />
+  <link rel="stylesheet" href="splash.css" />
+  <link rel="stylesheet" href="original-theme.css" />
+  <link rel="stylesheet" href="/branding.css" /><!-- custom accent/logo, last so it wins -->
+  <script src="brand.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="alternate icon" href="favicon.png" type="image/png" />
 </head>
 <body class="disconnected auxPicker">
+  <script src="splash.js"></script>
 
   <header class="topbar">
-    <div class="brand"><img src="logo.png" class="brand-logo" alt="JPMixer" /></div>
+    <div class="brand studio-brand jp-brand" aria-label="JPMixer"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /><img class="jp-emblem" src="brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption">MONITOR CONTROL</span></div>
     <div class="topbar-center">
       <button class="aux-bar" id="auxBar" aria-label="Change mix">
         <span class="aux-bar-name" id="auxBarName">Select Mix</span>
@@ -25,14 +35,14 @@
         <input type="checkbox" id="panCheckbox" />
         <span class="pan-toggle-btn">PAN</span>
       </label>
-      <button class="menu-btn" id="menuBtn" aria-label="Menu">☰</button>
-      <span class="conn-dot" id="connDot"></span>
+      <button class="menu-btn" id="menuBtn" aria-label="Open mix options"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></svg></button>
+      <span class="connection-badge" title="Connection to JPMixer"><span class="conn-dot" id="connDot"></span><span id="connectionLabel" role="status">Connecting</span></span>
     </div>
   </header>
 
   <div class="snapshot-bar">
-    <span id="snapshotName">—</span>
-    <span class="scene-status" id="sceneStatus" style="display:none"></span>
+    <span class="snapshot-caption">SNAPSHOT <span id="snapshotName">—</span></span>
+    <button type="button" class="scene-status" id="sceneStatus" style="display:none"></button>
   </div>
 
   <!-- Menu drawer — slides up from bottom when body.menuOpen -->
@@ -48,15 +58,16 @@
         <span class="menu-item-arrow">›</span>
       </button>
       <button class="menu-item" id="menuMixesItem" style="display:none">
-        <span class="menu-item-icon">📁</span>
-        <span class="menu-item-label">Save Mix</span>
+        <span class="menu-item-icon menu-line-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h13l3 3v13H4zM8 4v6h8V4M8 20v-6h8v6"/></svg></span>
+        <span class="menu-item-label">My Mixes</span>
         <span class="menu-item-arrow">›</span>
       </button>
       <button class="menu-item" id="menuEarScenesParentItem" style="display:none">
-        <span class="menu-item-icon">🎬</span>
+        <span class="menu-item-icon menu-line-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4l3 5m4-5 3 5m-8 3 5 3-5 3z"/></svg></span>
         <span class="menu-item-label">Ear Scenes</span>
         <span class="menu-item-arrow">›</span>
       </button>
+      <button class="menu-item" id="menuPerformerIdentity" hidden><span class="menu-item-icon">◎</span><span class="menu-item-label">My performer</span><span class="menu-item-arrow">›</span></button>
       <div class="menu-divider"></div>
       <div class="menu-section-label">Fader Layout</div>
       <div class="menu-layout-row">
@@ -88,17 +99,42 @@
       </button>
     </div>
   </div>
-  <div class="scene-toast" id="sceneToast"></div>
+  <div class="scene-toast" id="sceneToast" role="status" aria-live="polite"></div>
+
+  <section class="mix-workspace" aria-label="Your monitor mix">
+    <!-- Which channels to show: group chips (several can be on at once,
+         remembered per mix on this device), and a search tucked behind the
+         icon at the end. See studio.js. -->
+    <nav class="channel-filter" id="channelFilter" aria-label="Choose which channels to show">
+      <div class="filter-chips" id="filterChips" role="group" aria-label="Show channels"></div>
+      <div class="filter-search" id="filterSearch" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="channelSearch" type="search" placeholder="Find a channel" aria-label="Search channels by name, number, or group" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" /><span class="filter-search-count" id="channelSearchCount" aria-hidden="true"></span></div>
+      <button type="button" class="filter-search-btn" id="channelSearchToggle" aria-label="Search channels" aria-expanded="false" aria-controls="filterSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><svg class="filter-close-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </nav>
+    <p class="sr-only" id="channelResultCount" role="status" aria-live="polite"></p>
+  </section>
 
   <div class="channels-wrap">
     <div class="channels-list" id="channelsList"></div>
+    <div class="channel-empty" id="channelEmpty" hidden><span aria-hidden="true">⌕</span><h2 id="channelEmptyTitle">No channels found</h2><p id="channelEmptyDescription">Try another name, number, or group.</p><button type="button" id="resetChannelView">Show all channels</button></div>
   </div>
 
   <!-- Aux picker overlay — visible when body.auxPicker -->
   <div class="aux-picker" id="auxPicker">
     <div class="aux-picker-inner">
-      <div class="aux-picker-title">Select Your Mix</div>
+      <div class="picker-brand studio-brand jp-brand" aria-label="JPMixer"><span class="jp-wordmark-fx" id="pickerWordmarkFx"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /></span><img class="jp-emblem" src="brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption">MONITOR CONTROL</span></div>
+      <h1 class="aux-picker-title">Find your mix.</h1>
+      <p class="aux-picker-description">Choose your monitor mix to get started.</p>
+      <details class="performer-identity" id="performerIdentity" hidden>
+        <summary id="performerIdentityTitle">Choose your performer</summary>
+        <p id="performerIdentityStatus" role="status" aria-live="polite"></p>
+        <label for="performerIdentitySelect">Your Planning Center name</label>
+        <select id="performerIdentitySelect"><option value="">Choose your name…</option></select>
+        <label class="performer-link-mixes"><input type="checkbox" id="performerLinkMixes" />Also copy this phone’s existing My Mixes into my person backup</label>
+        <div class="performer-identity-actions"><button type="button" id="usePerformerIdentity">Use my assigned mix</button><button type="button" id="clearPerformerIdentity">Use device saves</button></div>
+        <p>Saved mixes follow your Planning Center identity. On a new or reset phone, choose your name again. Selecting your name never loads saved fader levels.</p>
+      </details>
       <div class="aux-buttons" id="auxButtons"></div>
+      <p class="aux-picker-footer">Made for your mix. Built for the stage.</p>
     </div>
   </div>
 
@@ -240,6 +276,8 @@
     </div>
   </div>
 
+  <script src="studio.js"></script>
   <script src="mixer.js"></script>
+  <script src="performer-identity.js"></script>
 </body>
 </html>

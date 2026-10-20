@@ -28,8 +28,11 @@
 const BASE = 'https://api.planningcenteronline.com';
 const USER_AGENT = 'JPMixer (https://github.com/JPMixing-inc/jpmixer)';
 
+// Trimmed here so every caller gets it: a pasted secret with a trailing
+// space or newline worked for Settings (which trimmed) but made Green Room,
+// FOH Home and phone assignments (which didn't) fail with 401.
 function authHeader(appId, secret) {
-  return 'Basic ' + Buffer.from(`${appId}:${secret}`).toString('base64');
+  return 'Basic ' + Buffer.from(`${String(appId ?? '').trim()}:${String(secret ?? '').trim()}`).toString('base64');
 }
 
 const REQUEST_TIMEOUT_MS = 15000;
@@ -150,13 +153,27 @@ async function listPositions(serviceTypeId, creds) {
 // whichever one is actually happening right now to stay selected for its
 // whole duration, not jump to the next slot the moment its start time
 // passes. Picking the plan with the smallest absolute distance to now (past
-// or future) does that correctly: mid-service, that service's own plan is
-// still closest; between services, the next one becomes closest instead —
-// the transition happens right at the midpoint of the gap between them.
+// or future) does that correctly as a first pass: mid-service, that
+// service's own plan is still closest.
+//
+// But raw sort_date distance alone isn't enough for a multi-day weekend
+// plan: once Sunday's last service has actually ended, sort_date (the
+// plan's earliest service, Saturday) sits further in the past than the
+// midpoint toward next week's plan — so the just-finished weekend would
+// stay "closest" for another day or two after it's genuinely over. Once the
+// closest-by-distance plan is a past one AND a later plan exists, this
+// checks that past plan's own PlanTimes (confirmed to carry a real `ends_at`
+// — see listPlanTimes) and, if its last service has truly concluded,
+// returns the upcoming plan instead; while it's still running it stays
+// selected, even if the next plan is closer. One extra request, only when a
+// recent (under 36h) past plan and an upcoming plan both exist.
+const PAST_PLAN_WINDOW_MS = 36 * 60 * 60 * 1000;
 async function nextPlan(serviceTypeId, creds) {
   const now = Date.now();
   let url = `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans?order=-sort_date&per_page=25`;
   let best = null, bestDistance = Infinity;
+  let mostRecentPast = null, mostRecentPastTime = -Infinity;
+  let soonestFuture = null, soonestFutureTime = Infinity;
   // Future schedules can span many pages. Follow descending pages until we
   // reach the present; after the first past plan, subsequent pages can only
   // be further away. This avoids fetching years of historical services.
@@ -167,28 +184,180 @@ async function nextPlan(serviceTypeId, creds) {
       const date = d.attributes && (d.attributes.sort_date || d.attributes.dates);
       const time = date ? new Date(date).getTime() : NaN;
       if (!Number.isFinite(time)) continue;
+      const entry = { id: d.id, date, title: (d.attributes && d.attributes.title) || null };
       const distance = Math.abs(time - now);
-      if (distance < bestDistance) {
-        best = { id: d.id, date, title: (d.attributes && d.attributes.title) || null };
-        bestDistance = distance;
+      if (distance < bestDistance) { best = entry; bestDistance = distance; }
+      if (time <= now) {
+        reachedPast = true;
+        if (time > mostRecentPastTime) { mostRecentPastTime = time; mostRecentPast = entry; }
+      } else if (time < soonestFutureTime) {
+        soonestFutureTime = time; soonestFuture = entry;
       }
-      if (time <= now) reachedPast = true;
     }
-    if (reachedPast) return best;
+    if (reachedPast) {
+      if (!best || !mostRecentPast || !soonestFuture) return best;
+      // A past plan that started over 36h ago is over — longer than any
+      // weekend's span — so no request needed.
+      if (now - mostRecentPastTime > PAST_PLAN_WINDOW_MS) return soonestFuture;
+      // Otherwise check whether it's still running. Checked even when the
+      // next plan is closer: with 9am and 11am as separate plans, 11am is
+      // closer at 10:05, but 9am hasn't finished.
+      const times = await listPlanTimes(serviceTypeId, mostRecentPast.id, creds);
+      let lastServiceEnd = -Infinity;
+      for (const pt of times) {
+        const t = new Date(pt.endsAt || pt.startsAt).getTime();
+        if (Number.isFinite(t) && t > lastServiceEnd) lastServiceEnd = t;
+      }
+      // No PlanTimes at all means a plain single-service plan — nothing
+      // more precise than sort_date to check against, so trust `best`.
+      if (lastServiceEnd === -Infinity) return best;
+      return now <= lastServiceEnd ? mostRecentPast : soonestFuture;
+    }
     url = (json.links && json.links.next) || null;
   }
   if (url) throw new Error('Planning Center plan search exceeded 50 pages; no current plan was reached.');
   return best;
 }
 
-// Returns [{ personName, positionName, status, confirmed }] for everyone
-// scheduled on a plan. `confirmed` is true unless the status is explicitly
-// recognizable as declined/unconfirmed — see file header on why this is
-// deliberately lenient rather than an exact enum match.
-async function planTeamMembers(serviceTypeId, planId, creds) {
-  const { data, included } = await pcoFetchAll(
-    `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/team_members?include=person,team_position`,
+// A Plan covering a full weekend (Saturday + Sunday, or any multi-day
+// schedule) has multiple PlanTimes — confirmed as a real PCO resource via
+// their own API reference, with `starts_at`/`name`/`time_type` attributes.
+// Used to resolve which calendar day each scheduled person belongs to, for
+// day-of-week filtering (Settings' "Day" selector, Green Room + Sync Now).
+async function listPlanTimes(serviceTypeId, planId, creds) {
+  const { data } = await pcoFetchAll(
+    `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/plan_times`,
     creds
+  );
+  return data.map(d => ({
+    id: d.id,
+    name: (d.attributes && d.attributes.name) || null,
+    startsAt: (d.attributes && d.attributes.starts_at) || null,
+    endsAt: (d.attributes && d.attributes.ends_at) || null, // CONFIRMED real + populated against a live account
+    timeType: (d.attributes && d.attributes.time_type) || null, // 'service' | 'rehearsal' | 'other' (confirmed on a live account)
+  }));
+}
+
+// Settings' Day selector can be set to "auto" instead of a fixed weekday.
+// Resolves to whichever of the plan's own PlanTimes is closest to right
+// now — right vs. literally "today's calendar date" — because this app is
+// sometimes booted ahead of the actual show (e.g. prepping gear on a
+// weekday for a Sat/Sun service): literal "today" would resolve to a day
+// nobody is scheduled for and filter out everyone. Same "closest to now"
+// reasoning nextPlan() already uses to pick the plan itself, just applied
+// one level down to its individual service times. Returns '' (no
+// filtering) if the plan has no PlanTimes at all — a single-service plan
+// with no day split, where "auto" has nothing to resolve against.
+async function resolveAutoDay(serviceTypeId, planId, creds) {
+  const all = await listPlanTimes(serviceTypeId, planId, creds);
+  // Services only: a Thursday rehearsal on a weekend plan resolved "auto"
+  // to Thursday, hiding everyone scheduled for the weekend services. Falls
+  // back to every time if none are tagged as services.
+  const services = all.filter(pt => pt.timeType === 'service');
+  const times = services.length ? services : all;
+  const now = Date.now();
+  let best = null, bestDistance = Infinity;
+  for (const pt of times) {
+    if (!pt.startsAt) continue;
+    const distance = Math.abs(new Date(pt.startsAt).getTime() - now);
+    if (distance < bestDistance) { bestDistance = distance; best = pt; }
+  }
+  return best ? new Date(best.startsAt).toLocaleDateString('en-US', { weekday: 'long' }) : '';
+}
+
+// A Plan's order of service — CONFIRMED against a real account: the `Item`
+// resource (`item_type`: 'header'/'item'/'song'), with `title`,
+// `description` (free-text notes — who's singing what part, etc.),
+// `length` in seconds, and `key_name` populated for songs. Returned in
+// Planning Center's own order (ascending `sequence`) — the actual service
+// rundown an FOH engineer would want to see at a glance.
+async function listPlanItems(serviceTypeId, planId, creds) {
+  const { data } = await pcoFetchAll(
+    `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/items`,
+    creds
+  );
+  return data
+    .map(d => {
+      const attrs = d.attributes || {};
+      return {
+        id: d.id,
+        type: attrs.item_type || 'item', // 'header' | 'item' | 'song'
+        title: attrs.title || null,
+        description: attrs.description || null,
+        length: typeof attrs.length === 'number' ? attrs.length : null, // seconds
+        keyName: attrs.key_name || null,
+        sequence: typeof attrs.sequence === 'number' ? attrs.sequence : 0,
+      };
+    })
+    .sort((a, b) => a.sequence - b.sequence);
+}
+
+// Services LIVE — CONFIRMED the `Live` resource itself is real and reachable
+// with this app's existing credentials and URL convention (GET
+// /service_types/{st}/plans/{plan}/live — the series-scoped path PCO's own
+// docs show isn't actually required). NOT verified end-to-end: the account
+// this was built against had no in-progress live session, only the idle
+// state (`current_item_time` link is null when nobody's pressed "Go Live").
+// Unlike every other resource in this file, Live exposes its associations
+// as `links` (URLs to fetch) rather than `relationships.data` — confirmed
+// `include=` does nothing useful on it, `included` stays empty regardless.
+//
+// Returns the live item's id, or null if nothing is live. Deliberately
+// returns null on any failure too (bad shape, network hiccup) rather than
+// throwing — a Live-resource problem should never take down the rest of
+// the FOH Home page. The caller cross-references the id against its own
+// already-fetched item list (listPlanItems()) rather than this function
+// making a second round trip to re-fetch the same Item.
+async function getLiveItemId(serviceTypeId, planId, creds) {
+  try {
+    const json = await pcoFetch(
+      `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/live`,
+      creds
+    );
+    const currentItemTimeUrl = json.data && json.data.links && json.data.links.current_item_time;
+    if (!currentItemTimeUrl) return null;
+
+    const itemTimeJson = await pcoFetch(currentItemTimeUrl, creds);
+    const itemRel = itemTimeJson.data && itemTimeJson.data.relationships
+      && itemTimeJson.data.relationships.item && itemTimeJson.data.relationships.item.data;
+    return itemRel ? itemRel.id : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Returns [{ personName, positionName, status, confirmed, days }] for
+// everyone scheduled on a plan. `confirmed` is true unless the status is
+// explicitly recognizable as declined/unconfirmed — deliberately lenient
+// rather than an exact enum match (PCO's own reference confirms both a
+// short form, 'C'/'U'/'D', and a spelled-out form, 'Confirmed'/
+// 'Unconfirmed'/'Declined', are real values — this regex matches both).
+//
+// `days` is which weekday(s) (e.g. "Saturday") this person is scheduled
+// for, resolved via PlanPerson's `times`/`service_times` relationships to
+// PlanTime. CONFIRMED against a real split-team account: the relationship
+// ids themselves are real and correct, but `include=times,service_times` on
+// this endpoint is silently ignored by Planning Center — the `included`
+// array never actually contains the PlanTime resources, so they have to be
+// fetched separately via listPlanTimes() and resolved by id here instead.
+// Both relationship names were confirmed to carry identical PlanTime ids on
+// a real split-team plan, so both are merged into one set defensively
+// rather than picking one. A person with neither relationship populated
+// (not a "split team" scheduling setup — most plans aren't) gets an empty
+// `days` array, which callers should treat as "applies to every day"
+// rather than excluding them from a day filter.
+async function planTeamMembers(serviceTypeId, planId, creds) {
+  const [{ data, included }, planTimes] = await Promise.all([
+    pcoFetchAll(
+      `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/team_members?include=person,team_position`,
+      creds
+    ),
+    listPlanTimes(serviceTypeId, planId, creds),
+  ]);
+  const dayByTimeId = new Map(
+    planTimes
+      .filter(pt => pt.startsAt)
+      .map(pt => [pt.id, new Date(pt.startsAt).toLocaleDateString('en-US', { weekday: 'long' })])
   );
 
   return data.map((d) => {
@@ -226,14 +395,61 @@ async function planTeamMembers(serviceTypeId, planId, creds) {
     const declined = status != null && /^d(eclined)?$/i.test(status);
     const unconfirmed = status != null && /^u(nconfirmed)?$/i.test(status);
 
+    const timesData = (d.relationships && d.relationships.times && d.relationships.times.data) || [];
+    const serviceTimesData = (d.relationships && d.relationships.service_times && d.relationships.service_times.data) || [];
+    const timeIds = new Set([...timesData, ...serviceTimesData].map(ref => ref.id));
+    const days = [...new Set(
+      [...timeIds].map(id => dayByTimeId.get(id)).filter(Boolean)
+    )];
+
     return {
+      personId: personRel?.id != null ? String(personRel.id) : null,
       personName: personName || '(unnamed)',
       positionName: positionName || null,
       photoUrl,
       status,
       confirmed: !declined && !unconfirmed,
+      declined, // distinct from "unconfirmed" (pending, no response yet) — a decline is a definite
+                // no and must never be shown just because includeUnconfirmed is on. See callers.
+      days, // e.g. ["Saturday"] — empty means "no day-specific scheduling info, applies to every day"
     };
   });
 }
 
-module.exports = { listServiceTypes, listTeams, listPositions, nextPlan, planTeamMembers, USER_AGENT };
+// ── Shared short cache for the display pages and phones ────────────────────
+// Green Room screens, FOH Home and phone assignment all ask for the same plan.
+// When they load together (a server restart, Wi-Fi coming back) each one
+// fetched it separately, in parallel. These copies share one answer for 20s,
+// and a request already in flight is joined rather than repeated. The
+// Settings tab keeps calling the plain functions above, so its Refresh buttons
+// always fetch fresh. getLiveItemId isn't cached: FOH Home follows it live.
+const SHARED_CACHE_MS = 20000;
+const sharedCache = new Map(); // key -> { at, promise }
+function credsKey(creds) {
+  return require('crypto').createHash('sha256').update(authHeader(creds && creds.appId, creds && creds.secret)).digest('hex');
+}
+function sharedCall(name, fn) {
+  return (...args) => {
+    const key = name + ':' + JSON.stringify(args.map((a, i) => (i === args.length - 1 && a && typeof a === 'object') ? credsKey(a) : a));
+    const now = Date.now();
+    const hit = sharedCache.get(key);
+    if (hit && now - hit.at < SHARED_CACHE_MS) return hit.promise;
+    if (sharedCache.size > 100) for (const [k, v] of sharedCache) if (now - v.at >= SHARED_CACHE_MS) sharedCache.delete(k);
+    const promise = fn(...args);
+    sharedCache.set(key, { at: now, promise });
+    // A failure isn't kept — the next request tries again
+    promise.catch(() => { if (sharedCache.get(key)?.promise === promise) sharedCache.delete(key); });
+    return promise;
+  };
+}
+const shared = {
+  nextPlan: sharedCall('nextPlan', nextPlan),
+  planTeamMembers: sharedCall('planTeamMembers', planTeamMembers),
+  listPositions: sharedCall('listPositions', listPositions),
+  listPlanItems: sharedCall('listPlanItems', listPlanItems),
+  resolveAutoDay: sharedCall('resolveAutoDay', resolveAutoDay),
+  getLiveItemId,
+  clear: () => sharedCache.clear(), // tests
+};
+
+module.exports = { listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, resolveAutoDay, nextPlan, planTeamMembers, shared, USER_AGENT };

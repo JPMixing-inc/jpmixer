@@ -50,7 +50,14 @@ const presets   = require('./presets');
 const shared    = require('./shared-handlers');
 const config    = require('./config');
 const { mountGreenRoom } = require('./greenroom');
+const { mountBranding } = require('./branding');
+const { mountPerformerAssignments } = require('./performer-assignments');
+const { mountFoh } = require('./foh');
 const { KlangClient } = require('./klang-client');
+const { createPacedWriter } = require('./paced-writer');
+// Recalls and presets go through this — see paced-writer.js. Mute/solo are
+// urgent; a musician's own fader/pan move stays direct.
+const pacer = createPacedWriter();
 const { DliveClient } = require('./dlive-client');
 
 let httpServer = null;
@@ -131,8 +138,6 @@ function buildConfig() {
   const auxCount = serverCfg.auxes || 16;
   const chCount  = serverCfg.channels || 48;
   const cfgAuxOverrides = serverCfg.auxOverrides || {};
-  const cfgOverrides    = serverCfg.channelOverrides || {};
-  const cfgGroups       = serverCfg.channelGroups || [];
 
   const auxilaries = [];
   for (let i = 1; i <= auxCount; i++) {
@@ -146,47 +151,11 @@ function buildConfig() {
       icon:      '',
       eqEnabled: false, // aux EQ not implemented for KLANG in this pass
       linkOnly:  ov.linkOnly === true,
+      groups:    shared.auxGroupNames(ov, serverCfg),
     });
   }
 
-  const groupOrder = {};
-  cfgGroups.forEach((g, i) => { groupOrder[String(g.id)] = i; });
-
-  const raw = [];
-  for (let i = 1; i <= chCount; i++) {
-    const ov = cfgOverrides[String(i)] || {};
-    const liveName = nameCache.get(`input:${i}`);
-    raw.push({
-      channel: i,
-      enabled: ov.enabled !== false,
-      label:   ov.label || liveName || '',
-      icon:    ov.icon || '',
-      groupId: ov.groupId || null,
-      order:   ov.order !== undefined ? ov.order : i,
-    });
-  }
-  raw.sort((a, b) => {
-    const ga = a.groupId !== null ? (groupOrder[String(a.groupId)] ?? 9999) : 9999;
-    const gb = b.groupId !== null ? (groupOrder[String(b.groupId)] ?? 9999) : 9999;
-    if (ga !== gb) return ga - gb;
-    return a.order - b.order;
-  });
-
-  const channels = [];
-  let lastGroupId;
-  raw.forEach((ch) => {
-    const isFirst = ch.groupId !== lastGroupId;
-    lastGroupId = ch.groupId;
-    const group = cfgGroups.find(g => String(g.id) === String(ch.groupId));
-    channels.push({
-      enabled: ch.enabled,
-      label: ch.label,
-      channel: ch.channel,
-      order: channels.length,
-      title: (isFirst && group) ? group.name : '',
-      icon: ch.icon,
-    });
-  });
+  const channels = shared.buildChannelList(chCount, serverCfg, i => nameCache.get(`input:${i}`));
 
   return JSON.stringify({
     config: {
@@ -195,6 +164,7 @@ function buildConfig() {
       controlGroups: [], // Console Controller not implemented for KLANG
       snapshot: currentSceneNumber != null ? String(currentSceneNumber) : '—',
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
+      earScenes: serverCfg.performerEarScenes !== false, // Settings: Ear Scenes on performer phones
       scenes: scenes.getAll(),
       mutes: muteState,
       solos: soloState,
@@ -217,7 +187,7 @@ function sendMute(auxRaw, chRaw, on) {
   if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
   if (!muteState[aux]) muteState[aux] = {};
   muteState[aux][ch] = !!on;
-  klang && klang.setMute(aux, ch, on);
+  pacer.write(`mute:${ch}:${aux}`, () => klang && klang.setMute(aux, ch, on), true);
   applyMuteSolo(aux);
   return true;
 }
@@ -228,7 +198,7 @@ function sendSolo(auxRaw, chRaw, on) {
   if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
   if (!soloState[aux]) soloState[aux] = {};
   soloState[aux][ch] = !!on;
-  klang && klang.setSolo(aux, ch, on);
+  pacer.write(`solo:${ch}:${aux}`, () => klang && klang.setSolo(aux, ch, on), true);
   applyMuteSolo(aux);
   return true;
 }
@@ -258,12 +228,13 @@ function setAuxLabel(n, label) {
 
 function pushValuesToKlang(auxStr, values, pans) {
   const aux = parseInt(auxStr, 10);
-  if (!Number.isInteger(aux) || aux < 1) return { levels: {}, pans: {} };
+  if (!Number.isInteger(aux) || aux < 1 || aux > (serverCfg.auxes || 16)) return { levels: {}, pans: {} };
+  const chMax = serverCfg.channels || 48;
   const outLevels = {}, outPans = {};
 
   for (const [chStr, sliderVal] of Object.entries(values || {})) {
     const ch = parseInt(chStr, 10);
-    if (!Number.isInteger(ch) || ch < 1) continue;
+    if (!Number.isInteger(ch) || ch < 1 || ch > chMax) continue;
     // values/pans come straight from client-controlled recall-scene/
     // apply-preset payloads — reject non-finite input rather than forward
     // it (same NaN-propagation lesson as the dLive work).
@@ -271,14 +242,14 @@ function pushValuesToKlang(auxStr, values, pans) {
     const db = shared.sliderToDb(sliderVal);
     levelCache.set(levelKey(ch, aux), db);
     outLevels[chStr] = sliderVal;
-    klang && klang.setGain(aux, ch, db);
+    pacer.write(`gain:${ch}:${aux}`, () => klang && klang.setGain(aux, ch, db));
   }
   for (const [chStr, panVal] of Object.entries(pans || {})) {
     const ch = parseInt(chStr, 10);
-    if (!Number.isInteger(ch) || ch < 1 || !Number.isFinite(panVal)) continue;
+    if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(panVal) || panVal < 0 || panVal > 1) continue;
     panCache.set(levelKey(ch, aux), panVal);
     outPans[chStr] = panVal;
-    klang && klang.setPan(aux, ch, sliderToAzimuth(panVal));
+    pacer.write(`pan:${ch}:${aux}`, () => klang && klang.setPan(aux, ch, sliderToAzimuth(panVal)));
   }
   return { levels: outLevels, pans: outPans };
 }
@@ -305,6 +276,7 @@ function start(cfg) {
   connections = [];
   currentSceneNumber = null;
   levelCache.clear();
+  pacer.clear();
   panCache.clear();
   nameCache.clear();
   Object.keys(muteState).forEach(k => delete muteState[k]);
@@ -313,6 +285,9 @@ function start(cfg) {
   const appExpress = express();
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
   mountGreenRoom(appExpress);
+  mountBranding(appExpress);
+  mountPerformerAssignments(appExpress);
+  mountFoh(appExpress, { isConsoleConnected, getConnectionCount });
 
   httpServer = http.createServer(appExpress);
   httpServer.on('error', (err) => {
@@ -351,7 +326,7 @@ function start(cfg) {
       ws.send(JSON.stringify({ type: 'devices-update', devices: getConnectedDevicesInfo() }));
     } catch (_) {}
 
-    ws.on('message', (raw) => {
+    ws.on('message', shared.guarded(logEvent, (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch (_) { return; }
 
@@ -453,13 +428,19 @@ function start(cfg) {
       const [, chStr, auxStr, kind] = m;
       const ch = parseInt(chStr, 10), aux = parseInt(auxStr, 10);
       if (!Number.isInteger(ch) || ch < 1 || !Number.isInteger(aux) || aux < 1) return;
-      const val = Array.isArray(oscMsg.args) ? oscMsg.args[0] : undefined;
-      if (typeof val !== 'number') return;
+      const rawVal = Array.isArray(oscMsg.args) ? oscMsg.args[0] : undefined;
+      if (typeof rawVal !== 'number' || !Number.isFinite(rawVal)) return;
+      // In range, and clamped before it reaches the console: there was no
+      // upper bound on ch/aux, and Infinity/huge dB values were sent as-is.
+      if (ch > (serverCfg.channels || 48) || aux > (serverCfg.auxes || 16)) return;
+      const val = kind === 'pan' ? Math.max(0, Math.min(1, rawVal)) : Math.max(-150, Math.min(10, rawVal));
+      oscMsg.args = [val, ...oscMsg.args.slice(1)];
 
       const key = levelKey(ch, aux);
 
       if (kind === 'pan') {
         panCache.set(key, val);
+        pacer.cancel(`pan:${ch}:${aux}`); // supersedes a queued recall write
         klang && klang.setPan(aux, ch, sliderToAzimuth(val));
         broadcastToClients(oscMsg, ws);
         ws._lastActivityAt = Date.now();
@@ -469,6 +450,7 @@ function start(cfg) {
 
       const prevDb = levelCache.get(key);
       levelCache.set(key, val);
+      pacer.cancel(`gain:${ch}:${aux}`); // supersedes a queued recall write
       klang && klang.setGain(aux, ch, val);
       broadcastToClients(oscMsg, ws);
 
@@ -476,7 +458,7 @@ function start(cfg) {
       let direction = null;
       if (typeof prevDb === 'number' && val !== prevDb) direction = val > prevDb ? 'up' : 'down';
       shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'level', direction }, ws);
-    });
+    }));
 
     ws.on('close', () => {
       connections = connections.filter(c => c !== ws);
@@ -488,14 +470,16 @@ function start(cfg) {
 
   // ── KLANG UDP client — the actual mix control connection ────────────────
   if (!cfg.klangIp) {
-    logEvent('klang-error', 'KLANG IP Address is not set in the Setup tab — nothing to send mix control to.');
+    logEvent('klang-error', 'KLANG IP Address is not set on the Console tab — nothing to send mix control to.');
   }
   klang = new KlangClient({ host: cfg.klangIp, port: Number.isInteger(cfg.klangPort) && cfg.klangPort > 0 && cfg.klangPort <= 65535 ? cfg.klangPort : 9110 });
   klang.on('open', () => {
-    // See file header: this only confirms the local UDP socket bound, not
-    // that a KLANG processor is actually present/reachable at cfg.klangIp.
+    // The local UDP socket is bound. Whether a KLANG is actually there is
+    // checked by checkReachable below — the processor never replies to OSC.
     logEvent('klang-open', `sending to ${cfg.klangIp}:${klang.port}`);
-    if (onConsoleStatusChange) onConsoleStatusChange(true);
+    checkReachable(true);
+    if (reachTimer) clearInterval(reachTimer);
+    reachTimer = setInterval(() => checkReachable(false), REACH_MS);
   });
   klang.on('error', (err) => logEvent('klang-error', err.message || err.code || String(err)));
   klang.connect();
@@ -536,9 +520,68 @@ function start(cfg) {
   }
 }
 
+// ── Reachability ──
+// KLANG's OSC is one-way, so "connected" used to mean only that JPMixer's own
+// socket had opened: a wrong IP or a powered-off processor still showed
+// green. A ping every few seconds is the best check available. If the
+// processor blocks ping the pill stays Offline while mixes still work — the
+// event log says so.
+const { execFile } = require('child_process');
+const REACH_MS = 5000;
+let reachTimer = null, reachChecking = false, consoleConnected = false;
+
+function pingHost(host) {
+  return new Promise((resolve) => {
+    if (!host) return resolve(false);
+    const args = process.platform === 'win32' ? ['-n', '1', '-w', '1500', host]
+      : process.platform === 'darwin' ? ['-c', '1', '-W', '1500', host] : ['-c', '1', '-W', '2', host];
+    execFile('ping', args, { timeout: 4000 }, (err) => resolve(!err));
+  });
+}
+
+async function checkReachable(first) {
+  if (!klang || reachChecking) return;
+  reachChecking = true;
+  let alive;
+  try { alive = await pingHost(serverCfg.klangIp); } finally { reachChecking = false; }
+  if (!klang) return; // stopped meanwhile
+  if (!first && alive === consoleConnected) return;
+  const wasDown = !consoleConnected && !first;
+  consoleConnected = alive;
+  if (onConsoleStatusChange) onConsoleStatusChange(alive);
+  logEvent(alive ? 'klang-reachable' : 'klang-unreachable', alive ? serverCfg.klangIp : `no ping reply from ${serverCfg.klangIp} — check the IP and that the processor is powered on (a processor that blocks ping shows Offline while mixes still work)`);
+  // Back after a drop: a processor that restarted has no mutes or solos;
+  // phones still show theirs. Send them all again.
+  if (alive && wasDown) {
+    for (const [aux, chans] of Object.entries(muteState)) for (const [ch, on] of Object.entries(chans)) if (on) pacer.write(`mute:${ch}:${aux}`, () => klang && klang.setMute(Number(aux), Number(ch), true), true);
+    for (const [aux, chans] of Object.entries(soloState)) for (const [ch, on] of Object.entries(chans)) if (on) pacer.write(`solo:${ch}:${aux}`, () => klang && klang.setSolo(Number(aux), Number(ch), true), true);
+  }
+}
+
 function stop() {
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
-  if (klang) { klang.removeAllListeners(); klang.disconnect(); klang = null; }
+  if (reachTimer) { clearInterval(reachTimer); reachTimer = null; }
+  consoleConnected = false;
+  // Release every mute and solo JPMixer set. start() forgets this state, so
+  // leaving them on the console stranded channels silent while phones showed
+  // nothing muted, with no way to unmute them.
+  pacer.flush(); // queued writes are the state people asked for
+  let closed = Promise.resolve();
+  if (klang) {
+    for (const [aux, chans] of Object.entries(muteState)) {
+      for (const [ch, on] of Object.entries(chans)) if (on) klang.setMute(Number(aux), Number(ch), false);
+    }
+    for (const [aux, chans] of Object.entries(soloState)) {
+      for (const [ch, on] of Object.entries(chans)) if (on) klang.setSolo(Number(aux), Number(ch), false);
+    }
+    // Close on the next turn: UDP sends queued in this tick are dropped if
+    // the socket closes now (measured on DiGiCo — see osc-server.js's stop()).
+    const closing = klang;
+    klang = null;
+    closing.removeAllListeners();
+    closing.on('error', () => {});
+    closed = new Promise((resolve) => setImmediate(() => { closing.disconnect(); resolve(); }));
+  }
   if (dlive) { dlive.removeAllListeners(); dlive.disconnect(); dlive = null; }
   // Same fix as osc-server.js's stop() — wss.close() alone leaves already-
   // upgraded sockets open, detached from the HTTP server's own tracking.
@@ -546,9 +589,11 @@ function stop() {
   if (httpServer) { httpServer.close(); httpServer = null; }
   if (onConsoleStatusChange) onConsoleStatusChange(false);
   levelCache.clear();
+  pacer.clear();
   panCache.clear();
   connections = [];
   console.log('[JPMixer/KLANG] Server stopped');
+  return closed;
 }
 
 function getChannelNames() {
@@ -557,12 +602,26 @@ function getChannelNames() {
   return out;
 }
 function getAuxNames() { return {}; } // no live aux-name source for KLANG in this pass
+// Save & Apply for settings that don't need a reconnect (labels, colours,
+// order, visibility, scene recall…). It used to restart this backend on
+// every save, which dropped every phone mid-service. Everything here reads
+// serverCfg when it runs, so swapping it in and re-sending the layout is
+// enough; phones refill their faders from levelCache, nothing goes to the desk.
+function applyConfigLive(cfg) {
+  serverCfg = cfg;
+  logEvent('config-live', `pushed to ${connections.length} clients`);
+  if (!wss) return;
+  const msg = JSON.parse(buildConfig());
+  msg.config.liveUpdate = true;
+  broadcastToClients(msg);
+}
+
 function getChannelCount() { return null; }
 function getAuxCount() { return null; }
 
 // See file header: this reports only "did the local UDP socket open", never
 // confirmed reachability of an actual KLANG processor.
-function isConsoleConnected() { return !!(klang && klang.ready); }
+function isConsoleConnected() { return !!(klang && klang.ready) && consoleConnected; }
 function setConsoleStatusCallback(cb) { onConsoleStatusChange = cb; }
 function setConnectionCountCallback(cb) { onConnectionCountChange = cb; }
 function getConnectionCount() { return connections.length; }
@@ -581,8 +640,8 @@ function pushDevicePresets(deviceId) {
   shared.pushDevicePresets(connections, deviceId);
 }
 
-module.exports = { pushDevicePresets,
-  start, stop, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
+module.exports = { getConnectedDevicesInfo, pushDevicePresets,
+  start, stop, applyConfigLive, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,
   startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder,

@@ -86,6 +86,7 @@ let panInputs          = [];
 let allScenes          = {};   // { snapshotName: { auxCh: { ch: sliderVal } } }
 let localPresets       = {};   // { name: { levels: { ch: sliderVal }, pans: { ch: panVal } } } — stored in localStorage
 let sceneDirty         = false; // true once faders move after a scene exists for this snapshot/aux
+let earScenesShown     = true;  // Settings can hide Ear Scenes from performers (config.earScenes)
 let sceneLocked        = false; // true when a saved scene exists and volume faders are protected from touch
 let sceneDirtyMix      = null;  // name of the My Mix loaded over the Ear Scene, when that's why it's dirty
 let pendingPresetLoad  = null;  // My Mix this device just asked to load — only it gets the Ear Scene prompt
@@ -116,25 +117,40 @@ function resetHeartbeat() {
   heartbeatTimer = setTimeout(() => noConnection(), 35000);
 }
 
+// Detaches and closes a socket being replaced, so its late events can't act
+// on the one that replaced it.
+function retireSocket(sock) {
+  if (!sock) return;
+  sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null;
+  try { sock.close(); } catch (_) {}
+}
+
 function startWebsocket() {
-  ws = new WebSocket('ws://' + document.location.host);
-  ws.onopen    = onOpen;
+  // One live socket only. The Safari nudge below replaces a socket stuck
+  // CONNECTING; it used to leave that socket's handlers attached, so when it
+  // finally errored (often tens of seconds later on bad Wi-Fi) it closed the
+  // new, healthy socket and forced a reconnect mid-mix.
+  retireSocket(ws);
+  const sock = new WebSocket('ws://' + document.location.host);
+  ws = sock;
+  sock.onopen    = () => { if (sock === ws) onOpen(); };
   // Wrapped, not assigned directly — monitor.js/console.js/devices.js all
   // guard their WS message handler the same way; mixer.js's own onMessage()
   // didn't, so a malformed/unexpected frame (bad JSON, or a shape a future
   // backend sends that this handler doesn't expect) threw uncaught instead
   // of just dropping that one message.
-  ws.onmessage = (e) => {
+  sock.onmessage = (e) => {
+    if (sock !== ws) return;
     try { onMessage(e); }
     catch (err) { console.error('[JPMixer] onMessage error:', err); }
   };
-  ws.onclose   = noConnection;
-  ws.onerror   = noConnection;
+  sock.onclose   = () => { if (sock === ws) noConnection(); };
+  sock.onerror   = () => { if (sock === ws) noConnection(); };
 
   // Safari iOS sometimes needs a reconnect nudge
   clearTimeout(timeout);
   timeout = setTimeout(() => {
-    if (ws.readyState === WebSocket.CONNECTING) startWebsocket();
+    if (sock === ws && sock.readyState === WebSocket.CONNECTING) startWebsocket();
   }, 2000);
 }
 
@@ -143,9 +159,11 @@ function onOpen() {
   clearTimeout(disconnectShowTimer);
   document.body.classList.remove('disconnected');
   document.getElementById('connDot').classList.add('connected');
+  globalThis.mixerUI?.setConnected(true);
   resetHeartbeat();
   // Let the server (and any Devices view) know which device this is
   ws.send(JSON.stringify({ type: 'identify', deviceId }));
+  globalThis.performerIdentity?.refresh();
   // Re-send any mix saves/deletes the server never confirmed
   flushPresetSync();
   // Request all cached levels so faders fill in immediately after reconnect,
@@ -180,10 +198,11 @@ function noConnection() {
   log.push({ t: new Date().toISOString(), aux: selectedAux });
   if (log.length > 20) log.shift();
   sessionStorage.setItem('jpm_disconnects', JSON.stringify(log));
-  if (ws) ws.close();
+  retireSocket(ws); // detached first, so its own close event doesn't land here again
   clearTimeout(timeout);
   timeout = setTimeout(startWebsocket, 1000); // retry faster
   document.getElementById('connDot').classList.remove('connected');
+  globalThis.mixerUI?.setConnected(false, hasConnected);
   // Delay showing the overlay — most iOS background wakes reconnect within 2s
   clearTimeout(disconnectShowTimer);
   disconnectShowTimer = setTimeout(() => {
@@ -224,7 +243,12 @@ function showToast(msg) {
 // save-mix flow below builds its own dialog instead of using confirm().
 // Returns a Promise: confirm mode resolves true/false, input mode resolves the
 // trimmed string or null (cancelled).
+let cancelOpenActionDialog = null; // there's one dialog element, so one dialog at a time
+
 function showActionDialog({ title, showInput = false, inputValue = '', confirmLabel = 'OK', cancelLabel = 'Cancel' }) {
+  // A second dialog opening while one is showing used to attach both sets of
+  // listeners to the same buttons, so one tap answered both.
+  if (cancelOpenActionDialog) cancelOpenActionDialog();
   return new Promise((resolve) => {
     const input      = document.getElementById('actionDialogInput');
     const confirmBtn = document.getElementById('actionDialogConfirm');
@@ -239,6 +263,7 @@ function showActionDialog({ title, showInput = false, inputValue = '', confirmLa
     document.body.classList.add('actionDialogOpen');
     if (showInput) setTimeout(() => { input.focus(); input.select(); }, 80);
 
+    let closed = false;
     function commit() { cleanup(); resolve(showInput ? input.value.trim() : true); }
     function cancel()  { cleanup(); resolve(showInput ? null : false); }
     function onKey(e) {
@@ -246,19 +271,28 @@ function showActionDialog({ title, showInput = false, inputValue = '', confirmLa
       if (e.key === 'Escape') cancel();
     }
     function cleanup() {
+      closed = true;
+      if (cancelOpenActionDialog === cancel) cancelOpenActionDialog = null;
       document.body.classList.remove('actionDialogOpen');
       confirmBtn.removeEventListener('click', commit);
       cancelBtn.removeEventListener('click', cancel);
       document.removeEventListener('keydown', onKey);
     }
 
+    cancelOpenActionDialog = cancel;
     confirmBtn.addEventListener('click', commit);
     cancelBtn.addEventListener('click', cancel);
-    document.addEventListener('keydown', onKey);
+    // Next tick: a dialog opened by an Enter keypress (Save Mix As → "Update
+    // Ear Scene?") was answered by that same keypress as it bubbled up to
+    // the document, silently overwriting the Ear Scene.
+    setTimeout(() => { if (!closed) document.addEventListener('keydown', onKey); }, 0);
   });
 }
 
 function hasSavedScene() {
+  // With Ear Scenes hidden there's nothing to save, show or unlock, so a mix
+  // saved earlier must not lock the faders with no button left to unlock them
+  if (!earScenesShown) return false;
   return !!(currentSnapshot && selectedAux !== null &&
     allScenes[currentSnapshot] && allScenes[currentSnapshot][String(selectedAux)]);
 }
@@ -552,14 +586,24 @@ if (!deviceId) {
   localStorage.setItem('jpm_device_id', deviceId);
 }
 
+const physicalDeviceId = deviceId;
+let physicalOwner = localStorage.getItem('jpm_owner') || '';
+let performerProfile = null;
+try {
+  const stored = JSON.parse(localStorage.getItem('jpm_performer_identity') || 'null');
+  if (stored && typeof stored.personId === 'string' && stored.personId && typeof stored.name === 'string') performerProfile = stored;
+} catch (_) {}
+if (performerProfile) { deviceId = 'pco-person:' + performerProfile.personId; localStorage.setItem('jpm_owner', performerProfile.name); }
+const presetStorageKey = key => performerProfile ? key + ':person:' + performerProfile.personId : key;
+
 function loadLocalPresets() {
-  try { localPresets = JSON.parse(localStorage.getItem('jpm_presets') || '{}'); }
+  try { localPresets = JSON.parse(localStorage.getItem(presetStorageKey('jpm_presets')) || '{}'); }
   catch (_) { localPresets = {}; }
 }
 loadLocalPresets();
 
 function saveLocalPresets() {
-  localStorage.setItem('jpm_presets', JSON.stringify(localPresets));
+  localStorage.setItem(presetStorageKey('jpm_presets'), JSON.stringify(localPresets));
 }
 
 // Server backups the server hasn't confirmed yet — kept in localStorage so a
@@ -568,13 +612,13 @@ function saveLocalPresets() {
 // silently drifting from what's on the phone.
 // { [name]: { op: 'save' | 'delete', seq, owner?, aux? } }
 let pendingSync = {};
-try { pendingSync = JSON.parse(localStorage.getItem('jpm_presets_pending') || '{}'); } catch (_) {}
+try { pendingSync = JSON.parse(localStorage.getItem(presetStorageKey('jpm_presets_pending')) || '{}'); } catch (_) {}
 let pendingSeq = Date.now(); // seq only has to be unique per name, across reloads too
 let presetSyncRetryTimer = null;
 let presetSyncErrorShown = false;
 
 function savePendingSync() {
-  localStorage.setItem('jpm_presets_pending', JSON.stringify(pendingSync));
+  localStorage.setItem(presetStorageKey('jpm_presets_pending'), JSON.stringify(pendingSync));
 }
 
 function queuePresetSync(name, entry) {
@@ -654,7 +698,8 @@ function savePresetPrompt() {
   const confirmBtn = document.getElementById('nameMixConfirm');
   const cancelBtn  = document.getElementById('nameMixCancel');
   input.value = '';
-  ownerInput.value = localStorage.getItem('jpm_owner') || '';
+  ownerInput.value = performerProfile?.name || localStorage.getItem('jpm_owner') || '';
+  ownerInput.readOnly = !!performerProfile;
   document.body.classList.add('nameMixOpen');
   setTimeout(() => input.focus(), 80);
 
@@ -666,7 +711,7 @@ function savePresetPrompt() {
     cleanup();
     // Remembered for next time; stored with the server backup so Find My
     // Mixes can match it if this phone's storage is ever wiped
-    const owner = ownerInput.value.trim();
+    const owner = performerProfile?.name || ownerInput.value.trim();
     if (owner) localStorage.setItem('jpm_owner', owner);
     else localStorage.removeItem('jpm_owner');
     const levels = {}, pans = {};
@@ -795,7 +840,12 @@ async function confirmImportGroup(g) {
   const count = g.names.length === 1 ? '1 mix' : `${g.names.length} mixes`;
   const ok = await showActionDialog({ title: `Copy ${count} onto this phone?`, confirmLabel: 'Copy' });
   if (!ok || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'request-found-presets', fromDeviceId: g.deviceId }));
+  // Tags the request with whichever identity is active right now, so a late
+  // reply can be checked against the identity that's active when it actually
+  // arrives — a performer-identity switch (or a plain device-id change)
+  // between the request and the reply must not let the old identity's
+  // recovered mixes land in the new one's bucket.
+  ws.send(JSON.stringify({ type: 'request-found-presets', fromDeviceId: g.deviceId, requesterDeviceId: deviceId }));
 }
 
 function importFoundPresets(found) {
@@ -814,7 +864,7 @@ function importFoundPresets(found) {
     let target = name;
     for (let n = 2; has(target); n++) target = `${name} (${n})`;
     localPresets[target] = { levels, pans };
-    pendingSync[target] = { op: 'save', owner: p.owner || owner, aux: p.aux ?? null, seq: ++pendingSeq };
+    pendingSync[target] = { op: 'save', owner: performerProfile?.name || p.owner || owner, aux: p.aux ?? null, seq: ++pendingSeq };
     added++;
   }
   // Persist the mixes before their sync entries, then send — a reload in
@@ -842,6 +892,7 @@ function onMessage(e) {
   // Initial config packet from server
   if (json.config) {
     applyConfig(json.config);
+    globalThis.jpmSplash?.done();
     return;
   }
 
@@ -910,6 +961,7 @@ function onMessage(e) {
       ch.label = json.label;
       const cached = channelRowCache.get(json.channel);
       if (cached && cached.nameEl) cached.nameEl.textContent = json.label || '';
+      globalThis.mixerUI?.refresh();
     }
     return;
   }
@@ -920,6 +972,7 @@ function onMessage(e) {
       buildAux(auxConfig);
       if (selectedAux === json.aux) {
         document.getElementById('auxBarName').textContent = json.label || `AUX ${json.aux}`;
+        globalThis.mixerUI?.selectAux(opt);
       }
     }
     return;
@@ -989,6 +1042,7 @@ function onMessage(e) {
   // undone: phone-only mixes are pushed up just once, to back up anything
   // saved before backups were reliable.
   if (json.type === 'device-presets') {
+    if (json.deviceId && json.deviceId !== deviceId) return;
     const fromServer = json.presets || {};
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
     let added = 0;
@@ -998,14 +1052,14 @@ function onMessage(e) {
       localPresets[name] = { levels: p.levels || {}, pans: p.pans || {} };
       added++;
     }
-    if (!localStorage.getItem('jpm_presets_backfilled')) {
+    if (!localStorage.getItem(presetStorageKey('jpm_presets_backfilled'))) {
       const owner = localStorage.getItem('jpm_owner') || '';
       for (const name of Object.keys(localPresets)) {
         if (!has(fromServer, name) && !pendingSync[name]) {
           pendingSync[name] = { op: 'save', owner, aux: null, seq: ++pendingSeq };
         }
       }
-      localStorage.setItem('jpm_presets_backfilled', '1');
+      localStorage.setItem(presetStorageKey('jpm_presets_backfilled'), '1');
     }
     saveLocalPresets();
     savePendingSync();
@@ -1014,6 +1068,7 @@ function onMessage(e) {
     return;
   }
   if (json.type === 'preset-sync-error') {
+    if (json.deviceId && json.deviceId !== deviceId) return;
     const p = pendingSync[json.name];
     if (!p || p.seq !== json.seq) return;
     if (!presetSyncErrorShown) {
@@ -1029,6 +1084,7 @@ function onMessage(e) {
     return;
   }
   if (json.type === 'preset-synced') {
+    if (json.deviceId && json.deviceId !== deviceId) return;
     // Only clear it if this confirms the latest change to that name — an older
     // ack must not clear a newer save made since
     const p = pendingSync[json.name];
@@ -1052,6 +1108,10 @@ function onMessage(e) {
     return;
   }
   if (json.type === 'found-device-presets') {
+    // Discard a reply meant for an identity that was active when the copy
+    // was requested but isn't active anymore (switched performer identity,
+    // or the device identity otherwise changed, while this was in flight).
+    if (json.deviceId && json.deviceId !== deviceId) return;
     importFoundPresets(json.presets);
     return;
   }
@@ -1100,9 +1160,11 @@ function onMessage(e) {
       const slider = volumeInputs[ch - 1];
       if (slider) {
         const v = dbToSlider(parseFloat(args[0]));
-        slider.value = v;
-        setFaderVar(slider, v);
-        updateDb(slider);
+        showWhenReleased(slider, () => {
+          slider.value = v;
+          setFaderVar(slider, v);
+          updateDb(slider);
+        });
       }
     }
     return;
@@ -1117,25 +1179,21 @@ function onMessage(e) {
       const slider = panInputs[ch - 1];
       if (slider) {
         const v = parseFloat(args[0]);
-        slider.value = v;
-        setPanVar(slider, v);
-        const dbEl = slider.closest('label')?.querySelector('.fader-db');
-        if (dbEl) dbEl.textContent = formatPan(v);
+        showWhenReleased(slider, () => {
+          slider.value = v;
+          setPanVar(slider, v);
+          const dbEl = slider.closest('label')?.querySelector('.fader-db');
+          if (dbEl) dbEl.textContent = formatPan(v);
+        });
       }
     }
     return;
   }
 
-  // Channel name update
-  const chNameMatch = address.match(/^\/Input_Channels\/(\d+)\/Channel_Input\/name$/);
-  if (chNameMatch) {
-    const ch = parseInt(chNameMatch[1]);
-    for (const el of document.querySelectorAll(`[data-channel="${ch}"]`)) {
-      const label = el.previousElementSibling;
-      if (label) label.textContent = args[0] || '';
-    }
-    return;
-  }
+  // A desk channel rename arrives as `channel-relabeled` (the server applies
+  // any Settings label first). The raw name is ignored here: the old handler
+  // matched the row div by data-channel and overwrote the row above it.
+  if (/^\/Input_Channels\/\d+\/Channel_Input\/name$/.test(address)) return;
 
   // Aux name update
   const auxNameMatch = address.match(/^\/Aux_Outputs\/(\d+)\/Buss_Trim\/name$/);
@@ -1164,6 +1222,8 @@ function applyConfig(config) {
   channelConfig      = config.channels || [];
   allScenes          = config.scenes   || {};
   sceneRecallEnabled = !!config.sceneRecallEnabled;
+  earScenesShown     = config.earScenes !== false;
+  document.body.classList.toggle('no-ear-scenes', !earScenesShown);
   currentSnapshot    = config.snapshot || '—';
   allMutes           = config.mutes    || {};
   allSolos           = config.solos    || {};
@@ -1229,6 +1289,8 @@ function applyConfig(config) {
       btn.classList.toggle('aux-btn-last', btn.dataset.aux === saved);
     });
   }
+  globalThis.mixerUI?.setChannels(channelConfig);
+  document.dispatchEvent(new Event('jpm-config-ready'));
 }
 
 // ── Aux picker ────────────────────────────────────────────────────────────
@@ -1255,7 +1317,11 @@ function buildAux(options) {
     const btn = document.createElement('button');
     btn.className = 'aux-btn';
     btn.dataset.aux = opt.channel;
-    btn.style.background = opt.colour || '#444';
+    btn.style.setProperty('--aux-color', opt.colour || '#a4acb9');
+    const meta = document.createElement('span');
+    meta.className = 'aux-btn-meta';
+    meta.textContent = `AUX ${String(opt.channel).padStart(2, '0')} · ${opt.stereo ? 'STEREO' : 'MONO'}`;
+    btn.appendChild(meta);
 
     if (opt.icon) {
       const icon = document.createElement('img');
@@ -1275,6 +1341,7 @@ function selectAux(auxChannel, requestValues, skipReset) {
 
   const opt = auxConfig.find(a => a.channel === auxChannel) || {};
   selectedStereo = !!opt.stereo;
+  globalThis.mixerUI?.selectAux({ ...opt, channel: auxChannel });
 
   // Update topbar
   document.getElementById('auxBarName').textContent = opt.label || `AUX ${auxChannel}`;
@@ -1374,6 +1441,8 @@ function applyMuteSoloUI(mutes, solos) {
     els.row.classList.toggle('ch-soloed',   soloed);
     els.muteBtn.classList.toggle('active', muted);
     els.soloBtn.classList.toggle('active', soloed);
+    els.muteBtn.setAttribute('aria-pressed', String(muted));
+    els.soloBtn.setAttribute('aria-pressed', String(soloed));
   }
 }
 
@@ -1399,6 +1468,7 @@ function buildChannels(channels) {
 
     const row = document.createElement('div');
     row.className = 'channel-row';
+    row.dataset.channel = ch.channel;
 
     // Channel info
     const info = document.createElement('div');
@@ -1442,6 +1512,7 @@ function buildChannels(channels) {
     const muteBtn = document.createElement('button');
     muteBtn.className = 'ms-btn mute-btn';
     muteBtn.textContent = 'M';
+    muteBtn.setAttribute('aria-label', `Mute ${ch.label || 'channel ' + ch.channel}`);
     muteBtn.addEventListener('click', () => {
       if (selectedAux === null || !ws || ws.readyState !== WebSocket.OPEN) return;
       const muted = !muteBtn.classList.contains('active');
@@ -1451,6 +1522,7 @@ function buildChannels(channels) {
     const soloBtn = document.createElement('button');
     soloBtn.className = 'ms-btn solo-btn';
     soloBtn.textContent = 'S';
+    soloBtn.setAttribute('aria-label', `Solo ${ch.label || 'channel ' + ch.channel}`);
     soloBtn.addEventListener('click', () => {
       if (selectedAux === null || !ws || ws.readyState !== WebSocket.OPEN) return;
       const soloed = !soloBtn.classList.contains('active');
@@ -1606,6 +1678,30 @@ function buildChannels(channels) {
 // Vertical gesture → scrolls .channels-wrap. Horizontal → moves fader.
 // Also handles mouse drag and double-tap/dblclick reset.
 
+// While a finger is on a fader, and briefly after release, incoming values
+// for it wait (same as console.js): a late desk echo of an older position
+// used to overwrite the slider mid-drag, and touchend then re-sent that
+// stale value — a fast pull-down of a too-loud channel could stay loud.
+// The latest deferred value is shown once the hold ends.
+const ECHO_HOLD_MS = 400;
+function holdSlider(slider) { slider._held = true; clearTimeout(slider._resyncTimer); }
+function releaseSlider(slider) {
+  slider._held = false;
+  slider._holdUntil = Date.now() + ECHO_HOLD_MS;
+  clearTimeout(slider._resyncTimer);
+  slider._resyncTimer = setTimeout(() => {
+    if (isSliderHeld(slider) || !slider._resync) return;
+    const show = slider._resync;
+    slider._resync = null;
+    show();
+  }, ECHO_HOLD_MS + 20);
+}
+function isSliderHeld(slider) { return !!slider._held || Date.now() < (slider._holdUntil || 0); }
+function showWhenReleased(slider, show) {
+  if (isSliderHeld(slider)) slider._resync = show;
+  else { slider._resync = null; show(); }
+}
+
 function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
   const THUMB = 44;
   const wrap  = slider.parentNode; // .fader-wrap
@@ -1620,13 +1716,6 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
   slider.style.pointerEvents = 'none';
 
   function locked() { return isLockable && sceneLocked && hasSavedScene(); }
-
-  function valueFromPos(clientX, clientY) {
-    const rect = slider.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1,
-      (clientX - rect.left - THUMB / 2) / (rect.width - THUMB)));
-    return parseFloat(slider.min || 0) + frac * (parseFloat(slider.max || 1) - parseFloat(slider.min || 0));
-  }
 
   function thumbScreenPos() {
     const rect = slider.getBoundingClientRect();
@@ -1645,8 +1734,18 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
     slider.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
+  // Moves by how far the finger/mouse travelled since the grab, keeping the
+  // grab offset. Snapping to the absolute position jumped the level by up
+  // to ~4 dB on the first move, since a grab is accepted ±30 px from centre.
+  function valueFromDrag(startValue, startX, clientX) {
+    const rect = slider.getBoundingClientRect();
+    const min  = parseFloat(slider.min || 0), max = parseFloat(slider.max || 1);
+    const v = startValue + (clientX - startX) / (rect.width - THUMB) * (max - min);
+    return Math.max(min, Math.min(max, v));
+  }
+
   // ── Touch ──────────────────────────────────────────────────────────────
-  let tStartX, tStartY, tLastX, tLastY, tDecided, tScrolling, tLastTap = 0;
+  let tStartX, tStartY, tLastX, tLastY, tDecided, tScrolling, tLastTap = 0, tStartValue = 0;
 
   overlay.addEventListener('touchstart', e => {
     const t      = e.touches[0];
@@ -1661,6 +1760,7 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
     }
     tDecided   = false;
     tScrolling = false;
+    tStartValue = parseFloat(slider.value);
     e.preventDefault();
   }, { passive: false });
 
@@ -1672,6 +1772,7 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
     if (!tDecided && (dx > 4 || dy > 4)) {
       tDecided   = true;
       tScrolling = dy > dx; // horizontal = fader, vertical = scroll
+      if (!tScrolling) holdSlider(slider);
     }
 
     if (tScrolling) {
@@ -1679,8 +1780,8 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
       if (scrollEl) scrollEl.scrollTop += tLastY - t.clientY;
       tLastX = t.clientX;
       tLastY = t.clientY;
-    } else {
-      apply(valueFromPos(t.clientX, t.clientY));
+    } else if (tDecided) {
+      apply(valueFromDrag(tStartValue, tStartX, t.clientX));
     }
     e.preventDefault();
   }, { passive: false });
@@ -1688,20 +1789,32 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
   overlay.addEventListener('touchend', () => {
     if (!tScrolling) {
       slider.dispatchEvent(new Event('change', { bubbles: true }));
+      releaseSlider(slider);
       const now = Date.now();
       if (now - tLastTap < 300) onReset();
       tLastTap = now;
     }
   });
 
+  // A cancelled touch (e.g. a system gesture took over) is not a tap and
+  // must not leave the fader held.
+  overlay.addEventListener('touchcancel', () => {
+    if (!tScrolling) releaseSlider(slider);
+    tDecided = true;
+    tScrolling = true;
+  });
+
   // ── Mouse (desktop) ────────────────────────────────────────────────────
   overlay.addEventListener('mousedown', e => {
     if (locked() && nearThumb(e.clientX, e.clientY)) showLockedHint();
     if (locked() || !nearThumb(e.clientX, e.clientY)) return;
-    const onMove = ev => apply(valueFromPos(ev.clientX, ev.clientY));
+    const startX = e.clientX, startValue = parseFloat(slider.value);
+    holdSlider(slider);
+    const onMove = ev => apply(valueFromDrag(startValue, startX, ev.clientX));
     const onUp   = ev => {
-      apply(valueFromPos(ev.clientX, ev.clientY));
+      apply(valueFromDrag(startValue, startX, ev.clientX));
       slider.dispatchEvent(new Event('change', { bubbles: true }));
+      releaseSlider(slider);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onUp);
     };
@@ -2275,6 +2388,39 @@ document.querySelectorAll('.menu-layout-btn').forEach(btn => {
     applyLayout(btn.dataset.layout);
   });
 });
+
+// Identity changes only select a workspace and its saved-mix storage.
+// No apply-preset or console-write command is sent here.
+globalThis.mixerIdentityBridge = {
+  get profile() { return performerProfile; },
+  get ready() { return auxConfig.length > 0; },
+  get physicalDeviceId() { return physicalDeviceId; },
+  activate(profile) {
+    if (!profile && !performerProfile) return;
+    if (profile && !performerProfile) physicalOwner = localStorage.getItem('jpm_owner') || '';
+    const nextId = profile ? 'pco-person:' + profile.personId : physicalDeviceId;
+    const changed = nextId !== deviceId;
+    if (changed) { saveLocalPresets(); savePendingSync(); clearTimeout(presetSyncRetryTimer); presetSyncRetryTimer = null; }
+    performerProfile = profile;
+    if (profile) localStorage.setItem('jpm_performer_identity', JSON.stringify(profile));
+    else localStorage.removeItem('jpm_performer_identity');
+    localStorage.setItem('jpm_owner', profile ? profile.name : physicalOwner);
+    if (!changed) return;
+    deviceId = nextId; loadLocalPresets(); pendingSync = {};
+    try { pendingSync = JSON.parse(localStorage.getItem(presetStorageKey('jpm_presets_pending')) || '{}'); } catch (_) {}
+    renderPresetsList();
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'identify', deviceId }));
+      ws.send(JSON.stringify({ type: 'request-device-presets', deviceId }));
+      flushPresetSync();
+    }
+  },
+  selectAssigned(aux) {
+    if (!auxConfig.some(option => option.channel === aux && option.enabled && !option.linkOnly)) return false;
+    if (selectedAux !== aux) selectAux(aux, true);
+    document.body.classList.remove('auxPicker'); return true;
+  }
+};
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 

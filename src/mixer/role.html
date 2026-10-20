@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" data-jpm-view="foh">
+<!-- ProPresenter, Lighting and Switcher Home: served at /propresenter.html,
+     /lighting.html and /switcher.html (see src/server/foh.js). foh.js reads the
+     role from the address. Same as foh.html, without the console badges and
+     engineer shortcuts. -->
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>JPMixer</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
+  <link rel="stylesheet" href="foh.css" />
+  <link rel="stylesheet" href="splash.css" />
+  <link rel="stylesheet" href="original-theme.css" />
+  <link rel="stylesheet" href="/branding.css" /><!-- custom accent/logo, last so it wins -->
+  <script src="brand.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="alternate icon" href="favicon.png" type="image/png" />
+</head>
+<body>
+  <script src="splash.js"></script>
+  <header class="fh-header">
+    <div class="fh-brand jp-brand" aria-label="JPMixer"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /><img class="jp-emblem" src="brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption" data-role-page>HOME</span></div>
+    <div class="fh-header-actions">
+      <span class="fh-status" id="fhStatus" role="status">Loading…</span>
+      <a class="fh-switch" href="home.html">All Home pages</a>
+      <button type="button" id="fhRefresh">Refresh</button>
+    </div>
+  </header>
+  <main class="fh-main">
+    <section class="fh-welcome" aria-label="Welcome">
+      <div class="fh-photo-wrap">
+        <div class="fh-photo-fallback" id="fhPhotoFallback"><img class="jp-fallback-logo" src="brand/jp-monogram.svg" alt="JPMixer" width="64" height="32" /></div>
+      </div>
+      <div class="fh-welcome-text">
+        <p class="fh-eyebrow">WELCOME</p>
+        <h1 id="fhWelcomeName">Welcome</h1>
+        <p class="fh-plan" id="fhPlanLine"></p>
+        <p class="fh-live-badge" id="fhLiveBadge" hidden><span class="fh-live-dot" aria-hidden="true"></span>LIVE: <span id="fhLiveTitle"></span></p>
+      </div>
+    </section>
+    <p class="fh-notice" id="fhNotice" role="status" hidden></p>
+    <section class="fh-layout-toolbar" aria-label="Page layout">
+      <div><h2>Your workspace</h2><p id="fhLayoutStatus" role="status">Layout saves in this browser.</p></div>
+      <div class="fh-layout-actions">
+        <button type="button" id="fhArrange" aria-pressed="false">Arrange page</button>
+        <button type="button" id="fhLayoutSave" disabled title="Saves this arrangement for the team member scheduled on this page">Save layout</button>
+        <button type="button" id="fhLayoutUndo" hidden disabled>Undo</button>
+        <button type="button" id="fhLayoutReset" hidden>Reset layout</button>
+        <details id="fhCardVisibility" hidden><summary>Show / hide cards</summary><div id="fhCardVisibilityList"></div></details>
+      </div>
+    </section>
+    <p class="fh-layout-hint" id="fhLayoutHint" hidden>Drag a handle or use the move buttons. Drag a card’s lower-right corner to resize, or use its size menus. <span class="fh-layout-phone-hint">On phones, cards fit the screen width.</span></p>
+    <div class="fh-dashboard" id="fhDashboard">
+
+      <section class="fh-card fh-layout-card" data-fh-card="live" aria-label="Live">
+        <h2>Live</h2>
+        <div class="fh-card-body" id="fhLiveCard" aria-busy="true"></div>
+      </section>
+      <section class="fh-card fh-layout-card" data-fh-card="team" aria-label="Team">
+        <h2 id="fhRosterHeading">Team</h2>
+        <div class="fh-card-body" id="fhRoster" aria-busy="true"></div>
+      </section>
+      <section class="fh-card fh-layout-card" data-fh-card="order" aria-label="Order of Service">
+        <h2>Order of Service</h2>
+        <div class="fh-card-body" id="fhOrder" aria-busy="true"></div>
+      </section>
+      <section class="fh-card fh-layout-card" data-fh-card="chat" aria-label="Team chat">
+        <h2>Team chat</h2>
+        <div class="fh-card-body fh-chat-log" id="fhChatLog" role="log" aria-live="polite" aria-label="Team chat messages" data-empty="No messages yet. Say hi to the team."></div>
+        <form class="fh-chat-form" id="fhChatForm" autocomplete="off">
+          <input id="fhChatInput" type="text" maxlength="500" placeholder="Message the team" aria-label="Message the team" enterkeyhint="send" />
+          <button type="submit" id="fhChatSend">Send</button>
+        </form>
+        <p class="fh-chat-error" id="fhChatError" role="alert"></p>
+      </section>
+      <section class="fh-card fh-layout-card fh-companion-off" data-fh-card="companion" data-fh-default-size="wide" aria-label="Companion">
+        <h2>Companion</h2>
+        <div class="fh-card-body fh-companion">
+          <p class="fh-companion-status" id="fhCompanionStatus" role="status"></p>
+          <div class="fh-companion-grid is-offline" id="fhCompanionGrid" role="group" aria-label="Companion buttons"></div>
+        </div>
+      </section>
+
+    </div>
+    <p class="fh-layout-empty" id="fhLayoutEmpty" hidden>All cards are hidden. Select Arrange page to show them again.</p>
+    <footer class="fh-footer"><span data-role-page>HOME</span><span>Schedule refreshes every 2 minutes</span></footer>
+  </main>
+  <script src="foh-layout.js"></script>
+  <script src="foh.js"></script>
+  <script src="foh-chat.js"></script>
+  <script src="foh-companion.js"></script>
+</body>
+</html>

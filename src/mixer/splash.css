@@ -1,0 +1,25 @@
+/* Loading splash (splash.js): the launch splash's pop, glare and loader bar,
+   drawn through a mask of the logo so the glare only lands on it. Uses each
+   page's --jp-canvas / --accent, so custom branding applies. */
+.jpm-splash { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; margin: 0; background: var(--jp-canvas, #0e0f11); }
+.jpm-splash.out { animation: jpmSplashAway 700ms cubic-bezier(.33, 0, .2, 1) forwards; pointer-events: none; }
+.jpm-splash-stage { display: grid; justify-items: center; gap: 22px; animation: jpmSplashPop 900ms cubic-bezier(.2, .9, .25, 1.25) both; }
+.jpm-splash-logo { --logo: url('brand/jpmixer-wordmark.svg'); position: relative; display: block; line-height: 0; }
+.jpm-splash-logo img { display: block; width: min(320px, 70vw); height: auto; filter: drop-shadow(0 0 14px rgba(var(--jp-accent-rgb), .45)) drop-shadow(0 0 2px rgba(var(--jp-accent-rgb), .6)); }
+.jpm-splash-logo::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat;
+  background: linear-gradient(105deg, transparent 45%, rgba(255, 255, 255, .55) 48.5%, rgba(255, 255, 255, .95) 50%, rgba(255, 255, 255, .55) 51.5%, transparent 55%) 100% 0 / 250% 100% no-repeat;
+  animation: jpmSplashGlare 1500ms cubic-bezier(.45, 0, .25, 1) 450ms both;
+}
+.jpm-splash-loader { width: 140px; height: 3px; border-radius: 3px; background: rgba(var(--jp-accent-rgb), .18); overflow: hidden; opacity: 0; animation: jpmSplashFade 400ms ease 650ms forwards; }
+.jpm-splash-loader::after { content: ''; display: block; width: 40%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, transparent, var(--accent, #e8003c), transparent); animation: jpmSplashLoad 1200ms ease-in-out infinite; }
+@keyframes jpmSplashPop { 0% { opacity: 0; transform: scale(.78); filter: blur(8px); } 60% { opacity: 1; transform: scale(1.035); filter: blur(0); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes jpmSplashGlare { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes jpmSplashFade { to { opacity: 1; } }
+@keyframes jpmSplashLoad { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@keyframes jpmSplashAway { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .jpm-splash-stage { animation: jpmSplashFade 400ms ease both; }
+  .jpm-splash-logo::after, .jpm-splash-loader::after { animation: none; opacity: 0; }
+}

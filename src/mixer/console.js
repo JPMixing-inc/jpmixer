@@ -65,6 +65,7 @@ function connect() {
     clearTimeout(disconnectTimer);
     document.body.classList.remove('disconnected');
     document.getElementById('connDot').classList.add('connected');
+    document.getElementById('conConnectionLabel').textContent = 'Server connected';
     resetHeartbeat();
     sock.send(JSON.stringify({ type: 'request-console-state' }));
   });
@@ -73,6 +74,7 @@ function connect() {
     if (sock !== ws) return;
     clearTimeout(heartbeatTimer);
     document.getElementById('connDot').classList.remove('connected');
+    document.getElementById('conConnectionLabel').textContent = 'Reconnecting';
     clearTimeout(disconnectTimer);
     disconnectTimer = setTimeout(() => {
       document.body.classList.add('disconnected');
@@ -96,6 +98,7 @@ function connect() {
 
 function onMessage(json) {
   if (json.config) {
+    globalThis.jpmSplash?.done();
     // Desk loaded a different session — everything cached here belongs to the
     // old one, so drop it and ask the server for the new session's state
     if (json.config.sessionReload) {
@@ -111,6 +114,9 @@ function onMessage(json) {
     buildInputStrips();
     buildCGStrips();
     buildAuxStrips();
+    document.getElementById('conInputCount').textContent = document.querySelectorAll('.ch-strip').length;
+    document.getElementById('conGroupCount').textContent = cgConfig.length;
+    document.getElementById('conAuxCount').textContent = document.querySelectorAll('.aux-strip').length;
     return;
   }
 
@@ -120,6 +126,8 @@ function onMessage(json) {
     el.textContent = json.count === 1 ? '1 device' : `${json.count} devices`;
     return;
   }
+
+  if (json.type === 'channel-detail') { window.channelPanel?.onDetail(json); return; }
 
   if (json.address === '/SnapshotName') {
     document.getElementById('conSnapshot').textContent = json.args?.[0] || '—';
@@ -201,6 +209,10 @@ function onMessage(json) {
     return;
   }
 
+  // Channel processing (gain, filters, EQ, dynamics…) for the channel panel
+  const chParamM = address.match(/^\/Input_Channels\/(\d+)\/((?:Channel_Input|Panner|Filters|EQ|Dynamics|Insert|Channel_Delay)\/[\w-]+)$/);
+  if (chParamM) { window.channelPanel?.onParam(parseInt(chParamM[1]), chParamM[2], args[0]); return; }
+
   // Control group name — desk may use /name or /Channel_Input/name; handle both
   const cgNameM = address.match(/^\/Control_Groups\/(\d+)\/(?:Channel_Input\/)?name$/);
   if (cgNameM) {
@@ -249,20 +261,17 @@ function releaseFader(fader) {
 }
 function isFaderHeld(fader)  { return fader._held || Date.now() < (fader._holdUntil || 0); }
 
-// Thumb-only vertical fader control via a transparent touch/mouse overlay.
-// A touch that starts away from the thumb passes through to scrolling the
-// strip row; a touch that starts near the thumb defers to its first move to
-// decide drag vs. scroll. Mirrors addFaderOverlay() in mixer.js, with the
-// axes swapped: fader travel is vertical here, the strip row scrolls horizontally.
-function lockToThumb(fader, wrap, scrollSelector) {
+// Mouse and touch drags must start on the thumb. Native horizontal panning
+// stays available while adjusting; browse mode lets all swipes scroll normally.
+function lockToThumb(fader, wrap) {
   const THUMB_TOL = 28; // px tolerance around the visual thumb to start a grab
   fader.style.pointerEvents = 'none';
 
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:absolute;inset:0;z-index:2;touch-action:none;cursor:default;';
+  overlay.className = 'con-fader-touch';
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:2;touch-action:pan-x;cursor:default;';
   wrap.appendChild(overlay);
 
-  const scrollEl = wrap.closest(scrollSelector);
 
   function thumbCenterY(rect, val) {
     return rect.top + 5 + (1 - val) * (rect.height - 10);
@@ -284,57 +293,45 @@ function lockToThumb(fader, wrap, scrollSelector) {
     fader.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
-  // ── Touch ──────────────────────────────────────────────────────────────
-  let tStartX, tStartY, tLastX, tDecided, tScrolling;
-
-  overlay.addEventListener('touchstart', e => {
-    const t = e.touches[0];
-    tStartX = tLastX = t.clientX;
-    tStartY = t.clientY;
-
-    if (!nearThumb(t.clientY)) {
-      tDecided   = true;
-      tScrolling = true;
-      return;
+  // Pointer cancellation belongs to the browser when a horizontal swipe pans.
+  let touchDrag = null;
+  let lastTouch = 0;
+  overlay.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || !e.isPrimary) return;
+    lastTouch = Date.now();
+    if (!consoleLevelsAdjustable() || !nearThumb(e.clientY)) return;
+    touchDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, value: Number(fader.value), moved: false };
+    overlay.setPointerCapture(e.pointerId);
+  });
+  overlay.addEventListener('pointermove', e => {
+    const drag = touchDrag;
+    if (!drag || drag.id !== e.pointerId) return;
+    if (!consoleLevelsAdjustable()) { finishTouch(false); return; }
+    const dx = Math.abs(e.clientX - drag.x), dy = Math.abs(e.clientY - drag.y);
+    if (!drag.moved) {
+      if (dy < 10 || dy <= dx) return;
+      drag.moved = true;
+      holdFader(fader);
     }
-    tDecided   = false;
-    tScrolling = false;
-    holdFader(fader);
-    e.preventDefault();
-  }, { passive: false });
-
-  overlay.addEventListener('touchmove', e => {
-    const t  = e.touches[0];
-    const dx = Math.abs(t.clientX - tStartX);
-    const dy = Math.abs(t.clientY - tStartY);
-
-    if (!tDecided && (dx > 4 || dy > 4)) {
-      tDecided   = true;
-      tScrolling = dx > dy; // horizontal = scroll the strip row, vertical = fader
-      if (tScrolling) fader._held = false;
-    }
-
-    if (tScrolling) {
-      if (scrollEl) scrollEl.scrollLeft += tLastX - t.clientX;
-      tLastX = t.clientX;
-    } else {
-      apply(valueFromY(t.clientY));
-    }
-    e.preventDefault();
-  }, { passive: false });
-
-  const onTouchEnd = () => {
-    if (!tScrolling) {
-      fader.dispatchEvent(new Event('change', { bubbles: true }));
+    // Keep the original grab offset; touching the thumb edge must not jump.
+    apply(Math.max(0, Math.min(1, drag.value - (e.clientY - drag.y) / (fader.getBoundingClientRect().height - 10))));
+  });
+  function finishTouch(commit) {
+    if (!touchDrag) return;
+    const drag = touchDrag;
+    touchDrag = null;
+    if (drag.moved) {
+      if (commit) fader.dispatchEvent(new Event('change', { bubbles: true }));
       releaseFader(fader);
     }
-  };
-  overlay.addEventListener('touchend', onTouchEnd);
-  overlay.addEventListener('touchcancel', onTouchEnd);
+  }
+  overlay.addEventListener('pointerup', () => finishTouch(true));
+  overlay.addEventListener('pointercancel', () => finishTouch(false));
+  overlay.addEventListener('lostpointercapture', () => finishTouch(false));
 
   // ── Mouse (desktop) ────────────────────────────────────────────────────
   overlay.addEventListener('mousedown', e => {
-    if (!nearThumb(e.clientY)) return;
+    if (!consoleLevelsAdjustable() || Date.now() - lastTouch < 700 || e.sourceCapabilities?.firesTouchEvents || !nearThumb(e.clientY)) return;
     holdFader(fader);
     const onMove = ev => apply(valueFromY(ev.clientY));
     const onUp   = ev => {
@@ -350,6 +347,19 @@ function lockToThumb(fader, wrap, scrollSelector) {
 }
 
 // ── Grid builders ─────────────────────────────────────────────────────────
+
+function addFaderScale(wrap) {
+  const scale = document.createElement('div');
+  scale.className = 'con-fader-scale';
+  scale.setAttribute('aria-hidden', 'true');
+  for (const db of [0, -10, -20, -40, -60]) {
+    const mark = document.createElement('span');
+    mark.textContent = db;
+    mark.style.top = `calc(5px + (100% - 10px) * ${1 - dbToSlider(db)})`;
+    scale.appendChild(mark);
+  }
+  wrap.appendChild(scale);
+}
 
 function buildInputStrips() {
   const grid = document.getElementById('inputStrips');
@@ -376,7 +386,7 @@ function buildChStrip(ch) {
   // Channel number
   const num = document.createElement('div');
   num.className = 'ch-num';
-  num.textContent = ch.channel;
+  num.textContent = `CH ${String(ch.channel).padStart(2, '0')}`;
 
   // Fader wrapper
   const faderWrap = document.createElement('div');
@@ -395,20 +405,24 @@ function buildChStrip(ch) {
   fader.className = 'ch-fader';
   fader.min = '0'; fader.max = '1'; fader.step = '0.001';
   fader.value = String(sliderVal);
+  fader.setAttribute('aria-label', `Channel ${ch.channel} level`);
+  fader.setAttribute('aria-valuetext', `${formatDb(db)} dB`);
   const sendFader = () => send({ type: 'console-fader', ch: ch.channel, db: sliderToDb(parseFloat(fader.value)) });
   const sendFaderThrottled = throttle(sendFader, 30);
   fader.addEventListener('input', () => {
     const newDb = sliderToDb(parseFloat(fader.value));
     fill.style.height = `calc((100% - 12px) * ${fader.value})`;
     dbEl.textContent = formatDb(newDb);
+    fader.setAttribute('aria-valuetext', `${formatDb(newDb)} dB`);
     consoleFaders[ch.channel] = newDb;
     sendFaderThrottled();
   });
   fader.addEventListener('change', sendFader); // final position on release
-  lockToThumb(fader, faderWrap, '.strips-scroll');
+  lockToThumb(fader, faderWrap);
   fader._resync = () => { if (consoleFaders[ch.channel] !== undefined) updateChFader(ch.channel, consoleFaders[ch.channel]); };
 
   faderWrap.append(track, fill, fader);
+  addFaderScale(faderWrap);
 
   // dB readout
   const dbEl = document.createElement('div');
@@ -424,6 +438,8 @@ function buildChStrip(ch) {
   muteBtn.className = 'ch-btn mute-btn' + (muted ? ' active' : '');
   muteBtn.dataset.ch = ch.channel;
   muteBtn.textContent = 'M';
+  muteBtn.setAttribute('aria-label', `Mute channel ${ch.channel}`);
+  muteBtn.setAttribute('aria-pressed', String(muted));
   muteBtn.addEventListener('click', () => {
     const nowMuted = !muteBtn.classList.contains('active');
     send({ type: 'console-mute', ch: ch.channel, muted: nowMuted });
@@ -433,6 +449,8 @@ function buildChStrip(ch) {
   soloBtn.className = 'ch-btn solo-btn' + (soloed ? ' active' : '');
   soloBtn.dataset.ch = ch.channel;
   soloBtn.textContent = 'S';
+  soloBtn.setAttribute('aria-label', `Solo channel ${ch.channel}`);
+  soloBtn.setAttribute('aria-pressed', String(soloed));
   soloBtn.addEventListener('click', () => {
     const nowSoloed = !soloBtn.classList.contains('active');
     send({ type: 'console-solo', ch: ch.channel, soloed: nowSoloed });
@@ -446,7 +464,17 @@ function buildChStrip(ch) {
   name.textContent = ch.label || `Ch ${ch.channel}`;
   name.title = ch.label || `Ch ${ch.channel}`;
 
-  strip.append(num, faderWrap, dbEl, btns, name);
+  // Gain, filters, EQ and dynamics for this channel (console-channel.js)
+  const openBtn = document.createElement('button');
+  openBtn.type = 'button';
+  openBtn.className = 'ch-open-btn';
+  openBtn.textContent = 'EQ';
+  openBtn.setAttribute('aria-label', `Open ${ch.label || 'channel ' + ch.channel} processing: gain, EQ and dynamics`);
+  const openPanel = () => window.channelPanel?.open(ch.channel, ch.label || `Ch ${ch.channel}`);
+  openBtn.addEventListener('click', openPanel);
+  name.addEventListener('click', openPanel);
+
+  strip.append(num, faderWrap, dbEl, btns, name, openBtn);
   return strip;
 }
 
@@ -466,6 +494,10 @@ function buildAuxStrip(aux) {
   const strip = document.createElement('div');
   strip.className = 'aux-strip' + (muted ? ' muted' : '');
   strip.dataset.aux = aux.channel;
+  strip.style.setProperty('--aux-color', aux.colour || '#849fc5');
+  const number = document.createElement('span');
+  number.className = 'aux-number';
+  number.textContent = String(aux.channel).padStart(2, '0');
 
   const dot = document.createElement('div');
   dot.className = 'aux-color-dot';
@@ -484,11 +516,16 @@ function buildAuxStrip(aux) {
   fader.className = 'aux-fader';
   fader.min = '0'; fader.max = '1'; fader.step = '0.001';
   fader.value = String(sliderVal);
+  fader.style.setProperty('--val', sliderVal);
+  fader.setAttribute('aria-label', `Aux ${aux.channel} level`);
+  fader.setAttribute('aria-valuetext', `${formatDb(db)} dB`);
   const sendFader = () => send({ type: 'aux-fader', aux: aux.channel, db: sliderToDb(parseFloat(fader.value)) });
   const sendFaderThrottled = throttle(sendFader, 30);
   fader.addEventListener('input', () => {
     const newDb = sliderToDb(parseFloat(fader.value));
+    fader.style.setProperty('--val', fader.value);
     dbEl.textContent = formatDb(newDb);
+    fader.setAttribute('aria-valuetext', `${formatDb(newDb)} dB`);
     auxFaders[aux.channel] = newDb;
     sendFaderThrottled();
   });
@@ -516,12 +553,14 @@ function buildAuxStrip(aux) {
   muteBtn.className = 'aux-btn' + (muted ? ' active' : '');
   muteBtn.dataset.aux = aux.channel;
   muteBtn.textContent = 'M';
+  muteBtn.setAttribute('aria-label', `Mute aux ${aux.channel}`);
+  muteBtn.setAttribute('aria-pressed', String(muted));
   muteBtn.addEventListener('click', () => {
     const nowMuted = !muteBtn.classList.contains('active');
     send({ type: 'aux-mute', aux: aux.channel, muted: nowMuted });
   });
 
-  strip.append(dot, name, faderWrap, dbEl, muteBtn);
+  strip.append(number, dot, name, faderWrap, dbEl, muteBtn);
   return strip;
 }
 
@@ -562,20 +601,24 @@ function buildCGStrip(cg) {
   fader.className = 'ch-fader';
   fader.min = '0'; fader.max = '1'; fader.step = '0.001';
   fader.value = String(sliderVal);
+  fader.setAttribute('aria-label', `Control group ${cg.channel} level`);
+  fader.setAttribute('aria-valuetext', `${formatDb(db)} dB`);
   const sendFader = () => send({ type: 'cg-fader', cg: cg.channel, db: sliderToDb(parseFloat(fader.value)) });
   const sendFaderThrottled = throttle(sendFader, 30);
   fader.addEventListener('input', () => {
     const newDb = sliderToDb(parseFloat(fader.value));
     fill.style.height = `calc((100% - 12px) * ${fader.value})`;
     dbEl.textContent = formatDb(newDb);
+    fader.setAttribute('aria-valuetext', `${formatDb(newDb)} dB`);
     cgFaders[cg.channel] = newDb;
     sendFaderThrottled();
   });
   fader.addEventListener('change', sendFader); // final position on release
-  lockToThumb(fader, faderWrap, '.cg-scroll');
+  lockToThumb(fader, faderWrap);
   fader._resync = () => { if (cgFaders[cg.channel] !== undefined) updateCGFader(cg.channel, cgFaders[cg.channel]); };
 
   faderWrap.append(track, fill, fader);
+  addFaderScale(faderWrap);
 
   const dbEl = document.createElement('div');
   dbEl.className = 'ch-db';
@@ -587,6 +630,8 @@ function buildCGStrip(cg) {
   const muteBtn = document.createElement('button');
   muteBtn.className = 'ch-btn mute-btn' + (muted ? ' active' : '');
   muteBtn.textContent = 'M';
+  muteBtn.setAttribute('aria-label', `Mute control group ${cg.channel}`);
+  muteBtn.setAttribute('aria-pressed', String(muted));
   muteBtn.addEventListener('click', () => {
     send({ type: 'cg-mute', cg: cg.channel, muted: !muteBtn.classList.contains('active') });
   });
@@ -594,6 +639,8 @@ function buildCGStrip(cg) {
   const soloBtn = document.createElement('button');
   soloBtn.className = 'ch-btn solo-btn' + (soloed ? ' active' : '');
   soloBtn.textContent = 'S';
+  soloBtn.setAttribute('aria-label', `Solo control group ${cg.channel}`);
+  soloBtn.setAttribute('aria-pressed', String(soloed));
   soloBtn.addEventListener('click', () => {
     send({ type: 'cg-solo', cg: cg.channel, soloed: !soloBtn.classList.contains('active') });
   });
@@ -617,6 +664,7 @@ function updateChFader(ch, db) {
     const f = strip.querySelector('.ch-fader');
     if (!f || isFaderHeld(f)) return;
     f.value = sliderVal;
+    f.setAttribute('aria-valuetext', `${formatDb(db)} dB`);
     const fill = strip.querySelector('.ch-fader-fill');
     if (fill) fill.style.height = `calc((100% - 12px) * ${sliderVal})`;
     const dbEl = strip.querySelector('.ch-db');
@@ -630,6 +678,7 @@ function updateChMute(ch, muted) {
   });
   document.querySelectorAll(`.ch-strip[data-ch="${ch}"] .mute-btn`).forEach(b => {
     b.classList.toggle('active', muted);
+    b.setAttribute('aria-pressed', String(muted));
   });
 }
 
@@ -643,6 +692,7 @@ function updateChSolo(ch, soloed) {
   });
   document.querySelectorAll(`.ch-strip[data-ch="${ch}"] .solo-btn`).forEach(b => {
     b.classList.toggle('active', soloed);
+    b.setAttribute('aria-pressed', String(soloed));
   });
 }
 
@@ -652,6 +702,8 @@ function updateAuxFader(aux, db) {
     const f = strip.querySelector('.aux-fader');
     if (!f || isFaderHeld(f)) return;
     f.value = sliderVal;
+    f.style.setProperty('--val', sliderVal);
+    f.setAttribute('aria-valuetext', `${formatDb(db)} dB`);
     const dbEl = strip.querySelector('.aux-db');
     if (dbEl) dbEl.textContent = formatDb(db);
   });
@@ -659,7 +711,7 @@ function updateAuxFader(aux, db) {
 
 function updateAuxMute(aux, muted) {
   document.querySelectorAll(`.aux-strip[data-aux="${aux}"]`).forEach(s => s.classList.toggle('muted', muted));
-  document.querySelectorAll(`.aux-strip[data-aux="${aux}"] .aux-btn`).forEach(b => b.classList.toggle('active', muted));
+  document.querySelectorAll(`.aux-strip[data-aux="${aux}"] .aux-btn`).forEach(b => { b.classList.toggle('active', muted); b.setAttribute('aria-pressed', String(muted)); });
 }
 
 function updateCGFader(cg, db) {
@@ -668,6 +720,7 @@ function updateCGFader(cg, db) {
     const f = strip.querySelector('.ch-fader');
     if (!f || isFaderHeld(f)) return;
     f.value = sliderVal;
+    f.setAttribute('aria-valuetext', `${formatDb(db)} dB`);
     const fill = strip.querySelector('.cg-fader-fill');
     if (fill) fill.style.height = `calc((100% - 12px) * ${sliderVal})`;
     const dbEl = strip.querySelector('.ch-db');
@@ -677,28 +730,62 @@ function updateCGFader(cg, db) {
 
 function updateCGMute(cg, muted) {
   document.querySelectorAll(`.cg-strip[data-cg="${cg}"]`).forEach(s => s.classList.toggle('muted', muted));
-  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .mute-btn`).forEach(b => b.classList.toggle('active', muted));
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .mute-btn`).forEach(b => { b.classList.toggle('active', muted); b.setAttribute('aria-pressed', String(muted)); });
 }
 
 function updateCGSolo(cg, soloed) {
   document.querySelectorAll(`.cg-strip[data-cg="${cg}"]`).forEach(s => s.classList.toggle('soloed', soloed));
-  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .solo-btn`).forEach(b => b.classList.toggle('active', soloed));
+  document.querySelectorAll(`.cg-strip[data-cg="${cg}"] .solo-btn`).forEach(b => { b.classList.toggle('active', soloed); b.setAttribute('aria-pressed', String(soloed)); });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+window.consoleSend = (msg) => send(msg); // for the channel panel (console-channel.js)
 function send(msg) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
+// Touch screens start in browse mode on every load, never a saved unlock.
+const consoleTouchLayout = matchMedia('(pointer: coarse), (max-width: 700px)');
+function consoleLevelsAdjustable() {
+  return !consoleTouchLayout.matches || document.body.classList.contains('con-adjusting');
+}
+function setConsoleAdjusting(adjusting) {
+  document.body.classList.toggle('con-adjusting', adjusting);
+  document.getElementById('conAdjustLevels').setAttribute('aria-pressed', String(adjusting));
+  document.getElementById('conAdjustLevels').textContent = adjusting ? 'Done adjusting' : 'Adjust levels';
+  document.getElementById('conTouchHint').textContent = adjusting
+    ? 'Drag a fader thumb to adjust. Tap Done when finished.'
+    : 'Swipe to browse. Tap Adjust levels to move faders.';
+}
+document.getElementById('conAdjustLevels').addEventListener('click', () => setConsoleAdjusting(!document.body.classList.contains('con-adjusting')));
+consoleTouchLayout.addEventListener('change', () => setConsoleAdjusting(false));
+window.addEventListener('pagehide', () => setConsoleAdjusting(false));
+
 // ── Boot ──────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
-  document.querySelectorAll('.con-tab').forEach(t => t.classList.toggle('tab-active', t.dataset.tab === name));
+  document.querySelectorAll('.con-tab').forEach(t => { t.classList.toggle('tab-active', t.dataset.tab === name); t.setAttribute('aria-pressed', String(t.dataset.tab === name)); });
   document.getElementById('tabInputs').classList.toggle('tab-active', name === 'inputs');
   document.getElementById('tabCG').classList.toggle('tab-active', name === 'cg');
   document.getElementById('tabAux').classList.toggle('tab-active', name === 'aux');
+  document.getElementById('conSectionDescription').textContent = {
+    inputs: 'Main channel faders, mutes, and solos.',
+    cg: 'Control group faders, mutes, and solos.',
+    aux: 'Aux master output levels and mutes.'
+  }[name];
 }
+
+function setConsoleDisplaySize(size) {
+  const roomy = size === 'roomy';
+  document.body.classList.toggle('con-roomy', roomy);
+  for (const button of document.querySelectorAll('[data-console-density]')) button.setAttribute('aria-pressed', String(button.dataset.consoleDensity === (roomy ? 'roomy' : 'overview')));
+  try { localStorage.setItem('jpm_console_density', roomy ? 'roomy' : 'overview'); } catch (_) {}
+}
+let savedConsoleDisplaySize = 'overview';
+try { savedConsoleDisplaySize = localStorage.getItem('jpm_console_density') || 'overview'; } catch (_) {}
+setConsoleDisplaySize(savedConsoleDisplaySize);
+for (const button of document.querySelectorAll('[data-console-density]')) button.addEventListener('click', () => setConsoleDisplaySize(button.dataset.consoleDensity));
 
 document.querySelectorAll('.con-tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));

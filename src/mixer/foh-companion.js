@@ -1,0 +1,150 @@
+'use strict';
+
+// Companion card on the Home pages (FOH, ProPresenter, Lighting, Switcher):
+// this page's Companion Satellite surface (src/server/companion-satellite.js).
+// Button images arrive live from /companion/stream; a tap presses the button
+// in Companion and lifting the finger releases it, so held buttons work too.
+// While Companion buttons are off in Settings the card stays out of the way
+// (shown only in Arrange mode).
+(() => {
+  const card = document.querySelector('[data-fh-card="companion"]');
+  const grid = document.getElementById('fhCompanionGrid');
+  const note = document.getElementById('fhCompanionStatus');
+  if (!card || !grid || !note) return;
+  const ROLE = (location.pathname.match(/\/(propresenter|lighting|switcher)\.html$/) || [])[1] || 'foh';
+  let columns = 8, rows = 4;
+  const keys = new Map();      // index -> button element
+  const imageCache = new Map(); // rgb base64 -> data URL (Companion often re-sends the same image)
+  let source = null;
+
+  // Companion's plain "rgb" bitmaps are raw 8-bit RGB; PNG/WebP come as data: URLs
+  function imageFor(bitmap, size) {
+    if (!bitmap) return '';
+    if (bitmap.startsWith('data:image/')) return bitmap;
+    if (imageCache.has(bitmap)) return imageCache.get(bitmap);
+    let bytes;
+    try { bytes = Uint8Array.from(atob(bitmap), c => c.charCodeAt(0)); } catch (_) { return ''; }
+    const side = Math.round(Math.sqrt(bytes.length / 3)) || size;
+    if (side * side * 3 !== bytes.length) return '';
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = side;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(side, side);
+    for (let i = 0, j = 0; i < bytes.length; i += 3, j += 4) {
+      img.data[j] = bytes[i]; img.data[j + 1] = bytes[i + 1]; img.data[j + 2] = bytes[i + 2]; img.data[j + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    const url = canvas.toDataURL('image/png');
+    if (imageCache.size > 400) imageCache.clear();
+    imageCache.set(bitmap, url);
+    return url;
+  }
+
+  function buildGrid() {
+    grid.textContent = '';
+    keys.clear();
+    grid.style.setProperty('--cols', columns);
+    for (let i = 0; i < columns * rows; i++) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'fh-companion-key';
+      btn.dataset.key = i;
+      btn.setAttribute('aria-label', `Button ${Math.floor(i / columns) + 1}.${(i % columns) + 1}`);
+      const img = document.createElement('img');
+      img.alt = '';
+      img.draggable = false;
+      img.hidden = true;
+      const label = document.createElement('span');
+      label.className = 'fh-companion-text';
+      btn.append(img, label);
+      grid.appendChild(btn);
+      keys.set(i, btn);
+    }
+  }
+
+  function showKey(k) {
+    const btn = keys.get(k.index);
+    if (!btn) return;
+    const img = btn.firstChild, label = btn.lastChild;
+    const url = imageFor(k.bitmap, k.size);
+    img.hidden = !url;
+    if (url && img.getAttribute('src') !== url) img.src = url;
+    // Text only shows when there's no image (the image already has Companion's text drawn in)
+    label.textContent = url ? '' : k.text || '';
+    btn.style.background = url ? '' : k.color || '';
+    btn.style.color = k.textColor || '';
+    btn.classList.toggle('is-pressed', !!k.pressed);
+    btn.setAttribute('aria-label', (k.text || '').replace(/\s+/g, ' ').trim() || `Button ${Math.floor(k.index / columns) + 1}.${(k.index % columns) + 1}`);
+  }
+  function clearKeys() { for (const btn of keys.values()) { btn.firstChild.hidden = true; btn.lastChild.textContent = ''; btn.style.background = ''; btn.classList.remove('is-pressed'); } }
+
+  function showSnapshot(s) {
+    card.classList.toggle('fh-companion-off', !s.enabled);
+    if (s.columns !== columns || s.rows !== rows || !keys.size) { columns = s.columns || 8; rows = s.rows || 4; buildGrid(); }
+    clearKeys();
+    for (const k of s.keys || []) showKey(k);
+    const live = s.enabled && s.state === 'connected' && s.registered && !s.locked;
+    grid.classList.toggle('is-offline', !live);
+    note.hidden = live;
+    note.textContent = !s.enabled ? 'Companion buttons are off. Turn them on in JPMixer Settings → Pages.'
+      : s.locked ? 'This surface is locked in Companion.'
+      : s.state === 'connected' && s.error ? `Companion refused this page’s surface: ${s.error}`
+      : s.state === 'connected' && !s.registered ? 'Setting up this page’s buttons in Companion…'
+      : s.message || 'Companion isn’t connected.';
+  }
+
+  // ── Presses ──
+  async function press(index, pressed) {
+    try {
+      await fetch('/companion/press', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ role: ROLE, key: index, pressed }) });
+    } catch (_) {}
+  }
+  let down = null; // { index, pointerId }
+  grid.addEventListener('pointerdown', (e) => {
+    const btn = e.target.closest('.fh-companion-key');
+    if (!btn || grid.classList.contains('is-offline') || document.body.classList.contains('fh-editing')) return;
+    e.preventDefault();
+    if (down) release();
+    down = { index: Number(btn.dataset.key), pointerId: e.pointerId, btn };
+    btn.classList.add('is-down');
+    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+    press(down.index, true);
+  });
+  function release() {
+    if (!down) return;
+    down.btn.classList.remove('is-down');
+    press(down.index, false);
+    down = null;
+  }
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) grid.addEventListener(type, (e) => { if (down && e.pointerId === down.pointerId) release(); });
+  window.addEventListener('blur', release);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
+  // Keyboard: Space/Enter press and release like a tap
+  grid.addEventListener('keydown', (e) => {
+    if ((e.key !== ' ' && e.key !== 'Enter') || e.repeat) return;
+    const btn = e.target.closest('.fh-companion-key');
+    if (!btn || grid.classList.contains('is-offline')) return;
+    e.preventDefault();
+    press(Number(btn.dataset.key), true);
+    btn.classList.add('is-down');
+    btn.addEventListener('keyup', () => { btn.classList.remove('is-down'); press(Number(btn.dataset.key), false); }, { once: true });
+  });
+  grid.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // ── Live updates ──
+  function connect() {
+    if (!window.EventSource) return;
+    source?.close();
+    source = new EventSource(`/companion/stream?role=${ROLE}`);
+    source.addEventListener('snapshot', (e) => { try { showSnapshot(JSON.parse(e.data)); } catch (_) {} });
+    source.addEventListener('key', (e) => { try { showKey(JSON.parse(e.data)); } catch (_) {} });
+    source.addEventListener('clear', clearKeys);
+    source.addEventListener('error', () => {
+      // A locked FOH Home answers 401 and EventSource stops; try again once unlocked
+      if (source.readyState === EventSource.CLOSED) setTimeout(connect, 5000);
+    });
+  }
+  buildGrid();
+  note.textContent = 'Loading Companion buttons…';
+  connect();
+})();

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en" data-jpm-view="home">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#101216" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Home Pages — JPMixer</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
+  <link rel="stylesheet" href="home.css" />
+  <link rel="stylesheet" href="wordmark-fx.css" />
+  <link rel="stylesheet" href="splash.css" />
+  <link rel="stylesheet" href="original-theme.css" />
+  <link rel="stylesheet" href="/branding.css" /><!-- custom accent/logo, last so it wins -->
+  <script src="brand.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="alternate icon" href="favicon.png" type="image/png" />
+</head>
+<body>
+  <script src="splash.js"></script>
+  <!-- The station picker: one card per Home page, like the performer page's
+       mix picker. Cards come from /home-pages (see src/server/foh.js). -->
+  <main class="home-picker">
+    <div class="picker-brand jp-brand" aria-label="JPMixer"><span class="jp-wordmark-fx" id="homeWordmarkFx"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="176" height="25" /></span><span class="jp-brand-caption">PRODUCTION HOME</span></div>
+    <p class="home-eyebrow">WHERE ARE YOU SERVING TODAY?</p>
+    <h1 class="home-title">Find your station.</h1>
+    <p class="home-description">Choose your Home page to see today’s schedule.</p>
+    <div class="home-buttons" id="homeButtons" aria-busy="true"></div>
+    <p class="home-notice" id="homeNotice" role="status" hidden></p>
+    <p class="home-footer">Made for your team. Built for the stage.</p>
+  </main>
+  <script src="home.js"></script>
+</body>
+</html>

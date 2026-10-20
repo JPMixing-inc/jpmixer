@@ -4,6 +4,17 @@ const { writeFileAtomic, loadJsonObject } = require('./safe-write');
 
 const DEFAULTS = {
   autoStart: true,
+  // Custom branding (Settings → Branding): a logo file stored in
+  // userData/branding, and an accent color. '' = the JPMixer logo and red.
+  brandLogo: '',
+  brandAccent: '',
+  // Stop the Mac sleeping while the server runs: a sleeping booth Mac drops
+  // every phone mid-service. The display can still turn off.
+  keepAwake: true,
+  // Mirrors the OS login item (main.js reconciles it at launch, since it can
+  // also be removed in System Settings). Not restored from backups: it
+  // belongs to this Mac.
+  openAtLogin: false,
   serverPort: 8080,
   consoleType: 'digico',
   deskIp: '192.168.1.100',
@@ -11,13 +22,14 @@ const DEFAULTS = {
   deskListenPort: 8001,
   channels: 48,
   auxes: 16,
-  groups: 8,
-  matrices: 8,
+  groups: 8, // DiGiCo Control Groups — a fallback until the desk reports its own count
   channelGroups: [],
   channelOverrides: {},
   auxOverrides: {},
   sceneRecallEnabled: false,
-  clearScenesOnLaunch: false,
+  // false hides Ear Scenes (menu item and the Saved / Not Saved button) on
+  // performers' phones. Saved Ear Scenes are kept; see mixer.js hasSavedScene.
+  performerEarScenes: true,
   ipadConnections: [],
   autoBackupEnabled: true,
   autoBackupIntervalDays: 7,
@@ -59,10 +71,53 @@ const DEFAULTS = {
   pcoServiceTypeId: '',
   pcoTeamId: '',           // '' = all teams. Narrows both the Position mapping table (display only)
                            // and the Green Room display (actually filters who's shown there).
+  pcoDay: 'auto',          // 'auto' = resolve to whichever PlanTime is closest to right now each
+                           // time it's checked (not literally today's date — see pco-client.js's
+                           // resolveAutoDay()). '' = every day. "Saturday"/"Sunday"/etc pins one
+                           // explicitly. Narrows both the Green Room display and Sync Now's aux
+                           // labeling — for a weekend plan with multiple PlanTimes. See pco-client.js.
   pcoPositionMapping: {}, // { "PCO position name": auxNumber }
   pcoIncludeUnconfirmed: false,
-  pcoGreenRoomHidden: [] // PCO position names to exclude from the Green Room display; empty = show everyone
+  pcoGreenRoomHidden: [], // PCO position names to exclude from the Green Room display; empty = show everyone
+  pcoPhoneAssignments: false, // opt-in person identity and automatic phone aux selection
+  pcoUpdateAuxNames: true, // false = Planning Center only drives the Green Room display; Sync Now and
+                           // the automatic sync at launch/save skip renaming aux channels entirely.
+  pcoFohPositionName: '', // '' = FOH Engineer Home page not set up. A Team Position name (e.g. "Audio
+                          // Engineer FOH") — can be from any team, independent of pcoTeamId (which
+                          // only filters the musician aux-mapping table/Green Room). See foh.js.
+  pcoFohTeamId: '',       // paired with pcoFohPositionName — disambiguates the same position name
+                          // existing on more than one team (real in this account's own schedule,
+                          // e.g. "Team Lead").
+  // The same pairing for the ProPresenter, Lighting and Switcher Home pages
+  // (role.html via foh.js): who is welcomed and whose team is shown.
+  pcoProPresenterPositionName: '',
+  pcoProPresenterTeamId: '',
+  pcoLightingPositionName: '',
+  pcoLightingTeamId: '',
+  pcoSwitcherPositionName: '',
+  pcoSwitcherTeamId: '',
+  // Optional code for FOH Home on other devices ('' = open). See foh.js.
+  fohAccessCode: '',
+  // Companion buttons on the Home pages: JPMixer connects to Companion as a
+  // Satellite and registers one surface per Home page. See companion-satellite.js.
+  companionEnabled: false,
+  companionHost: '',
+  companionPort: 16622,
+  companionColumns: 8,
+  companionRows: 4
 };
+
+// Console types with a backend. Settings once offered X32/M32, Yamaha and
+// Custom OSC too, which quietly ran the DiGiCo backend — a config (or
+// restored backup) still naming one of those is read as DiGiCo, which is
+// what it was actually running.
+const CONSOLE_TYPES = ['digico', 'dlive', 'klang', 'wing'];
+
+function normalize(cfg) {
+  if (!CONSOLE_TYPES.includes(cfg.consoleType)) cfg.consoleType = 'digico';
+  delete cfg.matrices; // never read by anything
+  return cfg;
+}
 
 let _config = { ...DEFAULTS };
 let _configPath = null;
@@ -81,16 +136,26 @@ function load() {
   let corrupt = false;
   const data = loadJsonObject(configPath(), app.getPath('userData'), 'config',
     (msg) => { corrupt = true; console.error('[JPMixer] ' + msg); });
-  if (data) _config = { ...DEFAULTS, ...data };
+  if (data) _config = normalize({ ...DEFAULTS, ...data });
   if (corrupt) save(_config);
 }
 
+// Returns true/false (and rolls the in-memory config back on failure) —
+// same pattern as presets.js's persist()/savePreset(). Previously this
+// swallowed a write failure silently: Settings' Save & Apply would still
+// report success to the user even if config.json didn't actually get
+// written (full disk, permissions), so the change would silently not
+// survive a restart with no indication anything went wrong.
 function save(incoming) {
-  _config = { ...DEFAULTS, ...incoming };
+  const previous = _config;
+  _config = normalize({ ...DEFAULTS, ...incoming });
   try {
     writeFileAtomic(configPath(), JSON.stringify(_config, null, 2));
+    return true;
   } catch (e) {
     console.error('Config save error:', e);
+    _config = previous;
+    return false;
   }
 }
 
@@ -110,15 +175,19 @@ function getAll() {
 // the active console backend.
 function updateOverride(kind, n, patch) {
   const key = kind === 'aux' ? 'auxOverrides' : 'channelOverrides';
+  const previous = _config;
   const bucket = { ..._config[key] };
   bucket[String(n)] = { ...(bucket[String(n)] || {}), ...patch };
   _config = { ..._config, [key]: bucket };
   try {
     writeFileAtomic(configPath(), JSON.stringify(_config, null, 2));
+    return true;
   } catch (e) {
     console.error('Config save error:', e);
+    _config = previous;
+    return false;
   }
 }
 
 load();
-module.exports = { get, getAll, save, updateOverride };
+module.exports = { get, getAll, save, updateOverride, CONSOLE_TYPES };

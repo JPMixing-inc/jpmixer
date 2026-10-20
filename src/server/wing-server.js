@@ -45,7 +45,14 @@ const presets   = require('./presets');
 const shared    = require('./shared-handlers');
 const config    = require('./config');
 const { mountGreenRoom } = require('./greenroom');
+const { mountBranding } = require('./branding');
+const { mountPerformerAssignments } = require('./performer-assignments');
+const { mountFoh } = require('./foh');
 const { WingClient } = require('./wing-client');
+const { createPacedWriter } = require('./paced-writer');
+// Presets, mute/solo and their on/off queries go through this — see
+// paced-writer.js. A musician's own fader/pan move stays direct.
+const pacer = createPacedWriter();
 
 let httpServer = null;
 let wss        = null;
@@ -73,7 +80,10 @@ const panCache   = new Map(); // "ch:aux" -> -90..90 pan value
 const nameCache  = new Map(); // "input:N" -> name, from a real GET on connect
 const muteState  = {};        // muteState[aux][ch]
 const soloState  = {};        // soloState[aux][ch]
-const silencedSends = new Set(); // sends JPMixer switched off, independent of fader activity
+// Sends JPMixer is holding off for a mute/solo: key -> { wasOn }. wasOn is
+// null while asking the console, true if JPMixer switched it off, false if
+// it was already off (so a release must leave it off).
+const silencedSends = new Map();
 
 function levelKey(ch, aux) { return `${ch}:${aux}`; }
 function sliderToAzimuth(v) { return (v - 0.5) * 180; } // matches klang-server.js's own convention
@@ -125,8 +135,6 @@ function buildConfig() {
   const auxCount = serverCfg.auxes || 16;
   const chCount  = serverCfg.channels || 40;
   const cfgAuxOverrides = serverCfg.auxOverrides || {};
-  const cfgOverrides    = serverCfg.channelOverrides || {};
-  const cfgGroups       = serverCfg.channelGroups || [];
 
   const auxilaries = [];
   for (let i = 1; i <= auxCount; i++) {
@@ -140,47 +148,11 @@ function buildConfig() {
       icon:      '',
       eqEnabled: false, // aux EQ not implemented for WING in this pass
       linkOnly:  ov.linkOnly === true,
+      groups:    shared.auxGroupNames(ov, serverCfg),
     });
   }
 
-  const groupOrder = {};
-  cfgGroups.forEach((g, i) => { groupOrder[String(g.id)] = i; });
-
-  const raw = [];
-  for (let i = 1; i <= chCount; i++) {
-    const ov = cfgOverrides[String(i)] || {};
-    const liveName = nameCache.get(`input:${i}`);
-    raw.push({
-      channel: i,
-      enabled: ov.enabled !== false,
-      label:   ov.label || liveName || '',
-      icon:    ov.icon || '',
-      groupId: ov.groupId || null,
-      order:   ov.order !== undefined ? ov.order : i,
-    });
-  }
-  raw.sort((a, b) => {
-    const ga = a.groupId !== null ? (groupOrder[String(a.groupId)] ?? 9999) : 9999;
-    const gb = b.groupId !== null ? (groupOrder[String(b.groupId)] ?? 9999) : 9999;
-    if (ga !== gb) return ga - gb;
-    return a.order - b.order;
-  });
-
-  const channels = [];
-  let lastGroupId;
-  raw.forEach((ch) => {
-    const isFirst = ch.groupId !== lastGroupId;
-    lastGroupId = ch.groupId;
-    const group = cfgGroups.find(g => String(g.id) === String(ch.groupId));
-    channels.push({
-      enabled: ch.enabled,
-      label: ch.label,
-      channel: ch.channel,
-      order: channels.length,
-      title: (isFirst && group) ? group.name : '',
-      icon: ch.icon,
-    });
-  });
+  const channels = shared.buildChannelList(chCount, serverCfg, i => nameCache.get(`input:${i}`));
 
   return JSON.stringify({
     config: {
@@ -189,6 +161,7 @@ function buildConfig() {
       controlGroups: [], // Console Controller not implemented for WING
       snapshot: '—', // see file header — WING has no scene/snapshot signal
       sceneRecallEnabled: false,
+      earScenes: serverCfg.performerEarScenes !== false, // Settings: Ear Scenes on performer phones
       scenes: scenes.getAll(),
       mutes: muteState,
       solos: soloState,
@@ -252,11 +225,25 @@ function applySilencing(aux) {
     const muted = !!(muteState[aux]?.[ch]);
     const soloed = !!(soloState[aux]?.[ch]);
     const silenced = muted || (anySolo && !soloed);
-    // An untouched channel can still be audible on the console. Conversely,
-    // don't enable unrelated sends just because another channel was muted.
-    if (silenced || silencedSends.has(key)) wing.setSendOn(ch, aux, !silenced);
-    if (silenced) silencedSends.add(key);
-    else silencedSends.delete(key);
+    const entry = silencedSends.get(key);
+    if (silenced && !entry) {
+      // Ask first: a send the engineer had switched off must stay off when
+      // the mute/solo is released, not come back on with it.
+      const pending = { wasOn: null };
+      silencedSends.set(key, pending);
+      const client = wing;
+      pacer.write(`geton:${key}`, () => client.getSendOn(ch, aux).then((on) => {
+        if (wing !== client || silencedSends.get(key) !== pending) return; // released or stopped meanwhile
+        pending.wasOn = on !== false; // no answer: assume on, so it's still silenced
+        if (pending.wasOn) pacer.write(`on:${key}`, () => client.setSendOn(ch, aux, false), true);
+      }), true);
+    } else if (silenced && entry.wasOn) {
+      pacer.write(`on:${key}`, () => wing && wing.setSendOn(ch, aux, false), true); // re-assert
+    } else if (!silenced && entry) {
+      silencedSends.delete(key);
+      pacer.cancel(`geton:${key}`); // not asked yet: nothing was switched off
+      if (entry.wasOn) pacer.write(`on:${key}`, () => wing && wing.setSendOn(ch, aux, true), true);
+    }
   }
 }
 
@@ -291,6 +278,7 @@ function start(cfg) {
   connections = [];
   consoleConnected = false;
   levelCache.clear();
+  pacer.clear();
   panCache.clear();
   nameCache.clear();
   silencedSends.clear();
@@ -300,6 +288,9 @@ function start(cfg) {
   const appExpress = express();
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
   mountGreenRoom(appExpress);
+  mountBranding(appExpress);
+  mountPerformerAssignments(appExpress);
+  mountFoh(appExpress, { isConsoleConnected, getConnectionCount });
 
   httpServer = http.createServer(appExpress);
   httpServer.on('error', (err) => {
@@ -338,7 +329,7 @@ function start(cfg) {
       ws.send(JSON.stringify({ type: 'devices-update', devices: getConnectedDevicesInfo() }));
     } catch (_) {}
 
-    ws.on('message', (raw) => {
+    ws.on('message', shared.guarded(logEvent, (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch (_) { return; }
 
@@ -412,21 +403,21 @@ function start(cfg) {
         const aux = parseInt(msg.aux, 10);
         const chMax = serverCfg.channels || 40;
         const outLevels = {}, outPans = {};
-        if (Number.isInteger(aux) && aux >= 1) {
+        if (Number.isInteger(aux) && aux >= 1 && aux <= (serverCfg.auxes || 16)) {
           for (const [chStr, sliderVal] of Object.entries(msg.levels || {})) {
             const ch = parseInt(chStr, 10);
             if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
             const db = shared.sliderToDb(sliderVal);
             levelCache.set(levelKey(ch, aux), db);
             outLevels[chStr] = sliderVal;
-            wing && wing.setSendLevel(ch, aux, db);
+            pacer.write(`lvl:${ch}:${aux}`, () => wing && wing.setSendLevel(ch, aux, db));
           }
           for (const [chStr, panVal] of Object.entries(msg.pans || {})) {
             const ch = parseInt(chStr, 10);
-            if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(panVal)) continue;
+            if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(panVal) || panVal < 0 || panVal > 1) continue;
             panCache.set(levelKey(ch, aux), panVal);
             outPans[chStr] = panVal;
-            wing && wing.setSendPan(ch, aux, sliderToAzimuth(panVal));
+            pacer.write(`pan:${ch}:${aux}`, () => wing && wing.setSendPan(ch, aux, sliderToAzimuth(panVal)));
           }
         }
         broadcastToClients({ type: 'preset-loaded', aux: msg.aux, name: msg.name, levels: outLevels, pans: outPans });
@@ -451,13 +442,19 @@ function start(cfg) {
       const [, chStr, auxStr, kind] = m;
       const ch = parseInt(chStr, 10), aux = parseInt(auxStr, 10);
       if (!Number.isInteger(ch) || ch < 1 || !Number.isInteger(aux) || aux < 1) return;
-      const val = Array.isArray(oscMsg.args) ? oscMsg.args[0] : undefined;
-      if (typeof val !== 'number' || !Number.isFinite(val)) return;
+      const rawVal = Array.isArray(oscMsg.args) ? oscMsg.args[0] : undefined;
+      if (typeof rawVal !== 'number' || !Number.isFinite(rawVal)) return;
+      // In range, and clamped before it reaches the console: there was no
+      // upper bound on ch/aux, and Infinity/huge dB values were sent as-is.
+      if (ch > (serverCfg.channels || 40) || aux > (serverCfg.auxes || 16)) return;
+      const val = kind === 'pan' ? Math.max(0, Math.min(1, rawVal)) : Math.max(-150, Math.min(10, rawVal));
+      oscMsg.args = [val, ...oscMsg.args.slice(1)];
 
       const key = levelKey(ch, aux);
 
       if (kind === 'pan') {
         panCache.set(key, val);
+        pacer.cancel(`pan:${ch}:${aux}`); // supersedes a queued preset write
         wing && wing.setSendPan(ch, aux, sliderToAzimuth(val));
         broadcastToClients(oscMsg, ws);
         ws._lastActivityAt = Date.now();
@@ -467,6 +464,7 @@ function start(cfg) {
 
       const prevDb = levelCache.get(key);
       levelCache.set(key, val);
+      pacer.cancel(`lvl:${ch}:${aux}`); // supersedes a queued preset write
       wing && wing.setSendLevel(ch, aux, val);
       broadcastToClients(oscMsg, ws);
 
@@ -474,7 +472,7 @@ function start(cfg) {
       let direction = null;
       if (typeof prevDb === 'number' && val !== prevDb) direction = val > prevDb ? 'up' : 'down';
       shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'level', direction }, ws);
-    });
+    }));
 
     ws.on('close', () => {
       connections = connections.filter(c => c !== ws);
@@ -486,37 +484,84 @@ function start(cfg) {
 
   // ── WING UDP client ──────────────────────────────────────────────────────
   if (!cfg.deskIp) {
-    logEvent('wing-error', 'Console IP Address is not set in the Setup tab — nothing to connect to.');
+    logEvent('wing-error', 'Console IP Address is not set on the Console tab — nothing to connect to.');
   }
   const wingPort = Number.isInteger(cfg.wingPort) && cfg.wingPort > 0 && cfg.wingPort <= 65535 ? cfg.wingPort : 2223;
   wing = new WingClient({ host: cfg.deskIp, port: wingPort });
-  wing.on('open', async () => {
+  wing.on('open', () => {
     logEvent('wing-open', `sending to ${cfg.deskIp}:${wing.port}`);
-    // A real round trip, not just "did the local socket bind" — see
-    // wing-client.js's checkConnected().
-    const alive = await wing.checkConnected();
-    consoleConnected = alive;
-    if (onConsoleStatusChange) onConsoleStatusChange(alive);
-    logEvent(alive ? 'console-connect' : 'console-error', alive ? cfg.deskIp : 'no reply from console — check the IP and that the console is powered on');
-    if (!alive) return;
-
-    for (let i = 1; i <= (serverCfg.channels || 40); i++) {
-      const ch = i;
-      enqueuePrime(async () => {
-        const name = await wing.getChannelName(ch);
-        if (typeof name === 'string' && name) nameCache.set(`input:${ch}`, name);
-      });
-    }
-    startPriming();
+    checkLiveness(wing, true);
+    // Re-checked on a timer, not just once: started before the WING booted,
+    // it used to stay "disconnected" with no channel names all session; a
+    // WING that dropped later still showed connected.
+    if (livenessTimer) clearInterval(livenessTimer);
+    livenessTimer = setInterval(() => checkLiveness(wing, false), LIVENESS_MS);
   });
   wing.on('error', (err) => logEvent('wing-error', err.message || err.code || String(err)));
   wing.connect();
 }
 
+// A real round trip, not just "did the local socket bind" — see
+// wing-client.js's checkConnected(). Status is only reported on a change.
+const LIVENESS_MS = 5000;
+let livenessTimer = null;
+let livenessChecking = false;
+async function checkLiveness(client, first) {
+  if (!client || livenessChecking) return;
+  livenessChecking = true;
+  let alive;
+  try { alive = await client.checkConnected(); } finally { livenessChecking = false; }
+  if (wing !== client) return; // stopped meanwhile
+  if (!first && alive === consoleConnected) return;
+  consoleConnected = alive;
+  if (onConsoleStatusChange) onConsoleStatusChange(alive);
+  logEvent(alive ? 'console-connect' : 'console-error', alive ? serverCfg.deskIp : 'no reply from console — check the IP and that the console is powered on');
+  if (!alive) return;
+  // Back after a drop: a console that restarted has every send on again,
+  // while phones still show their mutes. Switch the silenced ones back off.
+  if (!first) {
+    for (const [key, entry] of silencedSends) {
+      if (!entry.wasOn) continue;
+      const [ch, bus] = key.split(':').map(Number);
+      pacer.write(`on:${key}`, () => wing && wing.setSendOn(ch, bus, false), true);
+    }
+  }
+  for (let i = 1; i <= (serverCfg.channels || 40); i++) {
+    const ch = i;
+    enqueuePrime(async () => {
+      const name = wing && await wing.getChannelName(ch);
+      if (typeof name === 'string' && name) nameCache.set(`input:${ch}`, name);
+    });
+  }
+  startPriming();
+}
+
 function stop() {
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+  if (livenessTimer) { clearInterval(livenessTimer); livenessTimer = null; }
   stopPriming();
-  if (wing) { wing.removeAllListeners(); wing.disconnect(); wing = null; }
+  pacer.flush(); // queued writes are the state people asked for
+  // Turn back on every send a mute/solo switched off. start() forgets this
+  // state, so leaving them off stranded channels silent while phones showed
+  // nothing muted, with no way to unmute them.
+  if (wing) {
+    for (const [key, entry] of silencedSends) {
+      if (!entry.wasOn) continue;
+      const [ch, aux] = key.split(':').map(Number);
+      wing.setSendOn(ch, aux, true);
+    }
+  }
+  silencedSends.clear();
+  // Close on the next turn: UDP sends queued in this tick are dropped if the
+  // socket closes now (measured on DiGiCo — see osc-server.js's stop()).
+  let closed = Promise.resolve();
+  if (wing) {
+    const closing = wing;
+    wing = null;
+    closing.removeAllListeners();
+    closing.on('error', () => {});
+    closed = new Promise((resolve) => setImmediate(() => { closing.disconnect(); resolve(); }));
+  }
   // Same fix as osc-server.js's stop() — wss.close() alone leaves already-
   // upgraded sockets open, detached from the HTTP server's own tracking.
   if (wss) { for (const c of wss.clients) { try { c.terminate(); } catch (_) {} } wss.close(); wss = null; }
@@ -524,9 +569,11 @@ function stop() {
   consoleConnected = false;
   if (onConsoleStatusChange) onConsoleStatusChange(false);
   levelCache.clear();
+  pacer.clear();
   panCache.clear();
   connections = [];
   console.log('[JPMixer/WING] Server stopped');
+  return closed;
 }
 
 function getChannelNames() {
@@ -535,6 +582,20 @@ function getChannelNames() {
   return out;
 }
 function getAuxNames() { return {}; } // no live bus-name cache maintained in this pass
+// Save & Apply for settings that don't need a reconnect (labels, colours,
+// order, visibility, scene recall…). It used to restart this backend on
+// every save, which dropped every phone mid-service. Everything here reads
+// serverCfg when it runs, so swapping it in and re-sending the layout is
+// enough; phones refill their faders from levelCache, nothing goes to the desk.
+function applyConfigLive(cfg) {
+  serverCfg = cfg;
+  logEvent('config-live', `pushed to ${connections.length} clients`);
+  if (!wss) return;
+  const msg = JSON.parse(buildConfig());
+  msg.config.liveUpdate = true;
+  broadcastToClients(msg);
+}
+
 function getChannelCount() { return null; }
 function getAuxCount() { return null; }
 
@@ -559,8 +620,8 @@ function pushDevicePresets(deviceId) {
   shared.pushDevicePresets(connections, deviceId);
 }
 
-module.exports = { pushDevicePresets,
-  start, stop, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
+module.exports = { getConnectedDevicesInfo, pushDevicePresets,
+  start, stop, applyConfigLive, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,
   startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder,

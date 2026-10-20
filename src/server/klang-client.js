@@ -44,20 +44,22 @@ class KlangClient extends EventEmitter {
     this._udp = null;
   }
 
-  _send(msg) {
+  // Takes a builder so a bad value (e.g. Infinity) that makes the protocol
+  // encoder throw is caught here as a failed send, not thrown at the caller.
+  _send(build) {
     if (!this._udp || !this.ready) return false;
-    try { this._udp.send(msg, this.host, this.port); return true; }
+    try { this._udp.send(build(), this.host, this.port); return true; }
     catch (_) { return false; }
   }
 
-  setGain(mix, ch, db)        { return this._send(K.gainDbMessage(mix, ch, db)); }
-  setMute(mix, ch, on)        { return this._send(K.muteMessage(mix, ch, on)); }
-  setSolo(mix, ch, on)        { return this._send(K.soloMessage(mix, ch, on)); }
-  setName(mix, ch, name)      { return this._send(K.nameMessage(mix, ch, name)); }
-  setColour(mix, ch, hex)     { return this._send(K.colourMessage(mix, ch, hex)); }
-  setPan(mix, ch, deg)        { return this._send(K.panMessage(mix, ch, deg)); }
-  setMixGain(mix, db)         { return this._send(K.mixGainDbMessage(mix, db)); }
-  setMixName(mix, name)       { return this._send(K.mixNameMessage(mix, name)); }
+  setGain(mix, ch, db)        { return this._send(() => K.gainDbMessage(mix, ch, db)); }
+  setMute(mix, ch, on)        { return this._send(() => K.muteMessage(mix, ch, on)); }
+  setSolo(mix, ch, on)        { return this._send(() => K.soloMessage(mix, ch, on)); }
+  setName(mix, ch, name)      { return this._send(() => K.nameMessage(mix, ch, name)); }
+  setColour(mix, ch, hex)     { return this._send(() => K.colourMessage(mix, ch, hex)); }
+  setPan(mix, ch, deg)        { return this._send(() => K.panMessage(mix, ch, deg)); }
+  setMixGain(mix, db)         { return this._send(() => K.mixGainDbMessage(mix, db)); }
+  setMixName(mix, name)       { return this._send(() => K.mixNameMessage(mix, name)); }
 }
 
 module.exports = { KlangClient };

@@ -12,6 +12,10 @@ const presets  = require('./presets');
 const shared   = require('./shared-handlers');
 const config   = require('./config');
 const { mountGreenRoom } = require('./greenroom');
+const { mountBranding } = require('./branding');
+const channelProcessing = require('./digico-channel');
+const { mountPerformerAssignments } = require('./performer-assignments');
+const { mountFoh } = require('./foh');
 
 let httpServer    = null;
 let wss           = null;
@@ -154,6 +158,56 @@ let connections = [];
 
 // True once all console metadata has been loaded
 let loaded = false;
+
+// ── Desk liveness ──
+// UDP has no connection, so once the names had loaded nothing ever said the
+// desk had gone: powered off or unplugged, Settings stayed "Connected" and
+// phones kept "working" with nothing reaching the desk. A DiGiCo is silent
+// while nothing changes, so after DESK_QUIET_MS without a message a cheap
+// query goes out (one the desk is known to answer — seen in a real
+// recording); no reply within DESK_PROBE_MS means disconnected. The first
+// message back marks it connected again and re-sends every phone mute, since
+// a desk that restarted has lost the -150 writes behind them.
+let deskAlive = false;
+let deskLastHeardAt = 0;
+let deskProbeSentAt = 0;
+let deskWatchTimer = null;
+const DESK_QUIET_MS = 8000;
+const DESK_PROBE_MS = 5000;
+const DESK_PROBE_ADDRESS = '/Console/Session/Filename/?';
+
+function noteDeskHeard() {
+  deskLastHeardAt = Date.now();
+  deskProbeSentAt = 0;
+  if (loaded && !deskAlive) {
+    deskAlive = true;
+    logEvent('console-back', 'the desk is answering again — re-sending mutes and refreshing open mixes');
+    if (onConsoleStatusChange) onConsoleStatusChange(true);
+    reassertMuteSolo();
+    if (cache.has('/Console/Input_Channels') && cache.has('/Console/Aux_Outputs/modes')) queueActiveAuxRefresh();
+  }
+}
+
+function watchDesk() {
+  if (!udpPort || !loaded) return;
+  const now = Date.now();
+  if (now - deskLastHeardAt < DESK_QUIET_MS) return;
+  if (deskProbeSentAt && now - deskProbeSentAt < DESK_PROBE_MS) return; // probe still out
+  if (deskProbeSentAt && deskAlive) {
+    deskAlive = false;
+    logEvent('console-lost', `no answer from ${serverCfg.deskIp} for ${Math.round((now - deskLastHeardAt) / 1000)}s`);
+    if (onConsoleStatusChange) onConsoleStatusChange(false);
+  }
+  deskProbeSentAt = now;
+  sendToDesk(DESK_PROBE_ADDRESS, []);
+}
+
+// Every phone mute and solo, re-sent as -150 to the desk (applyMuteSolo only
+// writes silenced channels and anything coming out of silence)
+function reassertMuteSolo() {
+  const auxes = new Set([...Object.keys(muteState), ...Object.keys(soloState)]);
+  for (const aux of auxes) applyMuteSolo(aux);
+}
 
 // Callback fired when console connected/disconnected
 let onConsoleStatusChange = null;
@@ -403,16 +457,16 @@ function processDeskSendLevel(msg) {
   if (!premuteState[aux]) premuteState[aux] = {};
   const db = msg.args[0];
   if (db !== -150 || premuteState[aux][ch] === undefined) premuteState[aux][ch] = db;
-  if (db !== -150) sendToDeskPaced(msg.address, [-150]);
+  // Urgent: a snapshot change restores sends on the desk while it also
+  // queues hundreds of Ear Scene writes, and this channel must not stay
+  // audible behind them while every phone shows it muted.
+  if (db !== -150) sendToDeskPaced(msg.address, [-150], true);
   return { ...msg, args: [premuteState[aux][ch], ...msg.args.slice(1)] };
 }
 
 // ── Scene recall ───────────────────────────────────────────────────────────
 
-function sliderToDb(v) {
-  const db = ((Math.log(v * 100) / Math.log(100)) * 100) - 90;
-  return db === -Infinity ? -150 : db;
-}
+const sliderToDb = shared.sliderToDb; // one clamped copy for every backend
 
 // Sends one aux's saved scene values to the desk (paced — see sendToDeskPaced)
 // and updates server-side caches right away, so the cache, the clients and
@@ -433,8 +487,10 @@ function pushSceneValuesToDesk(auxStr, values) {
 
   for (const [chStr, sliderVal] of Object.entries(values)) {
     const ch = parseInt(chStr);
-    if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal)) continue;
-    const address = `/Input_Channels/${chStr}/Aux_Send/${auxStr}/send_level`;
+    // 0..1 only, and the address from the parsed numbers: "3x" or a negative
+    // position used to go to the desk as a malformed address or a NaN level.
+    if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
+    const address = `/Input_Channels/${ch}/Aux_Send/${aux}/send_level`;
     const db = sliderToDb(sliderVal);
     const muted    = !!(muteState[aux]?.[ch]);
     const soloed   = !!(soloState[aux]?.[ch]);
@@ -447,7 +503,7 @@ function pushSceneValuesToDesk(auxStr, values) {
     if (silenced) {
       // Channel is silenced — store real level so unmute restores to the recalled value
       premuteState[aux][ch] = db;
-      sendToDeskPaced(address, [-150]);
+      sendToDeskPaced(address, [-150], true); // silencing always jumps the queue
     } else {
       delete premuteState[aux][ch];
       sendToDeskPaced(address, [db]);
@@ -508,6 +564,7 @@ function buildConfig(extra) {
       icon:      '',
       eqEnabled: ov.eqEnabled === true,
       linkOnly:  ov.linkOnly === true,
+      groups:    shared.auxGroupNames(ov, serverCfg),
     });
   }
 
@@ -515,53 +572,7 @@ function buildConfig(extra) {
     ? cache.get('/Console/Input_Channels').args[0]
     : (serverCfg.channels || 48);
 
-  const cfgGroups    = serverCfg.channelGroups    || [];
-  const cfgOverrides = serverCfg.channelOverrides || {};
-
-  // Map group id → sort index
-  const groupOrder = {};
-  cfgGroups.forEach((g, i) => { groupOrder[String(g.id)] = i; });
-
-  // Build raw channels with overrides applied
-  const raw = [];
-  for (let i = 1; i <= chCount; i++) {
-    const ov = cfgOverrides[String(i)] || {};
-    const consoleLabel = cache.has(`/Input_Channels/${i}/Channel_Input/name`)
-      ? cache.get(`/Input_Channels/${i}/Channel_Input/name`).args[0] : '';
-    raw.push({
-      channel: i,
-      enabled: ov.enabled !== false,
-      label:   ov.label || consoleLabel || '',
-      icon:    ov.icon || '',
-      groupId: ov.groupId || null,
-      order:   ov.order  !== undefined ? ov.order : i,
-    });
-  }
-
-  // Sort: by group first, then by custom order within each group
-  raw.sort((a, b) => {
-    const ga = a.groupId !== null ? (groupOrder[String(a.groupId)] ?? 9999) : 9999;
-    const gb = b.groupId !== null ? (groupOrder[String(b.groupId)] ?? 9999) : 9999;
-    if (ga !== gb) return ga - gb;
-    return a.order - b.order;
-  });
-
-  // Inject section titles at first channel of each group
-  const channels = [];
-  let lastGroupId;
-  raw.forEach((ch, idx) => {
-    const isFirst = ch.groupId !== lastGroupId;
-    lastGroupId = ch.groupId;
-    const group = cfgGroups.find(g => String(g.id) === String(ch.groupId));
-    channels.push({
-      enabled: ch.enabled,
-      label:   ch.label,
-      channel: ch.channel,
-      order:   idx,
-      title:   (isFirst && group) ? group.name : '',
-      icon:    ch.icon,
-    });
-  });
+  const channels = shared.buildChannelList(chCount, serverCfg, i => cache.has(`/Input_Channels/${i}/Channel_Input/name`) ? cache.get(`/Input_Channels/${i}/Channel_Input/name`).args[0] : '');
 
   const cgCount = cache.has('/Console/Control_Groups')
     ? cache.get('/Console/Control_Groups').args[0]
@@ -583,6 +594,7 @@ function buildConfig(extra) {
       controlGroups,
       snapshot: currentSnapshotName,
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
+      earScenes: serverCfg.performerEarScenes !== false, // Settings: Ear Scenes on performer phones
       scenes: scenes.getAll(),
       mutes: muteState,
       solos: soloState,
@@ -604,6 +616,7 @@ const CACHE_PATTERNS = [
   /^\/Input_Channels\/\d+\/Aux_Send\/\d+\/send_level$/,
   /^\/Input_Channels\/\d+\/Aux_Send\/\d+\/send_pan$/,
   /^\/Aux_Outputs\/\d+\/EQ\//,
+  channelProcessing.CACHE_RE, // input channel gain/EQ/dynamics… for the Console Controller's channel panel
 ];
 
 function maybeCacheResponse(msg) {
@@ -621,14 +634,17 @@ function maybeCacheResponse(msg) {
 // loads and mute/solo re-applies. A snapshot change used to write every
 // channel of every aux with a scene in one synchronous loop (16 auxes × 50
 // channels = 800 UDP packets at once), against the "never burst the desk"
-// rule above, and enough to drop packets on a busy network. Now a few go out
-// per tick. Keyed by address: a newer queued value replaces an older one, and
-// a direct sendToDesk() to the same address (a live fader move) cancels the
-// queued write so it can't land late and undo the move.
-// Tune on real hardware — 8 per 10ms ≈ 800/s: one aux of 50 channels lands in
-// ~70ms, a full 800-message recall in ~1s.
-const DESK_SET_BATCH   = 8;
-const DESK_SET_TICK_MS = 10;
+// rule above, and enough to drop packets on a busy network. Now one goes out
+// per tick, at the exact same 1-per-100ms cadence as deskQueryTimer above —
+// the only desk-traffic rate this project actually has real-world evidence
+// is safe (query bursts are what caused the CommandBridge.dll crash this
+// pacing discipline exists to avoid). An earlier version of this queue used
+// 8 per 10ms (~800/s, ~80x faster) as an untested guess; that's reverted
+// until it's actually been validated against real hardware — a full
+// 800-message recall now takes ~80s to drain rather than ~1s, which is slow,
+// but a crashed desk mid-show is worse than a slow one.
+const DESK_SET_BATCH   = 1;
+const DESK_SET_TICK_MS = 100;
 const deskSetQueue  = new Map(); // address → args
 // Mute/solo writes jump the queue — a performer killing feedback must not
 // wait behind a snapshot's worth of Ear Scene writes (up to ~1s).
@@ -636,6 +652,9 @@ const deskSetUrgent = new Map();
 let deskSetTimer    = null;
 
 function sendToDeskPaced(address, args, urgent = false) {
+  // An address already waiting in the urgent lane stays there: a bulk write
+  // to the same send (a recall) must not push a pending mute to the back.
+  urgent = urgent || deskSetUrgent.has(address);
   // re-insert so send order follows the latest write; an address lives in one lane only
   deskSetQueue.delete(address);
   deskSetUrgent.delete(address);
@@ -666,8 +685,16 @@ function clearDeskSetQueue() {
 // On stop, queued writes are the desk state people asked for — an unmute's
 // restore, the rest of a recall. Dropping them left unmuted channels at -150
 // on the desk (their premute level was already handed to the queue). Sending
-// the remainder at once is a burst, but only of whatever hadn't drained yet
-// (the queue empties at ~800/s), and only at shutdown or a restart.
+// the remainder at once is a burst, but only of whatever hadn't drained yet,
+// and only at shutdown or a restart. NOTE: now that the steady-state queue
+// is paced at 1/100ms (see DESK_SET_BATCH above, slowed from an untested
+// 800/s), a stop/restart that lands mid-recall can have a meaningfully
+// larger backlog still queued than before — this flush still bursts all of
+// it at once rather than pacing it out. That's an intentional, narrower
+// trade (a restart landing exactly mid-recall is rare, and main.js's quit
+// path only allows ~1s for stop() to finish anyway), but it's worth
+// revisiting with real hardware if a full-recall-then-immediate-restart
+// turns out to be a real pattern in practice.
 function flushDeskSetQueue() {
   if (deskSetTimer) { clearInterval(deskSetTimer); deskSetTimer = null; }
   const pending = [...deskSetUrgent, ...deskSetQueue];
@@ -753,6 +780,10 @@ function noteUnknownSender(ip, oscMsg) {
   rec.messages++;
   rec.lastAddress = oscMsg.address;
   if (oscMsg.address.endsWith('/?')) rec.asksQuestions = true;
+  // Replies to console queries (session, snapshot and channel names) only
+  // come from a desk: this is probably the console, on an address other
+  // than the one in Settings
+  if (!oscMsg.address.endsWith('/?') && /^\/(Console|Snapshots)\/|^\/Input_Channels\/\d+\/Channel_Input\/name$/.test(oscMsg.address)) rec.looksLikeConsole = true;
   unknownSenders.set(ip, rec);
 }
 
@@ -766,7 +797,7 @@ function getIpadStatus() {
     })),
     unknownSenders: [...unknownSenders.entries()]
       .filter(([, r]) => now - r.lastAt < 5 * 60000)
-      .map(([ip, r]) => ({ ip, lastAt: r.lastAt, messages: r.messages, lastAddress: r.lastAddress, asksQuestions: r.asksQuestions }))
+      .map(([ip, r]) => ({ ip, lastAt: r.lastAt, messages: r.messages, lastAddress: r.lastAddress, asksQuestions: r.asksQuestions, looksLikeConsole: !!r.looksLikeConsole }))
   };
 }
 
@@ -907,6 +938,9 @@ function loadNextRequiredParameter() {
   sendToDesk('/Snapshots/Current_Snapshot/?', []);
 
   loaded = true;
+  deskAlive = true;
+  deskLastHeardAt = Date.now();
+  deskProbeSentAt = 0;
   clearTimeout(metadataFetchTimer);
   metadataFetchTimer = null;
   logEvent('metadata-loaded', `clients:${connections.length}`);
@@ -1182,7 +1216,7 @@ function startWebSocketServer() {
           for (const [chStr, val] of Object.entries(msg.pans || {})) {
             const ch = parseInt(chStr);
             if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(val)) continue;
-            const addr = `/Input_Channels/${chStr}/Aux_Send/${auxStr}/send_pan`;
+            const addr = `/Input_Channels/${ch}/Aux_Send/${auxNum}/send_pan`;
             sendToDeskPaced(addr, [val]);
             cache.set(addr, { address: addr, args: [val] });
           }
@@ -1278,6 +1312,35 @@ function startWebSocketServer() {
         const liveChMax  = cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
         const liveAuxMax = cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
         const liveCgMax  = cache.has('/Console/Control_Groups') ? cache.get('/Console/Control_Groups').args[0] : (serverCfg.groups || 8);
+
+        // Console page — one channel's processing panel (gain, filters, EQ,
+        // dynamics…; see digico-channel.js). What's cached is sent straight
+        // away; the rest is asked for one query per tick, the section the
+        // engineer is looking at first, never in a burst.
+        if (msg.type === 'request-channel-detail') {
+          const ch = parseInt(msg.ch);
+          if (isNaN(ch) || ch < 1 || ch > liveChMax) return;
+          const prefix = `/Input_Channels/${ch}/`;
+          const values = {};
+          for (const p of Object.keys(channelProcessing.PARAMS)) if (cache.has(prefix + p)) values[p] = cache.get(prefix + p).args[0];
+          ws.send(JSON.stringify({ type: 'channel-detail', ch, params: channelProcessing.PARAMS, values }));
+          queueDeskQueries(channelProcessing.pathsInOrder(msg.section).filter(p => !cache.has(prefix + p)).map(p => `${prefix}${p}/?`), true);
+          return;
+        }
+
+        // Console page — set one channel-processing control. Only the controls
+        // in digico-channel.js, clamped to their range, ever reach the desk.
+        if (msg.type === 'console-param') {
+          const ch = parseInt(msg.ch);
+          if (isNaN(ch) || ch < 1 || ch > liveChMax) return;
+          const value = channelProcessing.clampValue(String(msg.path), msg.value);
+          if (value === null) return;
+          const address = `/Input_Channels/${ch}/${msg.path}`;
+          sendToDesk(address, [value]);
+          cache.set(address, { address, args: [value] });
+          broadcastToClients({ address, args: [value] }, ws);
+          return;
+        }
 
         // Console page — main channel fader. Fader broadcasts skip the sender:
         // echoing its own (by then older) position back makes the thumb jitter.
@@ -1524,8 +1587,31 @@ function startDemoMode() {
     }
   }
 
+  // Channel processing for the Console Controller's channel panel: typical
+  // values, in the ranges a real SD reported (see digico-channel.js)
+  const demoProcessing = {
+    'Channel_Input/analog_gain': 24, 'Channel_Input/trim': 0, 'Channel_Input/phantom': 0, 'Channel_Input/phase': 0,
+    'Panner/pan': 0.5, 'Filters/lo_filter_in': 1, 'Filters/lo_filter_freq': 80, 'Filters/hi_filter_in': 0, 'Filters/hi_filter_freq': 18000,
+    'Channel_Delay/delay_on': 0, 'Channel_Delay/delay': 0, 'Insert/insert_A_in': 0, 'Insert/insert_B_in': 0, 'EQ/eq_in': 1,
+    'Dynamics/comp_in': 0, 'Dynamics/comp_thresh_1': -20, 'Dynamics/comp_ratio_1': 3, 'Dynamics/comp_attack_1': 0.01, 'Dynamics/comp_release_1': 0.5,
+    'Dynamics/comp_gain_1': 0, 'Dynamics/comp_knee_1': 0, 'Dynamics/comp_auto-gain_1': 0, 'Dynamics/gate_in': 0, 'Dynamics/gate_thresh': -44,
+    'Dynamics/gate_range': 40, 'Dynamics/gate_attack': 0.002, 'Dynamics/gate_hold': 0.13, 'Dynamics/gate_release': 0.14,
+  };
+  [6300, 1600, 300, 100].forEach((f, i) => {
+    const b = i + 1;
+    Object.assign(demoProcessing, { [`EQ/eq_freq_${b}`]: f, [`EQ/eq_gain_${b}`]: 0, [`EQ/eq_Q_${b}`]: 0.71, [`EQ/dynamic_eq_on_${b}`]: 0,
+      [`EQ/eq_thresh_${b}`]: -36, [`EQ/eq_ratio_${b}`]: 2, [`EQ/eq_attack_${b}`]: 0.01, [`EQ/eq_release_${b}`]: 0.3 });
+  });
+  for (let ch = 1; ch <= chCount; ch++) {
+    for (const [p, v] of Object.entries(demoProcessing)) {
+      const addr = `/Input_Channels/${ch}/${p}`;
+      cache.set(addr, { address: addr, args: [v] });
+    }
+  }
+
   currentSnapshotName = 'DEMO';
   loaded = true;
+  deskAlive = true;
   logEvent('demo-mode', `channels:${chCount} auxes:${auxCount}`);
   if (onConsoleStatusChange) onConsoleStatusChange(true);
   startWebSocketServer();
@@ -1576,6 +1662,9 @@ function start(cfg) {
   app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '1-To-70-SVG-Files-MusicalInstrumentsBundle'), ICON_CACHE));
   app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '71-To-120-SVG-Files-MusicalInstrumentsBundle'), ICON_CACHE));
   mountGreenRoom(app);
+  mountBranding(app);
+  mountPerformerAssignments(app);
+  mountFoh(app, { isConsoleConnected, getConnectionCount });
 
   // Diagnostic endpoints — localhost only to keep rig topology off the venue network
   const diagOnly = (req, res, next) => {
@@ -1697,6 +1786,8 @@ function start(cfg) {
       return;
     }
 
+    noteDeskHeard();
+
     // Session change — reload data without dropping clients
     if (oscMsg.address === '/Console/Session/!') {
       // iPads need this too — the DiGiCo app re-syncs on it. It used to return
@@ -1724,6 +1815,7 @@ function start(cfg) {
         clearDeskSetQueue(); // writes meant for the old session
         cancelSceneRecall();
         loaded = false;
+        deskAlive = false;
         if (onConsoleStatusChange) onConsoleStatusChange(false);
         if (cachePrimeInterval) { clearInterval(cachePrimeInterval); cachePrimeInterval = null; }
         fetchValues();
@@ -1779,6 +1871,16 @@ function start(cfg) {
           if (prop === 'name' || (prop === 'Channel_Input' && p[4] === 'name')) { bcast(); return; }
         }
       }
+    }
+
+    // A channel renamed on the desk: tell phones the label to show, with a
+    // Settings label still winning (same rule as buildConfig). Phones used
+    // to apply the raw name themselves and overwrote the wrong row.
+    const deskChName = oscMsg.address.match(/^\/Input_Channels\/(\d+)\/Channel_Input\/name$/);
+    if (deskChName) {
+      const n = parseInt(deskChName[1], 10);
+      const ov = (serverCfg.channelOverrides || {})[String(n)] || {};
+      broadcastToClients({ type: 'channel-relabeled', channel: n, label: ov.label || String(oscMsg.args[0] ?? '') });
     }
 
     // Browser clients only. iPads were already sent the desk's real value
@@ -1840,6 +1942,8 @@ function start(cfg) {
 
   udpPort.on('ready', fetchValues);
   udpPort.open();
+  if (deskWatchTimer) clearInterval(deskWatchTimer);
+  deskWatchTimer = setInterval(watchDesk, 2000);
 
   // iPad OSC relay — shares the main UDP port. iPads send to JPMixer's main listen port;
   // messages are routed by source IP. JPMixer sends replies to each iPad's sendPort.
@@ -1854,6 +1958,8 @@ function stop() {
   if (cachePrimeInterval)  { clearInterval(cachePrimeInterval);   cachePrimeInterval  = null; }
   if (pingInterval)        { clearInterval(pingInterval);         pingInterval        = null; }
   if (sessionReloadTimer)  { clearTimeout(sessionReloadTimer);    sessionReloadTimer  = null; }
+  if (deskWatchTimer)      { clearInterval(deskWatchTimer);       deskWatchTimer      = null; }
+  deskAlive = false;
   if (oscLogFlushTimer)    { clearInterval(oscLogFlushTimer);     oscLogFlushTimer    = null; }
   if (oscLogRecordStream)  { stopOscLogRecording(); }
   clearDeskQueries();
@@ -1940,7 +2046,7 @@ function getAuxCount() {
   return cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : null;
 }
 
-function isConsoleConnected() { return loaded; }
+function isConsoleConnected() { return loaded && deskAlive; }
 function setConsoleStatusCallback(cb) { onConsoleStatusChange = cb; }
 
 function setConnectionCountCallback(cb) { onConnectionCountChange = cb; }
@@ -1967,4 +2073,4 @@ function pushDevicePresets(deviceId) {
 function getOscLog() { return oscLog; }
 function setOscTrafficCallback(cb) { onOscTraffic = cb; }
 
-module.exports = { start, stop, applyConfigLive, getIpadStatus, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };
+module.exports = { getConnectedDevicesInfo, start, stop, applyConfigLive, getIpadStatus, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };

@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Updating JPMixer</title>
+<style>
+  /* Progress for an in-app update (main.js installUpdate). main.js calls
+     show(fraction, text) as the download and install go. */
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #15171c; color: #e8e9ec; font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-user-select: none; cursor: default; }
+  body { display: grid; align-content: center; gap: 14px; padding: 0 28px; box-sizing: border-box; -webkit-app-region: drag; }
+  img { width: 132px; height: auto; filter: drop-shadow(0 0 6px rgba(255, 40, 88, .35)); }
+  #title { font-weight: 600; }
+  .bar { height: 6px; border-radius: 6px; background: rgba(232, 0, 60, .18); overflow: hidden; }
+  #fill { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #e8003c, #ff2858); transition: width 200ms ease; }
+  .bar.busy #fill { width: 35% !important; animation: busy 1200ms ease-in-out infinite; }
+  @keyframes busy { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+  #detail { color: #9ba0aa; font-size: 12px; min-height: 18px; }
+</style>
+</head>
+<body>
+  <img src="../../mixer/brand/jpmixer-wordmark.svg" alt="JPMixer">
+  <div id="title">Updating JPMixer</div>
+  <div class="bar" id="bar"><div id="fill"></div></div>
+  <div id="detail">Starting…</div>
+  <script>
+    // fraction: 0..1 for a known amount, null for a step with no progress to show
+    function show(fraction, text, title) {
+      const bar = document.getElementById('bar');
+      bar.classList.toggle('busy', fraction === null);
+      if (fraction !== null) document.getElementById('fill').style.width = Math.round(fraction * 100) + '%';
+      if (text) document.getElementById('detail').textContent = text;
+      if (title) document.getElementById('title').textContent = title;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en" data-jpm-view="foh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>FOH Home — JPMixer</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
+  <link rel="stylesheet" href="foh.css" />
+  <link rel="stylesheet" href="splash.css" />
+  <link rel="stylesheet" href="original-theme.css" />
+  <link rel="stylesheet" href="/branding.css" /><!-- custom accent/logo, last so it wins -->
+  <script src="brand.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="alternate icon" href="favicon.png" type="image/png" />
+</head>
+<body>
+  <script src="splash.js"></script>
+  <header class="fh-header">
+    <div class="fh-brand jp-brand" aria-label="JPMixer"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /><img class="jp-emblem" src="brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption">FOH HOME</span></div>
+    <div class="fh-header-actions">
+      <span class="fh-badge" id="fhConsoleBadge" role="status">Console: —</span>
+      <span class="fh-badge" id="fhDeviceBadge" role="status">— devices</span>
+      <span class="fh-status" id="fhStatus" role="status">Loading…</span>
+      <a class="fh-switch" href="home.html">All Home pages</a>
+      <button type="button" id="fhRefresh">Refresh</button>
+    </div>
+  </header>
+  <main class="fh-main">
+    <!-- Shown when FOH Home needs its access code (Settings → Pages → FOH Home) -->
+    <section class="fh-lock" id="fhLock" hidden aria-labelledby="fhLockTitle">
+      <form class="fh-lock-card" id="fhLockForm">
+        <p class="fh-eyebrow">FOH HOME</p>
+        <h1 id="fhLockTitle">Enter the access code</h1>
+        <p class="fh-lock-sub">Ask the engineer for the code. This browser remembers it.</p>
+        <input id="fhLockCode" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32" aria-label="Access code" required />
+        <button type="submit" id="fhLockSubmit">Unlock</button>
+        <p class="fh-lock-error" id="fhLockError" role="alert"></p>
+      </form>
+    </section>
+    <section class="fh-welcome" aria-label="Welcome">
+      <div class="fh-photo-wrap">
+        <div class="fh-photo-fallback" id="fhPhotoFallback"><img class="jp-fallback-logo" src="brand/jp-monogram.svg" alt="JPMixer" width="64" height="32" /></div>
+      </div>
+      <div class="fh-welcome-text">
+        <p class="fh-eyebrow">WELCOME</p>
+        <h1 id="fhWelcomeName">FOH Engineer</h1>
+        <p class="fh-plan" id="fhPlanLine"></p>
+        <p class="fh-live-badge" id="fhLiveBadge" hidden><span class="fh-live-dot" aria-hidden="true"></span>LIVE: <span id="fhLiveTitle"></span></p>
+      </div>
+    </section>
+    <p class="fh-notice" id="fhNotice" role="status" hidden></p>
+    <section class="fh-layout-toolbar" aria-label="Page layout">
+      <div><h2>Your workspace</h2><p id="fhLayoutStatus" role="status">Layout saves in this browser.</p></div>
+      <div class="fh-layout-actions">
+        <button type="button" id="fhArrange" aria-pressed="false">Arrange page</button>
+        <button type="button" id="fhLayoutSave" disabled title="Saves this arrangement for the team member scheduled on this page">Save layout</button>
+        <button type="button" id="fhLayoutUndo" hidden disabled>Undo</button>
+        <button type="button" id="fhLayoutReset" hidden>Reset layout</button>
+        <details id="fhCardVisibility" hidden><summary>Show / hide cards</summary><div id="fhCardVisibilityList"></div></details>
+      </div>
+    </section>
+    <p class="fh-layout-hint" id="fhLayoutHint" hidden>Drag a handle or use the move buttons. Drag a card’s lower-right corner to resize, or use its size menus. <span class="fh-layout-phone-hint">On phones, cards fit the screen width.</span></p>
+    <div class="fh-dashboard" id="fhDashboard">
+
+      <section class="fh-card fh-layout-card" data-fh-card="live" aria-label="Live">
+        <h2>Live</h2>
+        <div class="fh-card-body" id="fhLiveCard" aria-busy="true"></div>
+      </section>
+      <section class="fh-card fh-layout-card" data-fh-card="team" aria-label="Team">
+        <h2 id="fhRosterHeading">Team</h2>
+        <div class="fh-card-body" id="fhRoster" aria-busy="true"></div>
+      </section>
+      <section class="fh-card fh-layout-card" data-fh-card="order" aria-label="Order of Service">
+        <h2>Order of Service</h2>
+        <div class="fh-card-body" id="fhOrder" aria-busy="true"></div>
+      </section>
+      <section class="fh-card fh-layout-card" data-fh-card="chat" aria-label="Team chat">
+        <h2>Team chat</h2>
+        <div class="fh-card-body fh-chat-log" id="fhChatLog" role="log" aria-live="polite" aria-label="Team chat messages" data-empty="No messages yet. Say hi to the team."></div>
+        <form class="fh-chat-form" id="fhChatForm" autocomplete="off">
+          <input id="fhChatInput" type="text" maxlength="500" placeholder="Message the team" aria-label="Message the team" enterkeyhint="send" />
+          <button type="submit" id="fhChatSend">Send</button>
+        </form>
+        <p class="fh-chat-error" id="fhChatError" role="alert"></p>
+      </section>
+      <section class="fh-card fh-layout-card fh-companion-off" data-fh-card="companion" data-fh-default-size="wide" aria-label="Companion">
+        <h2>Companion</h2>
+        <div class="fh-card-body fh-companion">
+          <p class="fh-companion-status" id="fhCompanionStatus" role="status"></p>
+          <div class="fh-companion-grid is-offline" id="fhCompanionGrid" role="group" aria-label="Companion buttons"></div>
+        </div>
+      </section>
+
+      <article class="fh-layout-card fh-shortcut" data-fh-card="monitor" aria-label="Monitor Engineer">
+      <a class="fh-nav-card" href="monitor.html">
+        <span class="fh-nav-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><path d="M4 13v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="11" width="4" height="9" rx="2"/><rect x="17" y="11" width="4" height="9" rx="2"/></svg></span>
+        <h3>Ears Engineer</h3>
+        <p>Build monitor mixes for the band — the Monitor Engineer view.</p>
+      </a>
+      </article>
+      <article class="fh-layout-card fh-shortcut" data-fh-card="devices" aria-label="Devices">
+      <a class="fh-nav-card" href="devices.html">
+        <span class="fh-nav-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><rect x="2" y="3" width="11" height="16" rx="2"/><path d="M6 16h3"/><rect x="16" y="8" width="6" height="13" rx="1.5"/><path d="M18 18h2"/></svg></span>
+        <h3>Devices</h3>
+        <p>See every phone/iPad connected and what each one is mixing.</p>
+      </a>
+      </article>
+      <article class="fh-layout-card fh-shortcut" data-fh-card="console" aria-label="Console Controller">
+      <a class="fh-nav-card" href="console.html">
+        <span class="fh-nav-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><path d="M5 3v8m0 4v6M12 3v3m0 4v11m7-18v12m0 4v2"/><rect x="2.5" y="11" width="5" height="4" rx="1"/><rect x="9.5" y="6" width="5" height="4" rx="1"/><rect x="16.5" y="15" width="5" height="4" rx="1"/></svg></span>
+        <h3>Console Controller</h3>
+        <p>Full channel/aux control surface for the console.</p>
+      </a>
+      </article>
+    </div>
+    <p class="fh-layout-empty" id="fhLayoutEmpty" hidden>All cards are hidden. Select Arrange page to show them again.</p>
+    <footer class="fh-footer"><span>FOH HOME</span><span>Schedule refreshes every 2 minutes</span></footer>
+  </main>
+  <script src="foh-layout.js"></script>
+  <script src="foh.js"></script>
+  <script src="foh-chat.js"></script>
+  <script src="foh-companion.js"></script>
+</body>
+</html>

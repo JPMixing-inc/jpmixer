@@ -4,7 +4,7 @@ const path = require('path');
 const { app } = require('electron');
 const config = require('./config');
 const { toNullProto } = require('./safe-object');
-const { writeFileAtomic, loadJsonObject } = require('./safe-write');
+const { writeFileAtomic } = require('./safe-write');
 
 let _scenesPath = null;
 // Object.create(null), not {} — `snapshot` comes straight from a browser
@@ -27,62 +27,48 @@ function toSceneStore(data) {
 }
 
 // Empties the in-memory store without touching the file (the next save
-// writes it). Used at launch when Settings → "Clear Ear Scenes on launch" is
-// on, and by main.js when the Console Type changes mid-session — DiGiCo keys
-// scenes by snapshot name, dLive by scene number, and this store doesn't
-// otherwise know to clear itself just because the meaning of its keys
-// changed out from under it.
+// writes it). Used unconditionally at launch (see load() below), and by
+// main.js when the Console Type changes mid-session — DiGiCo keys scenes by
+// snapshot name, dLive by scene number, and this store doesn't otherwise
+// know to clear itself just because the meaning of its keys changed out
+// from under it.
 function clearOnStartup() {
   // Object.create(null), not {} — see the note on the initial declaration
   // above; a plain {} here would silently reintroduce the vulnerability.
   _scenes = Object.create(null);
 }
 
-// Ear Scenes are kept across launches by default. Wiping them on every launch
-// used to be unconditional — any quit, crash or reboot silently dropped every
-// saved scene — so it's now the opt-in "Clear Ear Scenes on launch" option.
-// Older versions wiped Ear Scenes in memory at launch but kept writing
-// scenes.json on every save, so on the first launch of a version that loads
-// it, the file may hold a past show's scenes — and auto-recall would push
-// them to the desk on the next snapshot change. On that first launch (no
-// scenes-meta.json yet), only a recently saved file is trusted; an older one
-// is copied aside for recovery and the store starts empty.
-const UPGRADE_SCENES_MAX_AGE_MS = 48 * 60 * 60 * 1000;
-
-function staleOnFirstUpgrade() {
-  const fs = require('fs');
-  if (fs.existsSync(metaPath())) return false;
-  try {
-    const age = Date.now() - fs.statSync(scenesPath()).mtimeMs;
-    if (age <= UPGRADE_SCENES_MAX_AGE_MS) return false;
-    const aside = scenesPath().replace(/\.json$/, '.before-upgrade.json');
-    fs.copyFileSync(scenesPath(), aside);
-    console.error(`[JPMixer] scenes.json last saved ${Math.round(age / 3600000)}h ago — not loading it on this first launch; copied to ${path.basename(aside)}`);
-    return true;
-  } catch (_) {
-    return false; // no scenes.json yet — nothing to skip
-  }
-}
-
+// Ear Scenes always start empty on launch, by design — they're the
+// session's working mixes, not permanent storage (My Mixes are the
+// permanent ones, in presets.js). scenes.json is still written on every
+// save() during a session (crash/quit resilience while running), but it is
+// deliberately never read back into memory at startup, so there is nothing
+// to migrate or validate the age of here.
 function load() {
-  if (config.get('clearScenesOnLaunch')) { clearOnStartup(); return; }
-  // Written empty right away (the old file is already copied aside) so a later
-  // launch can't pick the stale scenes back up
-  if (staleOnFirstUpgrade()) { clearOnStartup(); persist(); return; }
-  let corrupt = false;
-  const data = loadJsonObject(scenesPath(), app.getPath('userData'), 'scenes',
-    (msg) => { corrupt = true; console.error('[JPMixer] ' + msg); });
-  if (data) _scenes = toSceneStore(data);
-  if (corrupt) persist(); // the broken file was moved aside — write the recovered copy back
+  clearOnStartup();
 }
 
 function persist() {
-  try { writeFileAtomic(scenesPath(), JSON.stringify(_scenes, null, 2)); }
-  catch (e) { console.error('[JPMixer] Scene save error:', e); }
+  try { writeFileAtomic(scenesPath(), JSON.stringify(_scenes, null, 2)); return true; }
+  catch (e) { console.error('[JPMixer] Scene save error:', e); return false; }
+}
+
+// Keeps only { channel: fader position 0..1 } entries — what the phone
+// sends. A stored null or junk value made every later recall of that
+// snapshot throw part-way through, so later auxes never got theirs.
+function cleanValues(values) {
+  if (!values || typeof values !== 'object' || Array.isArray(values)) return null;
+  const out = {};
+  for (const [ch, v] of Object.entries(values)) {
+    if (/^[1-9]\d*$/.test(ch) && Number.isFinite(v) && v >= 0 && v <= 1) out[ch] = v;
+  }
+  return out;
 }
 
 function saveScene(snapshot, aux, values) {
   if (!snapshot) return;
+  values = cleanValues(values);
+  if (!values) return;
   if (!_scenes[snapshot]) _scenes[snapshot] = Object.create(null);
   // aux is client-controlled too (save-scene's msg.aux, unvalidated) — a
   // normal {} here would let aux: "__proto__" silently reassign this one
@@ -108,24 +94,14 @@ function getScene(snapshot, aux) {
 
 function getAll() { return _scenes; }
 
-// Which keying scheme the stored scenes use — 'name' (DiGiCo snapshot names)
-// or 'number' (dLive/KLANG scene numbers). Kept beside scenes.json, not in
-// it, so scenes.json keeps its format; main.js compares it on start to
-// clear scenes that belong to the other scheme.
-function metaPath() { return path.join(app.getPath('userData'), 'scenes-meta.json'); }
-function getKeyScheme() {
-  try { return JSON.parse(require('fs').readFileSync(metaPath(), 'utf8')).keyScheme || null; }
-  catch (_) { return null; }
-}
-function setKeyScheme(scheme) {
-  if (getKeyScheme() === scheme) return;
-  try { writeFileAtomic(metaPath(), JSON.stringify({ keyScheme: scheme })); }
-  catch (e) { console.error('[JPMixer] Scene meta save error:', e); }
-}
-
-// Console Type switched to the other keying scheme — the stored scenes no
-// longer mean anything, so clear them on disk too (they would otherwise come
-// back at the next launch). main.js writes a backup first.
+// Console Type switched to the other keying scheme (DiGiCo keys scenes by
+// snapshot name, dLive/KLANG/WING by scene number) mid-session — the stored
+// scenes no longer mean anything, so clear them on disk too, not just in
+// memory. main.js tracks the previous scheme purely in memory
+// (lastSceneKeyScheme) and calls this when it changes; no disk-persisted
+// record of the scheme is needed, since Ear Scenes never survive a relaunch
+// in the first place (see load() above) — there's nothing left on disk from
+// a previous session's scheme for a fresh launch to need to compare against.
 function clearForSchemeChange() {
   clearOnStartup();
   persist();
@@ -133,9 +109,12 @@ function clearForSchemeChange() {
 
 // Wholesale replace — used when restoring from a backup file
 function replaceAll(data) {
+  const previous = _scenes;
   _scenes = toSceneStore(data);
-  persist();
+  if (persist()) return true;
+  _scenes = previous;
+  return false;
 }
 
 load();
-module.exports = { saveScene, deleteScene, getScene, getAll, replaceAll, clearOnStartup, clearForSchemeChange, getKeyScheme, setKeyScheme };
+module.exports = { saveScene, deleteScene, getScene, getAll, replaceAll, clearOnStartup, clearForSchemeChange };

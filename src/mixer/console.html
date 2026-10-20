@@ -1,32 +1,50 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-jpm-view="console">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Console — JPMixer</title>
   <link rel="stylesheet" href="console.css" />
+  <link rel="stylesheet" href="console-studio.css" />
+  <link rel="stylesheet" href="console-channel.css" />
+  <link rel="stylesheet" href="splash.css" />
+  <link rel="stylesheet" href="original-theme.css" />
+  <link rel="stylesheet" href="/branding.css" /><!-- custom accent/logo, last so it wins -->
+  <script src="brand.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="alternate icon" href="favicon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
 </head>
 <body class="disconnected">
+  <script src="splash.js"></script>
 
   <header class="con-header">
-    <img src="logo.png" class="brand-logo" alt="JPMixer" />
-    <span class="con-title">Console</span>
-    <span class="con-snapshot" id="conSnapshot">—</span>
-    <div class="snap-btns">
-      <button class="snap-btn" id="snapPrevBtn" title="Fire Previous Snapshot">⏮</button>
-      <button class="snap-btn" id="snapNextBtn" title="Fire Next Snapshot">⏭</button>
+    <div class="con-brand jp-brand" aria-label="JPMixer"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /><img class="jp-emblem" src="brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption">ENGINEER WORKSPACE</span></div>
+    <div class="con-snapshot-group"><span class="con-snapshot-caption">SNAPSHOT</span><span class="con-snapshot" id="conSnapshot">—</span>
+      <div class="snap-btns">
+        <button class="snap-btn" id="snapPrevBtn" title="Fire Previous Snapshot" aria-label="Fire previous snapshot">‹</button>
+        <button class="snap-btn" id="snapNextBtn" title="Fire Next Snapshot" aria-label="Fire next snapshot">›</button>
+      </div>
     </div>
     <span class="con-device-count" id="conDeviceCount" style="display:none">0 devices</span>
-    <span class="conn-dot" id="connDot"></span>
+    <span class="con-connection" role="status"><span class="conn-dot" id="connDot"></span><span id="conConnectionLabel">Connecting</span></span>
   </header>
 
-  <nav class="con-tabs">
-    <button class="con-tab tab-active" data-tab="inputs">Inputs</button>
-    <button class="con-tab" data-tab="cg">Control Groups</button>
-    <button class="con-tab" data-tab="aux">Aux Outputs</button>
+  <section class="con-toolbar" aria-label="Console display options">
+    <div><h1>Console controller</h1><p id="conSectionDescription">Main channel faders, mutes, and solos.</p></div>
+    <div class="con-density" role="group" aria-label="Display size"><button type="button" data-console-density="overview" aria-pressed="true">Overview</button><button type="button" data-console-density="roomy" aria-pressed="false">Roomy</button></div>
+  </section>
+  <nav class="con-tabs" aria-label="Console sections">
+    <button class="con-tab tab-active" data-tab="inputs" aria-pressed="true">Inputs <span id="conInputCount">0</span></button>
+    <button class="con-tab" data-tab="cg" aria-pressed="false">Control groups <span id="conGroupCount">0</span></button>
+    <button class="con-tab" data-tab="aux" aria-pressed="false">Aux outputs <span id="conAuxCount">0</span></button>
   </nav>
 
+  <div class="con-touch-tools">
+    <p id="conTouchHint" role="status">Swipe to browse. Tap Adjust levels to move faders.</p>
+    <button type="button" id="conAdjustLevels" aria-pressed="false">Adjust levels</button>
+  </div>
   <div class="con-body">
     <div class="input-section tab-active" id="tabInputs">
       <div class="strips-scroll" id="inputStrips"></div>
@@ -47,5 +65,6 @@
   </div>
 
   <script src="console.js"></script>
+  <script src="console-channel.js"></script>
 </body>
 </html>

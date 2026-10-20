@@ -88,7 +88,11 @@ function serverHarness() {
     fs: { mkdirSync() {}, statSync: () => ({ size: 0 }), appendFileSync() {} },
     './presets': store.api,
     './config': { get: () => undefined, getAll: () => ({}), updateOverride() {} },
+    './performer-assignments': { mountPerformerAssignments() {} },
     './greenroom': { mountGreenRoom() {} },
+    './branding': { mountBranding() {} },
+    './digico-channel': require('../src/server/digico-channel'),
+    './foh': { mountFoh() {} },
     './scenes': {
       getAll: () => scenes, getScene: (name, aux) => scenes[name]?.[aux],
       saveScene(name, aux, values) { (scenes[name] ||= {})[aux] = values; },
@@ -133,7 +137,7 @@ test('mute echoes preserve logical levels for cache responses and unmute', () =>
   const h = serverHarness();
   h.echo({ address: level(1), args: [-12] });
   h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
-  h.clock.advance(10);
+  h.clock.advance(100); // deskSetTimer ticks every 100ms (DESK_SET_TICK_MS), not 10 — see osc-server.js
   assert.equal(h.ports[0].sent.at(-1).args[0], -150);
   h.echo({ address: level(1), args: [-150] });
   assert.equal(h.cached(level(1)), -12);
@@ -143,7 +147,7 @@ test('mute echoes preserve logical levels for cache responses and unmute', () =>
   h.echo({ address: level(1), args: [-150] });
   assert.equal(h.cached(level(1)), -9);
   h.send({ type: 'set-mute', aux: 1, ch: 1, muted: false });
-  h.clock.advance(10);
+  h.clock.advance(100);
   assert.equal(h.ports[0].sent.at(-1).args[0], -9);
 });
 
@@ -151,15 +155,15 @@ test('solo silences channels as their first values arrive and restores them', ()
   const h = serverHarness();
   h.echo({ address: level(1), args: [-12] });
   h.send({ type: 'set-solo', aux: 1, ch: 1, soloed: true });
-  h.clock.advance(10);
+  h.clock.advance(100); // deskSetTimer ticks every 100ms (DESK_SET_TICK_MS), not 10 — see osc-server.js
   h.echo({ address: level(2), args: [-6] });
-  h.clock.advance(10);
+  h.clock.advance(100);
   assert.equal(h.ports[0].sent.at(-1).address, level(2));
   assert.equal(h.ports[0].sent.at(-1).args[0], -150);
   h.echo({ address: level(2), args: [-150] });
   assert.equal(h.cached(level(2)), -6);
   h.send({ type: 'set-solo', aux: 1, ch: 1, soloed: false });
-  h.clock.advance(10);
+  h.clock.advance(100);
   assert.equal(h.ports[0].sent.at(-1).args[0], -6);
 });
 
@@ -276,6 +280,22 @@ test('monitor tracks preset loads and restored levels before mix boost', () => {
   assert.equal(vm.runInContext('levels[1][1]', context), vm.runInContext('dbToSlider(-6)', context));
 });
 
+test('monitor boost skips channels whose level has not loaded, and a session reload forgets old levels', () => {
+  const sent = [];
+  const context = vm.createContext({ console: quiet, WebSocket: { OPEN: 1 }, record: message => sent.push(JSON.parse(message)) });
+  vm.runInContext(read('src/mixer/monitor.js').split('// ── Boot')[0], context);
+  vm.runInContext(`
+    ws = { readyState: 1, send: record };
+    chConfig = [{ channel: 1, enabled: true }, { channel: 2, enabled: true }];
+    levels[1] = { 1: 0.8 };
+    boostAux(1, 0.5);
+  `, context);
+  assert.deepEqual(sent.map(m => m.address), ['/Input_Channels/1/Aux_Send/1/send_level'],
+    'channel 2 has no known level yet and must not be sent to -89.5 dB');
+  vm.runInContext('applyConfig = () => {}; onMessage({ config: { sessionReload: true } })', context);
+  assert.equal(vm.runInContext('Object.keys(levels).length', context), 0);
+});
+
 test('browser retains failed sync entries, retries, and clears only matching acknowledgements', () => {
   const clock = fakeClock();
   let retries = 0, saved = 0;
@@ -336,7 +356,7 @@ test('stop sends an unmute restore that was still queued instead of leaving the 
   const h = serverHarness();
   h.echo({ address: level(1), args: [-12] });
   h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
-  h.clock.advance(10);
+  h.clock.advance(100); // deskSetTimer ticks every 100ms (DESK_SET_TICK_MS), not 10 — see osc-server.js
   assert.equal(h.ports[0].sent.at(-1).args[0], -150);
   h.send({ type: 'set-mute', aux: 1, ch: 1, muted: false }); // restore queued, not sent yet
   h.run('stop()');
@@ -350,7 +370,7 @@ test('a mute goes out ahead of a queued Ear Scene recall', () => {
   h.run(`for (let i = 0; i < 200; i++) sendToDeskPaced('/recall/' + i, [0])`);
   const mark = h.ports[0].sent.length;
   h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
-  h.clock.advance(10);
+  h.clock.advance(100); // deskSetTimer ticks every 100ms (DESK_SET_TICK_MS), not 10 — see osc-server.js
   const firstTick = h.ports[0].sent.slice(mark);
   assert.equal(firstTick[0].address, level(1));
   assert.equal(firstTick[0].args[0], -150);
@@ -374,7 +394,10 @@ test('every mute/solo change re-asserts -150 on channels already silenced', () =
   h.clock.advance(100);
   const mark = h.ports[0].sent.length; // suppose that -150 was lost on the network
   h.send({ type: 'set-mute', aux: 1, ch: 2, muted: true });
-  h.clock.advance(100);
+  // Two distinct addresses now queued (ch1's re-assert + ch2's new mute) —
+  // DESK_SET_BATCH is 1 per tick (see osc-server.js), so draining both needs
+  // two ticks, not one.
+  h.clock.advance(200);
   const sent = h.ports[0].sent.slice(mark).map(m => [m.address, m.args[0]]);
   assert.deepEqual(sent.sort(), [[level(1), -150], [level(2), -150]].sort());
 });
@@ -587,4 +610,202 @@ test('a send error (e.g. Wi-Fi dropping) does not stop the server', () => {
   const h = serverHarness();
   h.ports[0].emit('error', Object.assign(new Error('send EADDRNOTAVAIL 192.0.2.9:7000'), { code: 'EADDRNOTAVAIL', syscall: 'send' }));
   assert.equal(h.run('loaded'), true);
+});
+
+test('a desk channel rename reaches phones as a relabel, and a Settings label still wins', () => {
+  const h = serverHarness();
+  h.socket.sent = [];
+  h.echo({ address: '/Input_Channels/2/Channel_Input/name', args: ['Kick'] });
+  const relabels = () => h.socket.sent.filter(m => m.type === 'channel-relabeled');
+  assert.deepEqual(relabels().map(m => [m.channel, m.label]), [[2, 'Kick']]);
+
+  h.run("serverCfg.channelOverrides = { '2': { label: 'Drums' } }");
+  h.socket.sent = [];
+  h.echo({ address: '/Input_Channels/2/Channel_Input/name', args: ['CH 2'] });
+  assert.deepEqual(relabels().map(m => [m.channel, m.label]), [[2, 'Drums']]);
+});
+
+test('a snapshot restoring a muted channel is re-silenced ahead of queued recall writes, and keeps its place', () => {
+  const h = serverHarness();
+  h.echo({ address: level(1), args: [-12] });
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
+  h.clock.advance(100);
+  h.run(`for (let i = 0; i < 200; i++) sendToDeskPaced('/recall/' + i, [0])`);
+  // The desk's snapshot change put the muted send back to an audible level
+  h.echo({ address: level(1), args: [-3] });
+  // ...and a recall then touches the same send with a normal-lane write
+  h.run(`sendToDeskPaced(${JSON.stringify(level(1))}, [-150])`);
+  const mark = h.ports[0].sent.length;
+  h.clock.advance(100);
+  const next = h.ports[0].sent.slice(mark)[0];
+  assert.deepEqual([next.address, next.args[0]], [level(1), -150]);
+});
+
+test('DiGiCo presets use parsed channel numbers and reject out-of-range positions', () => {
+  const h = serverHarness();
+  h.send({ type: 'apply-preset', aux: 1, name: 'Mix', levels: { '2x': 0.5, 1: -0.5 }, pans: { '2x': 0.3 } });
+  h.clock.advance(1000);
+  const sent = h.ports[0].sent.map(m => [m.address, m.args[0]]);
+  assert(!sent.some(([a]) => a.includes('2x')), 'a raw "2x" key must not reach the desk as an address');
+  assert(!sent.some(([a, v]) => a === level(1) && !Number.isFinite(v)), 'a negative position must not send NaN');
+  assert(sent.some(([a]) => a === level(2)), 'the "2x" key is read as channel 2');
+});
+
+test('phone mixer: a socket replaced by the Safari nudge cannot later close the healthy one', () => {
+  const clock = fakeClock();
+  const sockets = [];
+  class FakeSocket {
+    constructor() { this.readyState = 0; this.sent = []; this.closed = false; sockets.push(this); }
+    send(m) { this.sent.push(JSON.parse(m)); }
+    close() { this.closed = true; this.readyState = 3; }
+  }
+  FakeSocket.CONNECTING = 0; FakeSocket.OPEN = 1; FakeSocket.CLOSING = 2; FakeSocket.CLOSED = 3;
+  const el = () => ({ classList: { add() {}, remove() {} }, textContent: '' });
+  const context = vm.createContext({
+    ...clock, WebSocket: FakeSocket, JSON, console: quiet,
+    document: { location: { host: 'test' }, body: { classList: { add() {}, remove() {}, contains: () => false } }, getElementById: el },
+    sessionStorage: { getItem: () => null, setItem() {} },
+    deviceId: 'phone', selectedAux: null, flushPresetSync() {}, onMessage() {}
+  });
+  const source = read('src/mixer/mixer.js');
+  vm.runInContext(source.slice(source.indexOf('// ── WebSocket'), source.indexOf('function sendOSC')), context);
+  vm.runInContext('startWebsocket()', context);
+  clock.advance(2000); // still CONNECTING: the nudge opens a second socket
+  const [stuck, healthy] = sockets;
+  assert.equal(sockets.length, 2);
+  assert.equal(stuck.closed, true, 'the replaced socket is closed');
+  assert.equal(stuck.onerror, null, 'and detached, so its late error cannot act');
+  healthy.readyState = 1;
+  healthy.onopen();
+  assert.equal(healthy.closed, false);
+  assert.equal(healthy.sent[0].type, 'identify');
+  assert.equal(vm.runInContext('ws', context), healthy);
+});
+
+test('phone faders: values arriving mid-drag wait, and the latest shows after the hold', () => {
+  const clock = fakeClock();
+  let now = 0;
+  const realAdvance = clock.advance;
+  clock.advance = ms => { now += ms; realAdvance(ms); };
+  const context = vm.createContext({ ...clock, Date: { now: () => now } });
+  const source = read('src/mixer/mixer.js');
+  vm.runInContext(source.slice(source.indexOf('const ECHO_HOLD_MS'), source.indexOf('function addFaderOverlay')), context);
+  const slider = { value: 0.5 };
+  context.slider = slider;
+  const echo = v => vm.runInContext(`showWhenReleased(slider, () => { slider.value = ${v}; })`, context);
+  echo(0.6);
+  assert.equal(slider.value, 0.6, 'not held: shown straight away');
+  vm.runInContext('holdSlider(slider)', context);
+  slider.value = 0.2; // the musician pulls it down
+  echo(0.9);          // a late echo of the louder position
+  assert.equal(slider.value, 0.2, 'a late echo must not overwrite the drag');
+  vm.runInContext('releaseSlider(slider)', context);
+  echo(0.21);         // the desk's echo of the final position
+  clock.advance(100);
+  assert.equal(slider.value, 0.2, 'still held for a moment after release');
+  clock.advance(400);
+  assert.equal(slider.value, 0.21, 'then the latest value is shown');
+});
+
+test('phone dialogs: the keypress that opens a dialog cannot answer it, and a second dialog cancels the first', async () => {
+  const clock = fakeClock();
+  const listeners = { document: [] };
+  const element = () => {
+    const own = [];
+    return { style: {}, value: '', textContent: '', focus() {}, select() {},
+      addEventListener: (t, fn) => own.push([t, fn]), removeEventListener: (t, fn) => { const i = own.findIndex(([a, b]) => a === t && b === fn); if (i >= 0) own.splice(i, 1); },
+      click: () => own.filter(([t]) => t === 'click').forEach(([, fn]) => fn()) };
+  };
+  const els = { actionDialogInput: element(), actionDialogConfirm: element(), actionDialogCancel: element(), actionDialogTitle: element() };
+  const context = vm.createContext({
+    ...clock,
+    document: {
+      body: { classList: { add() {}, remove() {} } },
+      getElementById: id => els[id],
+      addEventListener: (t, fn) => listeners.document.push([t, fn]),
+      removeEventListener: (t, fn) => { const i = listeners.document.findIndex(([a, b]) => a === t && b === fn); if (i >= 0) listeners.document.splice(i, 1); },
+    },
+  });
+  const source = read('src/mixer/mixer.js');
+  vm.runInContext(source.slice(source.indexOf('let cancelOpenActionDialog'), source.indexOf('function hasSavedScene')), context);
+  const pressEnter = () => [...listeners.document].filter(([t]) => t === 'keydown').forEach(([, fn]) => fn({ key: 'Enter' }));
+  const flush = () => new Promise(r => setImmediate(r));
+
+  let answer;
+  vm.runInContext('showActionDialog({ title: "Update Ear Scene?" })', context).then(v => { answer = v; });
+  pressEnter(); // the same Return keypress, still bubbling up to the document
+  await flush();
+  assert.equal(answer, undefined, 'the opening keypress must not answer the dialog');
+  clock.advance(0);
+  pressEnter(); // a deliberate Return afterwards still works
+  await flush();
+  assert.equal(answer, true);
+
+  let first, second;
+  vm.runInContext('showActionDialog({ title: "A" })', context).then(v => { first = v; });
+  vm.runInContext('showActionDialog({ title: "B" })', context).then(v => { second = v; });
+  els.actionDialogConfirm.click();
+  await flush();
+  assert.equal(first, false, 'the first dialog was cancelled when the second opened');
+  assert.equal(second, true, 'one tap answers only the dialog on screen');
+});
+
+test('console channel panel: only allowed controls reach the desk, clamped, and a channel loads one query per tick', () => {
+  const h = serverHarness();
+  const desk = () => h.ports.at(-1).sent.map(m => [m.address, ...(m.args || []).map(a => (typeof a === 'object' ? a.value : a))]);
+  h.ports.at(-1).sent.length = 0;
+  h.send({ type: 'console-param', ch: 2, path: 'EQ/eq_gain_2', value: 40 });
+  h.send({ type: 'console-param', ch: 2, path: 'Channel_Input/phantom', value: 0.7 });
+  h.send({ type: 'console-param', ch: 2, path: 'Channel_Input/name', value: 1 });
+  h.send({ type: 'console-param', ch: 2, path: '../../Console/Session', value: 1 });
+  h.send({ type: 'console-param', ch: 999, path: 'EQ/eq_gain_2', value: 1 });
+  h.send({ type: 'console-param', ch: 2, path: 'EQ/eq_gain_2', value: 'NaN' });
+  h.send({ type: 'console-param', ch: 2, path: 'Dynamics/comp_knee_1', value: 7 });
+  assert.deepEqual(desk(), [['/Input_Channels/2/EQ/eq_gain_2', 18], ['/Input_Channels/2/Channel_Input/phantom', 1]], 'out-of-range values are clamped; anything not in the table never goes out');
+  assert.equal(h.cached('/Input_Channels/2/EQ/eq_gain_2'), 18);
+
+  h.ports.at(-1).sent.length = 0;
+  h.socket.sent = [];
+  h.send({ type: 'request-channel-detail', ch: 2, section: 'dynamics' });
+  const detail = h.socket.sent.find(m => m.type === 'channel-detail');
+  assert.equal(detail.values['EQ/eq_gain_2'], 18, 'what’s cached comes back straight away');
+  assert.equal(desk().length, 0, 'queries go out on the pacer, never in a burst');
+  h.clock.advance(100);
+  assert.equal(desk().length, 1);
+  assert.match(desk()[0][0], /^\/Input_Channels\/2\/Dynamics\/.+\/\?$/, 'the section being looked at is asked for first');
+  h.clock.advance(300);
+  assert.equal(desk().length, 4, 'one query per 100 ms');
+});
+
+test('DiGiCo: a silent desk is probed, marked disconnected, and re-silenced when it answers again', () => {
+  const h = serverHarness();
+  h.run('globalThis.reports = []; setConsoleStatusCallback(c => reports.push(c))');
+  h.run('deskAlive = true; deskLastHeardAt = Date.now()');
+  const desk = () => h.ports.at(-1).sent.map(m => m.address);
+  h.send({ type: 'set-active-aux', aux: 1 }); // a phone has this mix open
+  // The harness skips the metadata load; the refresh needs the desk's counts
+  h.run("cache.set('/Console/Input_Channels', { address: '/Console/Input_Channels', args: [2] }); cache.set('/Console/Aux_Outputs/modes', { address: '/Console/Aux_Outputs/modes', args: [1] })");
+  h.echo({ address: level(2), args: [-12] });
+  h.send({ type: 'set-mute', aux: 1, ch: 2, muted: true });
+  h.clock.advance(100);
+  h.ports.at(-1).sent.length = 0;
+  h.clock.advance(2000);
+  assert.deepEqual(desk(), [], 'heard recently: no probe');
+  h.run('deskLastHeardAt = Date.now() - 9000');
+  h.clock.advance(2000);
+  assert.deepEqual(desk(), ['/Console/Session/Filename/?'], 'quiet for 8s: one cheap query the desk is known to answer');
+  h.clock.advance(2000);
+  assert.deepEqual(desk(), ['/Console/Session/Filename/?'], 'probe still outstanding: nothing more');
+  h.run('deskProbeSentAt = Date.now() - 6000; deskLastHeardAt = Date.now() - 15000');
+  h.clock.advance(2000);
+  assert.equal(h.run('JSON.stringify(reports)'), '[false]', 'no answer for 5s: disconnected');
+  assert.equal(h.run('isConsoleConnected()'), false);
+  h.ports.at(-1).sent.length = 0;
+  h.echo({ address: '/Console/Session/Filename', args: ['sunday.ses'] });
+  assert.equal(h.run('JSON.stringify(reports)'), '[false,true]', 'the first message back: connected');
+  h.clock.advance(100);
+  const resilenced = h.ports.at(-1).sent.filter(m => m.address === level(2)).map(m => (m.args[0] && typeof m.args[0] === 'object') ? m.args[0].value : m.args[0]);
+  assert.deepEqual(resilenced, [-150], 'the phone mute is sent to the desk again, in case it restarted');
+  h.clock.advance(100);
+  assert(desk().some(a => /^\/Input_Channels\/\d+\/Aux_Send\/1\/send_level\/\?$/.test(a)), 'and the open mix is refreshed from the desk');
 });

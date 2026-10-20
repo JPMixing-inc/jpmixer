@@ -74,6 +74,11 @@ const ICON_LABELS = {
 };
 
 
+function instrumentIconURL(n) {
+  const folder = n <= 70 ? '1-To-70-SVG-Files-MusicalInstrumentsBundle' : '71-To-120-SVG-Files-MusicalInstrumentsBundle';
+  return new URL(`../../../assets/Icons For instruments/${folder}/${n}.svg`, document.baseURI).href;
+}
+
 function renderIconHTML(icon) {
   if (!icon) return '+';
   if (icon.startsWith('img:')) {
@@ -83,8 +88,8 @@ function renderIconHTML(icon) {
   }
   if (icon.startsWith('file:')) {
     const n = parseInt(icon.slice(5));
-    const port = Number($('serverPort').value) || 8080;
-    return `<img class="instrument-icon" src="http://localhost:${port}/instrument-icons/${n}.svg" width="18" height="18" />`;
+    if (!Number.isInteger(n) || n < 1 || n > 120) return '+';
+    return `<img class="instrument-icon" src="${instrumentIconURL(n)}" width="18" height="18" />`;
   }
   return icon; // emoji
 }
@@ -110,8 +115,13 @@ const fields = {
   wingPort:         { el: $('wingPort'),         key: 'wingPort',         parse: Number },
   apiPort:          { el: $('apiPort'),          key: 'apiPort',          parse: Number },
   apiToken:         { el: $('apiToken'),          key: 'apiToken',        parse: String },
-  pcoAppId:         { el: $('pcoAppId'),          key: 'pcoAppId',        parse: String },
-  pcoSecret:        { el: $('pcoSecret'),         key: 'pcoSecret',       parse: String },
+  pcoAppId:         { el: $('pcoAppId'),          key: 'pcoAppId',        parse: v => String(v).trim() },
+  pcoSecret:        { el: $('pcoSecret'),         key: 'pcoSecret',       parse: v => String(v).trim() },
+  pcoDay:           { el: $('pcoDay'),            key: 'pcoDay',          parse: String },
+  companionHost:    { el: $('companionHost'),     key: 'companionHost',   parse: v => String(v).trim() },
+  companionPort:    { el: $('companionPort'),     key: 'companionPort',   parse: Number },
+  companionColumns: { el: $('companionColumns'),  key: 'companionColumns', parse: Number },
+  companionRows:    { el: $('companionRows'),     key: 'companionRows',   parse: Number },
 };
 
 // Only one console's connection fields are relevant at a time — DiGiCo's
@@ -127,6 +137,8 @@ function updateConsoleTypeFields() {
   isConsoleControllerUnsupported = isDlive || isKlang || isWing;
 
   $('digicoPortsRow').style.display = (isDlive || isKlang || isWing) ? 'none' : '';
+  // Only the DiGiCo Console Controller has Control Groups
+  $('groupsField').style.display = (isDlive || isKlang || isWing) ? 'none' : '';
   $('klangIpRow').style.display     = isKlang ? '' : 'none';
   $('klangFieldsRow').style.display = isKlang ? '' : 'none';
   $('wingFieldsRow').style.display  = isWing ? '' : 'none';
@@ -186,8 +198,9 @@ $('apiCopyTokenBtn').addEventListener('click', async () => {
 });
 
 $('apiRegenTokenBtn').addEventListener('click', async () => {
-  const { token } = await window.jpm.generateApiToken();
-  $('apiToken').value = token;
+  const result = await window.jpm.generateApiToken();
+  if (!result.ok) { alert(result.error || 'Could not generate a new token.'); return; }
+  $('apiToken').value = result.token;
   updateApiFieldsVisibility();
 });
 
@@ -197,6 +210,25 @@ let pcoPositionMapping = {};   // { "PCO position name": auxNumber } — saved t
 let pcoGreenRoomHidden = [];   // PCO position names excluded from the Green Room display
 let pcoSavedServiceTypeId = ''; // restored into the dropdown once a live fetch populates it
 let pcoSavedTeamId = '';        // ditto, for the Team dropdown
+// The Home pages (FOH, ProPresenter, Lighting, Switcher) each welcome whoever
+// is scheduled in their own Team + Position. `key` names the element ids
+// (pco<key>Team, pco<key>Position, on the Pages tab under that page).
+const PCO_ROLE_PAGES = [
+  { key: 'Foh',          route: '/foh.html',          teamKey: 'pcoFohTeamId',          positionKey: 'pcoFohPositionName' },
+  { key: 'ProPresenter', route: '/propresenter.html', teamKey: 'pcoProPresenterTeamId', positionKey: 'pcoProPresenterPositionName' },
+  { key: 'Lighting',     route: '/lighting.html',     teamKey: 'pcoLightingTeamId',     positionKey: 'pcoLightingPositionName' },
+  { key: 'Switcher',     route: '/switcher.html',     teamKey: 'pcoSwitcherTeamId',     positionKey: 'pcoSwitcherPositionName' },
+];
+// Each Home page's saved { team, position }, restored into its dropdowns
+// once a live fetch populates them
+let pcoSavedRolePicks = {};
+const blankRolePicks = () => Object.fromEntries(PCO_ROLE_PAGES.map(r => [r.key, { team: '', position: '' }]));
+// The team picks as saved for the saved Service Type — restored if the
+// engineer switches Service Type away and back before saving.
+let pcoPicksForSavedType = { team: '', roles: blankRolePicks() };
+function rolePicksFrom(cfg) {
+  return Object.fromEntries(PCO_ROLE_PAGES.map(r => [r.key, { team: cfg[r.teamKey] || '', position: cfg[r.positionKey] || '' }]));
+}
 // Whether each dropdown holds a real list from Planning Center. Until it does
 // (offline, bad credentials, never refreshed), Save & Apply keeps the saved
 // value — reading the empty dropdown used to wipe the Service Type and Team.
@@ -205,17 +237,28 @@ let pcoTeamsLoaded = false;
 let pcoAllPositions = [];      // full result of the last Refresh Positions fetch (every team) — the Team
                                 // dropdown re-filters this in place, no new network call per team switch
 
-function updatePcoGreenRoomUrl() {
-  const url = localIP ? `http://${localIP}:${$('serverPort').value || 8080}/greenroom.html` : null;
-  $('pcoGreenRoomUrl').textContent = url || 'Waiting for local IP…';
-  $('pcoOpenGreenRoomBtn').disabled = !url;
-  return url;
+// Each Home page's Team + Role dropdowns sit under that page on the Pages tab
+for (const r of PCO_ROLE_PAGES) {
+  $(`pco${r.key}Team`).addEventListener('change', () => {
+    if (pcoAllPositions.length) renderPcoRolePositionOptions(r);
+  });
 }
 
-$('pcoOpenGreenRoomBtn').addEventListener('click', () => {
-  const url = updatePcoGreenRoomUrl();
-  if (url) window.jpm.openGreenRoom(url);
-});
+// Same two-step pattern as renderPcoPositionsForSelectedTeam(): a Team
+// dropdown narrows which Positions this one offers, independent of the
+// main pcoTeam/pcoPositionMapping pairing above it.
+function renderPcoRolePositionOptions(r) {
+  const sel = $(`pco${r.key}Position`);
+  const teamId = $(`pco${r.key}Team`).value;
+  const saved = pcoSavedRolePicks[r.key] || { team: '', position: '' };
+  const filtered = teamId ? pcoAllPositions.filter((p) => p.teamId === teamId) : pcoAllPositions;
+  sel.innerHTML = '<option value="">— None —</option>'
+    + filtered.map((p) => `<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('');
+  if (saved.position && teamId === saved.team && filtered.some((p) => p.name === saved.position)) {
+    sel.value = saved.position;
+  }
+}
+function renderAllRolePositionOptions() { for (const r of PCO_ROLE_PAGES) renderPcoRolePositionOptions(r); }
 
 function pcoAuxOptionsHtml(selectedAux) {
   const auxCount = parseInt($('auxes').value) || 16;
@@ -263,7 +306,7 @@ function renderPcoPositionsEditable(positions) {
     const hidden = pcoGreenRoomHidden.some((p) => p.toLowerCase() === pos.name.toLowerCase());
     row.innerHTML = `
       <span class="pco-position-name">${escHtml(pos.name)}</span>
-      <select data-pco-position="${escHtml(pos.name)}">${pcoAuxOptionsHtml(pcoPositionMapping[pos.name])}</select>
+      <select aria-label="Aux mix for ${escHtml(pos.name)}" data-pco-position="${escHtml(pos.name)}">${pcoAuxOptionsHtml(pcoPositionMapping[pos.name])}</select>
       <label class="pco-hide-toggle"><input type="checkbox" data-pco-hide="${escHtml(pos.name)}"${hidden ? ' checked' : ''} /> Hide from Green Room</label>
     `;
     container.appendChild(row);
@@ -314,9 +357,39 @@ async function refreshPcoTeams() {
   if (pcoSavedTeamId && res.teams.some((t) => t.id === pcoSavedTeamId)) {
     sel.value = pcoSavedTeamId;
   }
+  // Each Home page's Team dropdown shares this same fetch — same team list,
+  // independent current selection — rather than more network round trips.
+  for (const r of PCO_ROLE_PAGES) {
+    const roleSel = $(`pco${r.key}Team`);
+    const savedTeam = (pcoSavedRolePicks[r.key] || {}).team;
+    roleSel.innerHTML = '<option value="">— Select Team —</option>'
+      + res.teams.map((t) => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('');
+    if (savedTeam && res.teams.some((t) => t.id === savedTeam)) roleSel.value = savedTeam;
+  }
   pcoTeamsLoaded = true;
   $('pcoTeamStatus').textContent = `${res.teams.length} team(s) loaded.`;
+  // The FOH role list is filtered by the FOH team set just above; without
+  // this it kept its old filter and a save could blank the FOH role.
+  if (pcoAllPositions.length) renderAllRolePositionOptions();
 }
+
+// Team and position lists (and team picks — team ids belong to one Service
+// Type) are dropped on a Service Type change and fetched again. Saving
+// without clicking Refresh Teams used to pair the new Service Type with the
+// old one's team, and the Green Room then showed nobody.
+$('pcoServiceType').addEventListener('change', () => {
+  const picks = $('pcoServiceType').value === pcoSavedServiceTypeId
+    ? pcoPicksForSavedType : { team: '', roles: blankRolePicks() };
+  pcoSavedTeamId = picks.team;
+  pcoSavedRolePicks = JSON.parse(JSON.stringify(picks.roles));
+  pcoTeamsLoaded = false;
+  pcoAllPositions = [];
+  $('pcoTeam').innerHTML = '<option value="">— All Teams —</option>';
+  for (const r of PCO_ROLE_PAGES) $(`pco${r.key}Team`).innerHTML = '<option value="">— Select Team —</option>';
+  renderAllRolePositionOptions();
+  renderPcoPositionsFallback();
+  refreshPcoTeams();
+});
 
 async function refreshPcoServiceTypes() {
   $('pcoServiceTypeStatus').textContent = 'Loading…';
@@ -357,7 +430,12 @@ async function initPcoAutoSelect() {
   await refreshPcoServiceTypes();
 }
 
-$('pcoRefreshPositionsBtn').addEventListener('click', async () => {
+// Factored out so Sync Now can populate the Position mapping table and the
+// FOH Engineer Role dropdown too — "Refresh Positions" and "Sync Now" both
+// pull from Planning Center, and a user clicking Sync Now reasonably
+// expects it to also be the thing that makes these lists show up, not a
+// separate button they have to know to click first.
+async function refreshPcoPositions() {
   const serviceTypeId = $('pcoServiceType').value;
   if (!serviceTypeId) { $('pcoServiceTypeStatus').textContent = 'Pick a Service Type first.'; return; }
   $('pcoPositionsList').textContent = 'Loading…';
@@ -368,17 +446,78 @@ $('pcoRefreshPositionsBtn').addEventListener('click', async () => {
   }
   pcoAllPositions = res.positions;
   renderPcoPositionsForSelectedTeam();
+  renderAllRolePositionOptions();
+}
+
+$('pcoRefreshPositionsBtn').addEventListener('click', refreshPcoPositions);
+
+// ── Companion buttons (Pages tab) ──────────────────────────────────────────
+function updateCompanionFields() {
+  const on = $('companionEnabled').checked;
+  for (const el of $('companionFields').querySelectorAll('input')) el.disabled = !on;
+  $('companionFields').classList.toggle('is-off', !on);
+}
+$('companionEnabled').addEventListener('change', updateCompanionFields);
+// The live connection, while the Pages tab is showing
+async function refreshCompanionStatus() {
+  if (!$('tab-views').classList.contains('active')) return;
+  let s;
+  try { s = await window.jpm.getCompanionStatus(); } catch (_) { return; }
+  if (!s) return;
+  const dot = $('companionDot');
+  dot.className = 'dot' + (s.state === 'connected' ? ' on' : s.state === 'error' ? ' warn' : '');
+  const pending = $('companionEnabled').checked !== !!s.enabled;
+  $('companionStatusText').textContent = pending ? 'Save & Apply to ' + ($('companionEnabled').checked ? 'connect.' : 'turn them off.') : s.message;
+}
+setInterval(refreshCompanionStatus, 3000);
+document.querySelector('.tab[data-tab="views"]').addEventListener('click', refreshCompanionStatus);
+$('companionEnabled').addEventListener('change', refreshCompanionStatus);
+
+// Pages tab → "Refresh team & role lists": the same two fetches the Planning
+// Center tab's Refresh buttons make, with the outcome shown on the Pages tab.
+$('pagesRefreshPcoBtn').addEventListener('click', async () => {
+  const status = $('pagesPcoStatus');
+  const creds = pcoCredsFromFields();
+  if (!creds.appId || !creds.secret) { status.textContent = 'Add your Planning Center credentials first.'; return; }
+  if (!$('pcoServiceType').value) { status.textContent = 'Pick a Service Type on the Planning Center tab first.'; return; }
+  status.textContent = 'Loading…';
+  const btn = $('pagesRefreshPcoBtn'); btn.disabled = true;
+  try {
+    await refreshPcoTeams();
+    await refreshPcoPositions();
+    status.textContent = pcoTeamsLoaded && pcoAllPositions.length ? 'Lists updated.' : ($('pcoTeamStatus').textContent || 'Could not load the lists.');
+  } finally { btn.disabled = false; }
 });
+
+// Phone assignment is off on the server while aux renaming is off (see
+// performer-assignments.js). It used to stay switchable here and simply do
+// nothing. The saved choice is kept, so it comes back with renaming.
+function updatePcoPhoneAssignmentsState() {
+  const renaming = $('pcoUpdateAuxNames').checked;
+  $('pcoPhoneAssignments').disabled = !renaming;
+  $('pcoPhoneAssignmentsNote').hidden = renaming;
+}
+$('pcoUpdateAuxNames').addEventListener('change', updatePcoPhoneAssignmentsState);
 
 $('pcoSyncNowBtn').addEventListener('click', async () => {
   const serviceTypeId = $('pcoServiceType').value;
   if (!serviceTypeId) { $('pcoSyncStatus').textContent = 'Pick a Service Type first.'; return; }
+  // Always refresh, even when aux renaming (below) is turned off — the
+  // Position mapping table and FOH Role dropdown aren't gated by that
+  // toggle, and shouldn't need a separate "Refresh Positions" click.
+  refreshPcoPositions();
+  if (!$('pcoUpdateAuxNames').checked) {
+    $('pcoSyncStatus').textContent = 'Aux channel renaming is turned off above — nothing to sync. The Green Room display already updates on its own.';
+    $('pcoSyncResults').innerHTML = '';
+    return;
+  }
   $('pcoSyncStatus').textContent = 'Syncing…';
   $('pcoSyncResults').innerHTML = '';
   const res = await window.jpm.pcoSyncNow({
     serviceTypeId,
     mapping: pcoPositionMapping,
     includeUnconfirmed: $('pcoIncludeUnconfirmed').checked,
+    day: $('pcoDay').value,
     creds: pcoCredsFromFields(),
   });
   if (!res.ok) {
@@ -391,7 +530,8 @@ $('pcoSyncNowBtn').addEventListener('click', async () => {
     }
     return;
   }
-  $('pcoSyncStatus').textContent = `Synced from "${res.plan.title || res.plan.id}".`;
+  const dayNote = res.resolvedDay ? ` for ${res.resolvedDay}` : '';
+  $('pcoSyncStatus').textContent = `Synced from "${res.plan.title || res.plan.id}"${dayNote}.`;
   const parts = [];
   if (res.applied.length) {
     parts.push(`<div class="sub"><strong>Updated:</strong> ${res.applied.map((a) => `Aux ${escHtml(a.aux)} → "${escHtml(a.label)}"`).join(', ')}</div>`);
@@ -439,7 +579,7 @@ let auxOverrides       = {};   // { "1": { enabled } }
 let auxNames           = {};   // { "1": "IEM L", ... } from server cache
 let activeIconBtn      = null;
 let dragSrcCh          = null;
-let ipadConnections    = [];   // [{ id, name, enabled, ip, sendPort, listenPort }]
+let ipadConnections    = [];   // [{ id, name, enabled, ip, sendPort }] — iPads all send to the Listen Port above
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
@@ -461,7 +601,7 @@ document.querySelectorAll('.tab').forEach(btn => {
         renderAuxes();
       });
     }
-    if (btn.dataset.tab === 'mixes') renderMixesTab();
+    if (btn.dataset.tab === 'performers') renderMixesTab();
     if (btn.dataset.tab === 'pco') {
       // Position → Aux dropdown falls back to the console's own live aux
       // names (see pcoAuxOptionsHtml) — refresh them here too, the same way
@@ -482,8 +622,11 @@ document.querySelectorAll('.tab').forEach(btn => {
 // at all, even though the mixer pages still show them (they get their list
 // from the live count reported by the desk, not these fields). Correct the
 // fields to match reality whenever a live count is available to check against.
+// While the console is reporting them the fields are locked, with a note —
+// an edit there used to be reverted without a word the next time this ran.
+// Demo mode is left alone: its fake console is built from these fields.
 async function syncLiveCounts() {
-  const [liveCh, liveAux] = await Promise.all([
+  const [liveCh, liveAux] = isDemoMode ? [null, null] : await Promise.all([
     window.jpm.getChannelCount(),
     window.jpm.getAuxCount(),
   ]);
@@ -493,6 +636,11 @@ async function syncLiveCounts() {
   if (liveAux !== null && liveAux !== parseInt($('auxes').value)) {
     $('auxes').value = liveAux;
   }
+  $('channels').readOnly = liveCh !== null;
+  $('auxes').readOnly = liveAux !== null;
+  const hint = $('countsHint');
+  hint.hidden = liveCh === null && liveAux === null;
+  hint.textContent = hint.hidden ? '' : 'Channel and aux counts are read from the connected console. Change them on the desk.';
 }
 
 // ── Auxes editor ──────────────────────────────────────────────────────────
@@ -508,6 +656,14 @@ function renderAuxes() {
   const consoleType = $('consoleType').value;
   const eqDisabled = consoleType === 'dlive' || consoleType === 'klang' || consoleType === 'wing';
 
+  // Column headings once, at the top of the list
+  const head = document.createElement('div');
+  head.className = 'aux-row aux-row-head';
+  head.setAttribute('role', 'row');
+  head.innerHTML = '<span role="columnheader">#</span><span role="columnheader">Color</span><span role="columnheader">Mix</span><span role="columnheader">Show</span><span role="columnheader">EQ</span><span role="columnheader">Link only</span>';
+  list.appendChild(head);
+  $('auxKeyGroups').hidden = !channelGroups.length;
+
   for (let i = 1; i <= auxCount; i++) {
     const ov      = auxOverrides[String(i)] || {};
     const enabled = ov.enabled !== false;
@@ -516,25 +672,70 @@ function renderAuxes() {
 
     const eqEnabled = ov.eqEnabled === true;
     const linkOnly  = ov.linkOnly === true;
-    const eqTitle = eqDisabled ? "Per-send EQ isn't implemented for this console type yet" : 'Show EQ button on mixer page';
+    const eqTitle = eqDisabled ? "Per-send EQ isn't available for this console yet" : 'Performers can adjust this mix’s EQ';
 
     const row = document.createElement('div');
-    row.className = 'ch-editor-row';
+    row.className = 'aux-row' + (enabled ? '' : ' is-off') + (linkOnly ? ' is-link' : '');
     row.dataset.aux = i;
-    row.style.gridTemplateColumns = '28px 1fr 32px 28px 28px 28px';
+    row.setAttribute('role', 'row');
+    row.style.setProperty('--aux-colour', colour);
     row.innerHTML = `
-      <span class="ch-editor-num">${i}</span>
-      <span class="aux-name-label">${escHtml(name)}</span>
-      <input type="color" class="aux-colour colour-input" data-aux="${i}" value="${escHtml(colour)}" title="Button color" />
-      <input type="checkbox" class="toggle aux-enabled" data-aux="${i}" ${enabled ? 'checked' : ''} />
-      <input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} ${eqDisabled ? 'disabled' : ''} title="${eqTitle}" />
-      <input type="checkbox" class="toggle aux-link-only" data-aux="${i}" ${linkOnly ? 'checked' : ''} title="Hide from the mix picker — only reachable via its direct link" />
+      <span class="aux-num" role="cell">${i}</span>
+      <span role="cell"><input type="color" class="aux-colour colour-input" data-aux="${i}" value="${escHtml(colour)}" title="Button color" aria-label="Aux ${i} color" /></span>
+      <span class="aux-main" role="cell">
+        <span class="aux-name-label">${escHtml(name)}</span>
+        <span class="aux-badges">${linkOnly ? '<span class="aux-badge">Link only</span>' : ''}${enabled ? '' : '<span class="aux-badge muted">Hidden</span>'}</span>
+      </span>
+      <span role="cell"><input type="checkbox" class="toggle aux-enabled" data-aux="${i}" ${enabled ? 'checked' : ''} title="Listed in the performer mix picker" aria-label="Show aux ${i}" /></span>
+      <span role="cell"><input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} ${eqDisabled ? 'disabled' : ''} title="${eqTitle}" aria-label="Allow EQ for aux ${i}" /></span>
+      <span role="cell"><input type="checkbox" class="toggle aux-link-only" data-aux="${i}" ${linkOnly ? 'checked' : ''} title="Hidden from the picker; open it with its direct link" aria-label="Direct link only for aux ${i}" /></span>
     `;
+    // Which channel groups this mix's phones open to (Channels tab groups).
+    // None picked = every channel, as before.
+    if (channelGroups.length) {
+      const picked = new Set((Array.isArray(ov.groups) ? ov.groups : []).map(String));
+      const line = document.createElement('div');
+      line.className = 'aux-groups';
+      line.setAttribute('role', 'group');
+      line.setAttribute('aria-label', `Channel groups phones open to for aux ${i}`);
+      const caption = document.createElement('span');
+      caption.className = 'aux-groups-caption';
+      caption.textContent = 'Opens to';
+      line.appendChild(caption);
+      const anyPicked = channelGroups.some(g => picked.has(String(g.id)));
+      for (const g of [{ id: '', name: 'All channels' }, ...channelGroups]) {
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'aux-group-pill';
+        pill.dataset.aux = i;
+        pill.dataset.group = String(g.id);
+        pill.textContent = g.name || 'Untitled group';
+        pill.setAttribute('aria-pressed', String(g.id === '' ? !anyPicked : picked.has(String(g.id))));
+        line.appendChild(pill);
+      }
+      row.querySelector('.aux-main').appendChild(line);
+    }
     list.appendChild(row);
   }
 
   renderHiddenAuxLinks();
 }
+
+$('auxesList').addEventListener('click', e => {
+  const pill = e.target.closest('.aux-group-pill');
+  if (!pill) return;
+  const aux = pill.dataset.aux;
+  if (!auxOverrides[aux]) auxOverrides[aux] = {};
+  const existing = new Set(channelGroups.map(g => String(g.id)));
+  // Kept as the groups' own ids (number or string), dropping any since removed
+  let groups = (auxOverrides[aux].groups || []).filter(id => existing.has(String(id)));
+  if (pill.dataset.group === '') groups = [];
+  else if (groups.some(id => String(id) === pill.dataset.group)) groups = groups.filter(id => String(id) !== pill.dataset.group);
+  else groups.push(channelGroups.find(g => String(g.id) === pill.dataset.group).id);
+  if (groups.length) auxOverrides[aux].groups = groups;
+  else delete auxOverrides[aux].groups;
+  renderAuxes();
+});
 
 $('auxesList').addEventListener('change', e => {
   const aux = e.target.dataset.aux;
@@ -550,7 +751,19 @@ $('auxesList').addEventListener('change', e => {
     auxOverrides[aux].linkOnly = e.target.checked;
     renderHiddenAuxLinks();
   }
+  updateAuxRowState(e.target.closest('.aux-row'));
 });
+
+// The row's Hidden / Link only badges and colour, without redrawing the list
+function updateAuxRowState(row) {
+  if (!row) return;
+  const ov = auxOverrides[row.dataset.aux] || {};
+  const enabled = ov.enabled !== false, linkOnly = ov.linkOnly === true;
+  row.classList.toggle('is-off', !enabled);
+  row.classList.toggle('is-link', linkOnly);
+  row.style.setProperty('--aux-colour', ov.colour || '#e8a020');
+  row.querySelector('.aux-badges').innerHTML = (linkOnly ? '<span class="aux-badge">Link only</span>' : '') + (enabled ? '' : '<span class="aux-badge muted">Hidden</span>');
+}
 
 // ── Hidden (link-only) aux direct links ────────────────────────────────────
 
@@ -566,7 +779,7 @@ function renderHiddenAuxLinks() {
   }
 
   if (hidden.length === 0) {
-    container.innerHTML = '<div class="empty-hint">No hidden auxes — turn on the Link toggle above to add one here.</div>';
+    container.innerHTML = '<div class="empty-hint">No link-only mixes. Turn on Link only above to add one here.</div>';
     return;
   }
 
@@ -577,15 +790,11 @@ function renderHiddenAuxLinks() {
     const url = base ? `${base}/?aux=${i}` : null;
 
     const row = document.createElement('div');
-    row.className = 'ip-row';
-    row.style.marginBottom = '8px';
+    row.className = 'aux-link-row';
     row.innerHTML = `
-      <span class="ip-label" style="display:flex;align-items:center;gap:6px">
-        <span style="width:10px;height:10px;border-radius:50%;background:${escHtml(colour)};flex-shrink:0"></span>
-        ${escHtml(name)}
-      </span>
-      <span class="ip-address" style="flex:1">${url ? escHtml(url) : '— (server not running)'}</span>
-      <button class="btn btn-sm hidden-aux-copy-btn" data-url="${url ? escHtml(url) : ''}" ${url ? '' : 'disabled'}>Copy Link</button>
+      <span class="aux-link-name"><span class="aux-link-dot" style="background:${escHtml(colour)}"></span>${escHtml(name)}</span>
+      <span class="aux-link-url mono">${url ? escHtml(url) : 'Start the server to get this link.'}</span>
+      <button class="btn btn-sm hidden-aux-copy-btn" data-url="${url ? escHtml(url) : ''}" ${url ? '' : 'disabled'}>Copy link</button>
     `;
     container.appendChild(row);
   }
@@ -710,6 +919,28 @@ function renderIpadStatus() {
 async function refreshIpadStatus() {
   try { ipadStatus = await window.jpm.getIpadStatus(); } catch (_) { ipadStatus = null; }
   renderIpadStatus();
+  renderConsoleHint();
+}
+
+// A DiGiCo answering console queries from an address other than the one in
+// Settings (DHCP gave it a new one) used to look like "Connecting…" forever,
+// with the only clue buried in the iPad section.
+function renderConsoleHint() {
+  const hint = $('consoleHint');
+  const seen = ((ipadStatus && ipadStatus.unknownSenders) || []).find(u => u.looksLikeConsole);
+  if (!seen || consoleConnectedNow) { hint.hidden = true; return; }
+  hint.hidden = false;
+  hint.textContent = `⚠ A console is answering from ${seen.ip}, but Settings says ${$('deskIp').value || '(no address)'}. `;
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-sm';
+  btn.textContent = `Use ${seen.ip}`;
+  btn.addEventListener('click', () => {
+    $('deskIp').value = seen.ip;
+    $('deskIp').dispatchEvent(new Event('input', { bubbles: true }));
+    hint.textContent = `Console address set to ${seen.ip} — click Save & Apply.`;
+    $('saveBtn').focus();
+  });
+  hint.appendChild(btn);
 }
 setInterval(refreshIpadStatus, 3000);
 
@@ -720,7 +951,6 @@ $('addIpadBtn').addEventListener('click', () => {
     enabled:    true,
     ip:         '',
     sendPort:   9000,
-    listenPort: 9001 + ipadConnections.length,
   });
   renderIpadConnections();
 });
@@ -732,7 +962,6 @@ $('ipadList').addEventListener('input', e => {
   if (e.target.classList.contains('ipad-name'))       conn.name       = e.target.value;
   if (e.target.classList.contains('ipad-ip'))         conn.ip         = e.target.value;
   if (e.target.classList.contains('ipad-send-port'))  conn.sendPort   = parseInt(e.target.value) || 9000;
-  if (e.target.classList.contains('ipad-listen-port'))conn.listenPort = parseInt(e.target.value) || 9001;
 });
 
 $('ipadList').addEventListener('change', e => {
@@ -855,14 +1084,14 @@ function renderChannels() {
     row.innerHTML  = `
       <span class="drag-handle" title="Drag to reorder">⠿</span>
       <span class="ch-editor-num">${ch}</span>
-      <button class="icon-btn${icon ? ' has-icon' : ''}" data-ch="${ch}" title="Choose icon">${renderIconHTML(icon)}</button>
+      <button class="icon-btn${icon ? ' has-icon' : ''}" data-ch="${ch}" title="Choose icon" aria-label="Choose icon for channel ${ch}">${renderIconHTML(icon)}</button>
       <input type="text" class="ch-label-input" value="${escHtml(ov.label || '')}"
-             placeholder="${escHtml(consoleName || `Ch ${ch}`)}" data-ch="${ch}" />
-      <select class="ch-group-select" data-ch="${ch}">
+             placeholder="${escHtml(consoleName || `Ch ${ch}`)}" data-ch="${ch}" aria-label="Channel ${ch} name" />
+      <select class="ch-group-select" data-ch="${ch}" aria-label="Channel ${ch} group">
         <option value="" ${!ov.groupId ? 'selected' : ''}>No group</option>
         ${groupOpts}
       </select>
-      <input type="checkbox" class="toggle ch-enabled" data-ch="${ch}" ${enabled ? 'checked' : ''} />
+      <input type="checkbox" class="toggle ch-enabled" data-ch="${ch}" ${enabled ? 'checked' : ''} aria-label="Show channel ${ch}" />
     `;
     list.appendChild(row);
   }
@@ -940,16 +1169,16 @@ let pickerBuilt = false;
 function buildPickerItems() {
   if (pickerBuilt) return;
   pickerBuilt = true;
-  const port = Number($('serverPort').value) || 8080;
   for (let n = 1; n <= 120; n++) {
     const btn = document.createElement('button');
     btn.className = 'icon-cell';
     btn.dataset.fileNum = n;
     const img = document.createElement('img');
-    img.src = `http://localhost:${port}/instrument-icons/${n}.svg`;
+    img.src = instrumentIconURL(n);
     img.className = 'instrument-icon';
     img.width = 24;
     img.height = 24;
+    btn.setAttribute('aria-label', `Instrument icon ${n}`);
     btn.appendChild(img);
     iconGrid.appendChild(btn);
   }
@@ -988,11 +1217,13 @@ function openIconPicker(btn) {
   activeIconBtn = btn;
   iconPickerEl.style.display = 'block';
   const rect = btn.getBoundingClientRect();
-  const pw   = 7 * 35 + 16; // ~261px picker width
-  let top    = rect.bottom + 6;
-  let left   = rect.left;
-  if (left + pw > window.innerWidth)  left = window.innerWidth  - pw - 8;
-  if (top  + 420 > window.innerHeight) top = rect.top - 426;
+  iconPickerEl.style.maxHeight = Math.min(420, window.innerHeight - 16) + 'px';
+  const pw = iconPickerEl.offsetWidth;
+  const ph = iconPickerEl.offsetHeight;
+  const preferredTop = rect.bottom + 6 + ph <= window.innerHeight - 8
+    ? rect.bottom + 6 : rect.top - ph - 6;
+  const top = Math.max(8, Math.min(preferredTop, window.innerHeight - ph - 8));
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - pw - 8));
   iconPickerEl.style.top  = top  + 'px';
   iconPickerEl.style.left = left + 'px';
 }
@@ -1016,8 +1247,14 @@ function applyConfig(cfg) {
     if (cfg[key] !== undefined) el.value = cfg[key];
   }
   $('autoStart').checked          = !!cfg.autoStart;
+  $('openAtLogin').checked        = !!cfg.openAtLogin;
+  $('keepAwake').checked          = cfg.keepAwake !== false;
   $('sceneRecallEnabled').checked = !!cfg.sceneRecallEnabled;
-  $('clearScenesOnLaunch').checked = !!cfg.clearScenesOnLaunch;
+  $('performerEarScenes').checked = cfg.performerEarScenes !== false;
+  loadBranding(cfg);
+  $('fohAccessCode').value = cfg.fohAccessCode || '';
+  $('companionEnabled').checked = cfg.companionEnabled === true;
+  updateCompanionFields();
   $('autoBackupEnabled').checked  = cfg.autoBackupEnabled !== false;
   $('dliveTlsEnabled').checked    = !!cfg.dliveTlsEnabled;
   $('dliveListenSendLevels').checked = cfg.dliveListenSendLevels !== false;
@@ -1025,15 +1262,20 @@ function applyConfig(cfg) {
   $('apiEnabled').checked = !!cfg.apiEnabled;
   updateApiFieldsVisibility();
   $('pcoIncludeUnconfirmed').checked = !!cfg.pcoIncludeUnconfirmed;
+  $('pcoPhoneAssignments').checked = !!cfg.pcoPhoneAssignments;
+  $('pcoUpdateAuxNames').checked = cfg.pcoUpdateAuxNames !== false;
+  updatePcoPhoneAssignmentsState();
   pcoPositionMapping = (cfg.pcoPositionMapping && typeof cfg.pcoPositionMapping === 'object') ? { ...cfg.pcoPositionMapping } : {};
   pcoGreenRoomHidden = Array.isArray(cfg.pcoGreenRoomHidden) ? [...cfg.pcoGreenRoomHidden] : [];
   pcoSavedServiceTypeId = cfg.pcoServiceTypeId || '';
   pcoSavedTeamId = cfg.pcoTeamId || '';
+  pcoSavedRolePicks = rolePicksFrom(cfg);
+  pcoPicksForSavedType = { team: pcoSavedTeamId, roles: rolePicksFrom(cfg) };
   renderPcoPositionsFallback();
   updateConsoleTypeFields();
   isDemoMode = !!cfg.demoMode;
   $('demoMode').checked = isDemoMode;
-  $('demoMode').addEventListener('change', function () { isDemoMode = this.checked; });
+  $('demoMode').onchange = function () { isDemoMode = this.checked; syncLiveCounts(); };
   ipadConnections = Array.isArray(cfg.ipadConnections) ? cfg.ipadConnections : [];
   renderIpadConnections();
 
@@ -1095,14 +1337,33 @@ function collectConfig() {
   if (out.apiPort !== undefined && (!Number.isInteger(out.apiPort) || out.apiPort < 1 || out.apiPort > 65535)) {
     out.apiPort = 9096; // documented default
   }
+  // Companion buttons: out-of-range numbers fall back to the defaults
+  const companionInt = (v, lo, hi, d) => Number.isInteger(v) && v >= lo && v <= hi ? v : d;
+  out.companionEnabled = $('companionEnabled').checked;
+  out.companionPort    = companionInt(out.companionPort, 1, 65535, 16622);
+  out.companionColumns = companionInt(out.companionColumns, 1, 12, 8);
+  out.companionRows    = companionInt(out.companionRows, 1, 8, 4);
   out.autoStart           = $('autoStart').checked;
+  out.openAtLogin         = $('openAtLogin').checked;
+  out.keepAwake           = $('keepAwake').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;
-  out.clearScenesOnLaunch = $('clearScenesOnLaunch').checked;
+  out.performerEarScenes  = $('performerEarScenes').checked;
+  out.brandLogo           = brandLogoFile;
+  out.brandAccent         = brandAccent;
+  out.fohAccessCode       = $('fohAccessCode').value.trim();
   out.autoBackupEnabled   = $('autoBackupEnabled').checked;
   out.apiEnabled          = $('apiEnabled').checked;
   out.pcoServiceTypeId    = pcoServiceTypesLoaded ? ($('pcoServiceType').value || '') : pcoSavedServiceTypeId;
   out.pcoTeamId           = pcoTeamsLoaded ? ($('pcoTeam').value || '') : pcoSavedTeamId;
+  // Until a dropdown holds a real list, keep what was saved (see pcoTeamsLoaded)
+  for (const r of PCO_ROLE_PAGES) {
+    const saved = pcoSavedRolePicks[r.key] || { team: '', position: '' };
+    out[r.teamKey] = pcoTeamsLoaded ? ($(`pco${r.key}Team`).value || '') : saved.team;
+    out[r.positionKey] = pcoAllPositions.length ? ($(`pco${r.key}Position`).value || '') : saved.position;
+  }
   out.pcoIncludeUnconfirmed = $('pcoIncludeUnconfirmed').checked;
+  out.pcoPhoneAssignments = $('pcoPhoneAssignments').checked;
+  out.pcoUpdateAuxNames = $('pcoUpdateAuxNames').checked;
   out.pcoPositionMapping  = pcoPositionMapping;
   out.pcoGreenRoomHidden  = pcoGreenRoomHidden;
   out.demoMode            = $('demoMode').checked;
@@ -1150,7 +1411,9 @@ async function refreshPort80Status() {
   setStatus(isRunning);
 }
 
+let consoleConnectedNow = false;
 function setConsoleStatus(connected) {
+  consoleConnectedNow = !!connected;
   const demo = isDemoMode && connected;
   $('consoleDot').className      = 'dot' + (connected ? ' on' : '');
   $('consolePillLabel').textContent   = demo ? 'Demo' : (connected ? 'Connected' : 'Offline');
@@ -1180,11 +1443,22 @@ function setStatus(running) {
   const base = getBaseUrl();
   $('serverUrl').textContent = base || 'Not running';
   $('serverUrlHint').style.display = (running && port80.matches && localIP) ? '' : 'none';
-  $('monitorUrl').textContent  = base ? `${base}/monitor.html`  : '— (server not running)';
-  $('consoleUrl').textContent  = base ? `${base}/console.html`  : '— (server not running)';
-  $('devicesUrl').textContent  = base ? `${base}/devices.html`  : '— (server not running)';
-  $('monitorBtnHint').style.display = running ? 'none' : '';
-  $('devicesBtnHint').style.display = running ? 'none' : '';
+  for (const [urlId, buttonId, hintId, route] of [
+    ['homePickerViewUrl', 'openHomePickerViewBtn', 'homePickerViewHint', '/home.html'],
+    ['fohViewUrl', 'openFohViewBtn', 'fohViewHint', '/foh.html'],
+    ['propresenterViewUrl', 'openProPresenterViewBtn', 'propresenterViewHint', '/propresenter.html'],
+    ['lightingViewUrl', 'openLightingViewBtn', 'lightingViewHint', '/lighting.html'],
+    ['switcherViewUrl', 'openSwitcherViewBtn', 'switcherViewHint', '/switcher.html'],
+    ['monitorUrl', 'openMonitorBtn', 'monitorBtnHint', '/monitor.html'],
+    ['consoleUrl', 'openConsoleBtn', 'consoleBtnHint', '/console.html'],
+    ['devicesUrl', 'openDevicesBtn', 'devicesBtnHint', '/devices.html'],
+    ['performerUrl', 'openPerformerBtn', 'performerBtnHint', '/'],
+    ['greenRoomViewUrl', 'openGreenRoomViewBtn', 'greenRoomViewHint', '/greenroom.html']
+  ]) {
+    $(urlId).textContent = base ? base + route : '— (server not running)';
+    $(buttonId).disabled = !running;
+    $(hintId).style.display = running ? 'none' : '';
+  }
   // The Console Controller (main faders, mutes, solos, control groups) isn't
   // implemented on the dLive or KLANG backends yet — neither server handles
   // any of console.js's message types except fire-snapshot, and nothing
@@ -1192,7 +1466,7 @@ function setStatus(running) {
   // fully interactive-looking strips that silently do nothing on a real
   // console — worse than just not opening it. Disable the entry point
   // instead of shipping a page that only pretends to work.
-  $('openConsoleBtn').disabled = isConsoleControllerUnsupported;
+  $('openConsoleBtn').disabled = !running || isConsoleControllerUnsupported;
   if (isConsoleControllerUnsupported) {
     $('consoleBtnHint').style.display = '';
     $('consoleBtnHint').textContent = 'Not available yet — main faders, mutes, and solos aren’t implemented on this backend.';
@@ -1221,6 +1495,31 @@ $('openDevicesBtn').addEventListener('click', async () => {
   const result = await window.jpm.openDevices();
   if (result && result.error) alert('Start the server first, then open the devices view.');
 });
+
+for (const [buttonId, hintId, open] of [
+  ['openHomePickerViewBtn', 'homePickerViewHint', base => window.jpm.openFoh(base + '/home.html')],
+  ['openFohViewBtn', 'fohViewHint', base => window.jpm.openFoh(base + '/foh.html')],
+  ['openProPresenterViewBtn', 'propresenterViewHint', base => window.jpm.openFoh(base + '/propresenter.html')],
+  ['openLightingViewBtn', 'lightingViewHint', base => window.jpm.openFoh(base + '/lighting.html')],
+  ['openSwitcherViewBtn', 'switcherViewHint', base => window.jpm.openFoh(base + '/switcher.html')],
+  ['openGreenRoomViewBtn', 'greenRoomViewHint', base => window.jpm.openGreenRoom(base + '/greenroom.html')],
+  ['openPerformerBtn', 'performerBtnHint', () => window.jpm.openPerformer()]
+]) {
+  $(buttonId).addEventListener('click', async () => {
+    const base = getBaseUrl();
+    if (!base) return;
+    try {
+      const result = await open(base);
+      if (result?.error) throw new Error(result.error);
+    } catch (_) {
+      $(hintId).textContent = 'Could not open this page. Check that the server is running.';
+      $(hintId).style.display = '';
+    }
+  });
+}
+for (const button of document.querySelectorAll('[data-settings-target]')) {
+  button.addEventListener('click', () => document.querySelector(`.tab[data-tab="${button.dataset.settingsTarget}"]`)?.click());
+}
 
 $('toggleBtn').addEventListener('click', async () => {
   if (isRunning) await window.jpm.stopServer();
@@ -1268,17 +1567,48 @@ async function refreshAutoBackupInfo() {
   }
 }
 
-// ── My Mixes tab ─────────────────────────────────────────────────────────
+// ── Performers tab (My Mixes) ─────────────────────────────────────────────────────────
+
+let copiedMixInfo = null;
+let mixTransferBusy = false;
+function updateMixClipboard() {
+  $('mixClipboard').hidden = !copiedMixInfo;
+  $('mixClipboardLabel').textContent = copiedMixInfo ? `${copiedMixInfo.names.length === 1 ? 'Copied “' + copiedMixInfo.names[0] + '”' : 'Copied ' + copiedMixInfo.names.length + ' mixes'}. Choose Paste on a different device.` : '';
+  document.querySelectorAll('.mix-paste-btn').forEach(button => {
+    button.disabled = mixTransferBusy || !copiedMixInfo || button.dataset.deviceId === copiedMixInfo.sourceId;
+    button.textContent = copiedMixInfo ? `Paste ${copiedMixInfo.names.length === 1 ? 'mix' : copiedMixInfo.names.length + ' mixes'}` : 'Paste';
+  });
+  document.querySelectorAll('.mix-copy-btn').forEach(button => { button.disabled = mixTransferBusy; });
+  $('clearMixClipboardBtn').disabled = mixTransferBusy;
+}
+async function copySavedMixes(deviceId, names) {
+  if (mixTransferBusy) return;
+  const status = $('mixCopyStatus');
+  mixTransferBusy = true; updateMixClipboard(); status.textContent = '';
+  try {
+    const result = await window.jpm.copyPresets(deviceId, names);
+    if (!result.ok) throw new Error(result.error || 'Could not copy saved mixes.');
+    copiedMixInfo = result;
+  } catch (error) { status.className = 'backup-status err'; status.textContent = error.message; }
+  finally { mixTransferBusy = false; updateMixClipboard(); }
+}
+$('clearMixClipboardBtn').addEventListener('click', async () => {
+  if (mixTransferBusy) return;
+  try { await window.jpm.clearPresetClipboard(); copiedMixInfo = null; updateMixClipboard(); }
+  catch (error) { $('mixCopyStatus').className = 'backup-status err'; $('mixCopyStatus').textContent = error.message; }
+});
 
 async function renderMixesTab() {
   const container = $('mixesByAux');
   container.innerHTML = '<div class="empty-hint">Loading…</div>';
 
-  const [allPresets, groups] = await Promise.all([window.jpm.getPresets(), window.jpm.getPresetGroups()]);
+  const [allPresets, groups, connected] = await Promise.all([window.jpm.getPresets(), window.jpm.getPresetGroups(), window.jpm.getMixDevices()]);
+  const liveDevices = new Map();
+  for (const device of Array.isArray(connected) ? connected : []) if (device.deviceId) liveDevices.set(device.deviceId, device);
 
   container.innerHTML = '';
 
-  const deviceIds = Object.keys(allPresets);
+  const deviceIds = [...new Set([...Object.keys(allPresets), ...liveDevices.keys()])];
   if (deviceIds.length === 0) {
     container.innerHTML = '<div class="empty-hint">No mixes saved yet — performers save their mixes from the mixer page.</div>';
     return;
@@ -1296,7 +1626,7 @@ async function renderMixesTab() {
     info.set(g.deviceId, { label: parts.join(' · '), owner: g.owners[0] || '' });
   }
   const describe = (deviceId) => info.get(deviceId) || { label: `Device ${deviceId.slice(0, 8)}…`, owner: '' };
-  const listed = deviceIds.filter(id => Object.keys(allPresets[id] || {}).length > 0);
+  const listed = deviceIds.filter(id => liveDevices.has(id) || Object.keys(allPresets[id] || {}).length > 0);
 
   for (const deviceId of listed) {
     const names = Object.keys(allPresets[deviceId] || {}).sort((a, b) => a.localeCompare(b));
@@ -1307,9 +1637,33 @@ async function renderMixesTab() {
 
     const header = document.createElement('div');
     header.className = 'mixes-tab-aux-header';
-    header.textContent = info.label;
+    const live = liveDevices.get(deviceId);
+    header.textContent = info.label + (live ? ' · Connected' + (live.aux != null ? ' · ' + (auxNames[live.aux] || `Aux ${live.aux}`) : '') : '');
     header.title = deviceId;
     section.appendChild(header);
+    section.dataset.deviceId = deviceId;
+    const transfer = document.createElement('div');
+    transfer.className = 'mix-device-transfer';
+    const copyAll = document.createElement('button');
+    copyAll.type = 'button'; copyAll.className = 'btn btn-sm' + (names.length ? ' mix-copy-btn' : '');
+    copyAll.textContent = 'Copy all mixes'; copyAll.disabled = !names.length;
+    copyAll.addEventListener('click', () => copySavedMixes(deviceId, null));
+    const paste = document.createElement('button');
+    paste.type = 'button'; paste.className = 'btn btn-sm mix-paste-btn'; paste.dataset.deviceId = deviceId;
+    paste.addEventListener('click', async () => {
+      if (mixTransferBusy || !copiedMixInfo) return;
+      mixTransferBusy = true; updateMixClipboard();
+      const status = $('mixCopyStatus'); status.textContent = '';
+      try {
+        const result = await window.jpm.pastePresets(deviceId);
+        if (!result.ok) throw new Error(result.error || 'Could not paste saved mixes.');
+        status.className = 'backup-status ok';
+        status.textContent = `Pasted ${result.copied} mix(es) into ${info.label}; skipped ${result.skipped} identical copies; renamed ${result.renamed} to keep both versions.`;
+        await renderMixesTab();
+      } catch (error) { status.className = 'backup-status err'; status.textContent = error.message; }
+      finally { mixTransferBusy = false; updateMixClipboard(); }
+    });
+    transfer.append(copyAll, paste); section.appendChild(transfer);
 
     // Set Name — stamps the name on every mix in the group for Find My Mixes
     const tools = document.createElement('div');
@@ -1345,6 +1699,10 @@ async function renderMixesTab() {
     const mergeBtn = document.createElement('button');
     mergeBtn.className = 'btn btn-sm';
     mergeBtn.textContent = 'Merge';
+    if (deviceId.startsWith('pco-person:')) {
+      mergeBtn.disabled = true; mergeSelect.disabled = true;
+      mergeBtn.title = mergeSelect.title = 'Performer backups stay separate. Use Copy and Paste to share mixes.';
+    }
     mergeBtn.addEventListener('click', async () => {
       const toId = mergeSelect.value;
       if (!toId) return;
@@ -1377,13 +1735,33 @@ async function renderMixesTab() {
         renderMixesTab();
       });
 
-      row.append(label, del);
+      const copy = document.createElement('button');
+      copy.type = 'button'; copy.className = 'btn btn-sm mix-copy-btn'; copy.textContent = 'Copy';
+      copy.setAttribute('aria-label', `Copy ${name}`);
+      copy.addEventListener('click', () => copySavedMixes(deviceId, [name]));
+      row.append(label, copy, del);
       section.appendChild(row);
     }
 
+    if (!names.length) {
+      const empty = document.createElement('p'); empty.className = 'sub'; empty.textContent = 'No saved mixes yet. Paste a copied mix into this device.'; section.appendChild(empty);
+    }
     container.appendChild(section);
   }
+  updateMixClipboard();
 }
+
+$('exportMixBackupBtn').addEventListener('click', async () => {
+  const button = $('exportMixBackupBtn'), status = $('mixBackupStatus');
+  button.disabled = true; button.textContent = 'Backing up…'; status.textContent = '';
+  try {
+    const result = await window.jpm.exportMixBackup();
+    if (result.canceled) return;
+    if (!result.ok) throw new Error(result.error || 'Could not back up My Mixes.');
+    status.className = 'backup-status ok'; status.textContent = 'Saved to ' + result.filePath;
+  } catch (error) { status.className = 'backup-status err'; status.textContent = error.message; }
+  finally { button.disabled = false; button.textContent = 'Back Up My Mixes…'; }
+});
 
 $('refreshMixesBtn').addEventListener('click', renderMixesTab);
 
@@ -1399,7 +1777,8 @@ $('exportBackupBtn').addEventListener('click', async () => {
   status.className   = 'backup-status';
   status.textContent = '';
 
-  const result = await window.jpm.exportBackup();
+  const includeCredentials = $('exportIncludeCredentials').checked;
+  const result = await window.jpm.exportBackup({ includeCredentials });
 
   btn.disabled    = false;
   btn.textContent = 'Export Backup…';
@@ -1407,38 +1786,94 @@ $('exportBackupBtn').addEventListener('click', async () => {
   if (result.canceled) return;
   if (result.ok) {
     status.className   = 'backup-status ok';
-    status.textContent = '✓ Saved to ' + result.filePath;
+    status.textContent = '✓ Saved to ' + result.filePath + (includeCredentials ? ' (includes passwords and keys — keep it private)' : ' (without passwords and keys)');
   } else {
     status.className   = 'backup-status err';
     status.textContent = '✕ ' + (result.error || 'Export failed.');
   }
 });
 
-$('importBackupBtn').addEventListener('click', async () => {
-  const btn    = $('importBackupBtn');
-  const status = $('importStatus');
-
-  if (!confirm('Importing a backup replaces your current console settings, channel/aux setup, My Mixes and Ear Scenes. Your current setup is saved to the automatic backups folder first. Continue?')) return;
-
-  btn.disabled    = true;
-  btn.textContent = 'Importing…';
-  status.className   = 'backup-status';
-  status.textContent = '';
-
-  const result = await window.jpm.importBackup();
-
-  btn.disabled    = false;
-  btn.textContent = 'Choose Backup File…';
-
-  if (result.canceled) return;
-  if (result.ok) {
-    status.className   = 'backup-status ok';
-    status.textContent = '✓ Restored — reloading settings…';
-    setTimeout(() => location.reload(), 1200);
-  } else {
-    status.className   = 'backup-status err';
-    status.textContent = '✕ ' + (result.error || 'Import failed.');
+let restorePreview = null;
+let restoreInProgress = false;
+let restoreReloadPending = false;
+let restoreFooterActive = false;
+function selectedRestoreSections() { return [...$('restoreOptions').querySelectorAll('input:checked')].map(input => input.value); }
+function updateRestoreSelection() {
+  const selected = selectedRestoreSections();
+  $('applyRestoreBtn').disabled = restoreInProgress || !restorePreview || !selected.length;
+  $('restoreMixModeRow').hidden = !selected.includes('mixes');
+  $('restoreMixModeHelp').textContent = $('restoreMixMode').value === 'replace'
+    ? 'Replaces the server’s My Mixes and device aliases. Copies already saved locally on phones remain on those phones.'
+    : 'Identical copies are skipped. Different mixes with the same name receive a numbered suffix.';
+  const names = (restorePreview?.sections || []).filter(section => selected.includes(section.id)).map(section => section.label);
+  $('restoreSelectionSummary').textContent = names.length ? 'Will restore: ' + names.join(', ') + '.' : 'Choose at least one section. No data will change until you click Restore Selected.';
+  const reviewing = !!restorePreview && $('tab-backup').classList.contains('active');
+  if (reviewing || restoreFooterActive) {
+    $('saveBtn').textContent = reviewing ? 'Restore Selected' : 'Save & Apply';
+    $('saveBtn').disabled = restoreInProgress || (reviewing && !selected.length);
   }
+  restoreFooterActive = reviewing;
+}
+function setRestoreBusy(busy) {
+  restoreInProgress = busy || restoreReloadPending;
+  for (const id of ['importBackupBtn','importMixBackupBtn','cancelRestoreBtn','saveBtn','restoreMixMode']) $(id).disabled = restoreInProgress;
+  $('restoreOptions').disabled = restoreInProgress;
+  updateRestoreSelection();
+}
+async function loadBackup() {
+  if (restoreInProgress) return;
+  document.querySelector('.tab[data-tab="backup"]').click();
+  const status = $('importStatus'); status.textContent = ''; status.className = 'backup-status';
+  setRestoreBusy(true);
+  try {
+    await window.jpm.cancelBackupRestore(); restorePreview = null; $('restorePreview').hidden = true;
+    const result = await window.jpm.inspectBackup();
+    if (result.canceled) return;
+    if (!result.ok) throw new Error(result.error || 'Could not read this backup.');
+    restorePreview = result;
+    $('restoreFilename').textContent = result.filename;
+    $('restoreFileType').textContent = result.kind + (result.appVersion ? ' · JPMixer ' + result.appVersion : '');
+    $('restoreOptions').replaceChildren();
+    for (const section of result.sections) {
+      const label = document.createElement('label'); label.className = 'restore-option';
+      const input = document.createElement('input'); input.type = 'checkbox'; input.value = section.id; input.checked = section.id === 'mixes' && section.count > 0;
+      const text = document.createElement('span'), title = document.createElement('strong'), detail = document.createElement('span');
+      title.textContent = section.label; detail.className = 'sub'; detail.textContent = section.description;
+      text.append(title,detail); label.append(input,text); $('restoreOptions').appendChild(label);
+    }
+    $('restoreMixMode').value = 'merge'; $('restorePreview').hidden = false;
+    $('backup-loader').scrollIntoView({ block:'start' });
+  } catch (error) { status.className = 'backup-status err'; status.textContent = error.message; }
+  finally { setRestoreBusy(false); }
+}
+$('importBackupBtn').addEventListener('click', loadBackup);
+$('importMixBackupBtn').addEventListener('click', loadBackup);
+$('restoreOptions').addEventListener('change', updateRestoreSelection);
+$('restoreMixMode').addEventListener('change', updateRestoreSelection);
+for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', updateRestoreSelection);
+$('cancelRestoreBtn').addEventListener('click', async () => {
+  if (restoreInProgress) return;
+  try {
+    await window.jpm.cancelBackupRestore(); restorePreview = null; $('restorePreview').hidden = true; $('importStatus').textContent = ''; updateRestoreSelection();
+  } catch (error) { $('importStatus').className = 'backup-status err'; $('importStatus').textContent = error.message; }
+});
+$('applyRestoreBtn').addEventListener('click', async () => {
+  const sections = selectedRestoreSections();
+  if (!restorePreview || !sections.length || restoreInProgress) return;
+  const status = $('importStatus'); status.className = 'backup-status'; status.textContent = 'Saving a safety backup and restoring selected sections…';
+  setRestoreBusy(true);
+  try {
+    const result = await window.jpm.restoreBackup({ id:restorePreview.id,sections,mixMode:$('restoreMixMode').value });
+    if (!result.ok) throw new Error(result.error || 'Could not restore the selected sections.');
+    const names = restorePreview.sections.filter(section => result.selected.includes(section.id)).map(section => section.label);
+    restorePreview = null; $('restorePreview').hidden = true;
+    status.className = 'backup-status ok';
+    status.textContent = 'Restored ' + names.join(', ') + '. Safety backup saved.';
+    if (result.mixes) status.textContent += ` Added ${result.mixes.imported}; skipped ${result.mixes.skipped} identical copies; renamed ${result.mixes.renamed} to keep both versions.`;
+    if (result.configChanged) { restoreReloadPending = true; status.textContent += ' Reloading settings…'; setTimeout(() => location.reload(),1200); }
+    else { await renderMixesTab(); await refreshAutoBackupInfo(); }
+  } catch (error) { status.className = 'backup-status err'; status.textContent = error.message; }
+  finally { setRestoreBusy(false); }
 });
 
 $('resetLayoutBtn').addEventListener('click', async () => {
@@ -1447,27 +1882,43 @@ $('resetLayoutBtn').addEventListener('click', async () => {
 
   if (!confirm('This will clear all channel groups, icon assignments, and label overrides. Console settings and ear mixes are not affected. Continue?')) return;
 
-  channelGroups    = [];
-  channelOverrides = {};
-
-  renderGroups();
-  renderChannels();
-
   btn.disabled    = true;
   btn.textContent = 'Resetting…';
   status.className   = 'backup-status';
   status.textContent = '';
 
-  await window.jpm.saveConfig(collectConfig());
-
+  // Change only the layout on top of what's saved. Saving the whole form
+  // also saved unsaved edits on other tabs (which could restart the
+  // server) and reverted aux names Planning Center synced meanwhile.
+  let result;
+  try {
+    const saved = await window.jpm.getConfig();
+    result = await window.jpm.saveConfig({ ...saved, channelGroups: [], channelOverrides: {} });
+  } catch (err) {
+    result = { ok: false, error: err.message };
+  }
   btn.disabled    = false;
   btn.textContent = 'Reset Layout & Icons…';
+  if (!result || result.ok === false) {
+    status.className   = 'backup-status err';
+    status.textContent = (result && result.error) || 'Could not reset the layout — nothing was changed.';
+    return;
+  }
+  channelGroups    = [];
+  channelOverrides = {};
+  loadedOverrides.channel = {};
+  renderGroups();
+  renderChannels();
   status.className   = 'backup-status ok';
   status.textContent = '✓ Layout and icons cleared.';
   setTimeout(() => { status.textContent = ''; }, 3000);
 });
 
 $('saveBtn').addEventListener('click', async () => {
+  if (restorePreview && $('tab-backup').classList.contains('active')) {
+    if (!restoreInProgress) $('applyRestoreBtn').click();
+    return;
+  }
   $('saveBtn').textContent = 'Saving…';
   $('saveBtn').disabled    = true;
   const out = collectConfig();
@@ -1475,21 +1926,187 @@ $('saveBtn').addEventListener('click', async () => {
   out.channelOverrides = mergeExternalLabels(out.channelOverrides, loadedOverrides.channel, fresh.channelOverrides);
   out.auxOverrides     = mergeExternalLabels(out.auxOverrides, loadedOverrides.aux, fresh.auxOverrides);
   const result = await window.jpm.saveConfig(out);
+  if (!result || result.ok === false) {
+    // The disk write failed — config.js rolled the in-memory config back,
+    // so nothing actually changed. Don't claim success or adopt `out` as
+    // the new baseline; the next save should still diff against what's
+    // really on disk, not what this attempt tried to write.
+    $('saveBtn').textContent = 'Save failed!';
+    $('saveBtn').disabled    = false;
+    alert((result && result.error) || 'Could not save settings — nothing was changed.');
+    setTimeout(() => { $('saveBtn').textContent = 'Save & Apply'; }, 2000);
+    return;
+  }
   // This is now the baseline for the next save
   channelOverrides = out.channelOverrides;
   auxOverrides     = out.auxOverrides;
   loadedOverrides  = JSON.parse(JSON.stringify({ channel: channelOverrides, aux: auxOverrides }));
   pcoSavedServiceTypeId = out.pcoServiceTypeId;
   pcoSavedTeamId        = out.pcoTeamId;
+  pcoSavedRolePicks = rolePicksFrom(out);
+  pcoPicksForSavedType = { team: out.pcoTeamId, roles: rolePicksFrom(out) };
   renderChannels();
   renderAuxes();
+  // The login item can need approval in System Settings, or be refused
+  const loginStatus = $('openAtLoginStatus');
+  loginStatus.hidden = !(result.loginItem && !result.loginItem.ok);
+  loginStatus.textContent = loginStatus.hidden ? '' : '⚠ ' + result.loginItem.error;
+  if (result.loginItem && !result.loginItem.ok && !result.loginItem.needsApproval) $('openAtLogin').checked = !$('openAtLogin').checked;
   // Most changes now apply live; say when phones were disconnected by a restart
-  $('saveBtn').textContent = (result && result.restarted) ? 'Saved — server restarted' : 'Saved!';
+  $('saveBtn').textContent = result.restarted ? 'Saved — server restarted' : 'Saved!';
   refreshPort80Status(); // a server-port change can stop the helper matching
   setTimeout(() => {
     $('saveBtn').textContent = 'Save & Apply';
     $('saveBtn').disabled    = false;
   }, 1500);
+});
+
+// ── Branding tab ──────────────────────────────────────────────────
+// A logo and accent for the pages JPMixer serves (see src/server/branding.js).
+// Saved with Save & Apply like everything else. Only the preview here uses
+// the chosen color; Settings keeps JPMixer's own look.
+const JPM_RED = '#e8003c';
+let brandLogoFile = ''; // stored logo name, '' = JPMixer logo
+let brandAccent = '';   // '#rrggbb', '' = JPMixer red
+let brandImage = null;  // the logo preview, for reading colors from it
+
+function hexToRgb(hex) { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }
+const toHex = (r, g, b) => '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+function relativeLuminance(hex) {
+  return hexToRgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+    .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+}
+
+function setBrandAccent(hex) {
+  brandAccent = /^#[0-9a-f]{6}$/i.test(hex || '') ? hex.toLowerCase() : '';
+  const shown = brandAccent || JPM_RED;
+  $('brandAccentPicker').value = shown;
+  if (document.activeElement !== $('brandAccentHex')) $('brandAccentHex').value = brandAccent || '';
+  $('brandAccentHex').placeholder = JPM_RED;
+  $('brandAccentReset').disabled = !brandAccent;
+  const sample = $('brandSample');
+  sample.style.setProperty('--sample', shown);
+  sample.style.setProperty('--sample-rgb', hexToRgb(shown).join(', '));
+  // White text on a pale accent (buttons, the active chip) gets hard to read
+  $('brandContrastNote').hidden = relativeLuminance(shown) < 0.5;
+  for (const sw of $('brandSwatches').children) sw.setAttribute('aria-pressed', String(sw.dataset.color === brandAccent));
+}
+
+// The logo's most prominent colors, skipping near-white, near-black and
+// grays unless that's all there is
+function logoColors(img) {
+  const size = 80, c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  const scale = Math.min(size / (img.naturalWidth || size), size / (img.naturalHeight || size));
+  ctx.drawImage(img, 0, 0, (img.naturalWidth || size) * scale, (img.naturalHeight || size) * scale);
+  let data;
+  try { data = ctx.getImageData(0, 0, size, size).data; } catch (_) { return []; }
+  const buckets = new Map();
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 200) continue;
+    const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const sat = max ? (max - min) / max : 0, val = max / 255;
+    const key = (r >> 4) * 256 + (g >> 4) * 16 + (b >> 4);
+    const bucket = buckets.get(key) || { r: 0, g: 0, b: 0, n: 0, weight: 0 };
+    bucket.r += r; bucket.g += g; bucket.b += b; bucket.n++;
+    bucket.weight += (val < 0.12 || (sat < 0.12 && val > 0.9)) ? 0.05 : sat < 0.15 ? 0.3 : 1 + sat;
+    buckets.set(key, bucket);
+  }
+  const picked = [];
+  const ranked = [...buckets.values()].sort((a, b) => b.weight - a.weight);
+  // Colors that barely appear are anti-aliased edges between two colors
+  const minWeight = (ranked[0]?.weight || 0) * 0.04;
+  for (const bkt of ranked) {
+    if (bkt.weight < minWeight) break;
+    const rgb = [bkt.r / bkt.n, bkt.g / bkt.n, bkt.b / bkt.n];
+    if (picked.every(p => Math.hypot(p[0] - rgb[0], p[1] - rgb[1], p[2] - rgb[2]) > 60)) picked.push(rgb);
+    if (picked.length === 6) break;
+  }
+  return picked.map(([r, g, b]) => toHex(r, g, b));
+}
+
+function showBrandLogo(dataUrl) {
+  const canvas = $('brandCanvas');
+  brandImage = null;
+  $('brandSwatches').innerHTML = '';
+  $('brandSwatchLabel').hidden = true;
+  $('brandPickHint').hidden = true;
+  $('brandRemoveBtn').hidden = !brandLogoFile;
+  if (!dataUrl) {
+    canvas.hidden = true;
+    $('brandPreviewEmpty').hidden = false;
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    brandImage = img;
+    const w = img.naturalWidth || 300, h = img.naturalHeight || 150;
+    const scale = Math.min(canvas.width / w, canvas.height / h);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, (canvas.width - w * scale) / 2, (canvas.height - h * scale) / 2, w * scale, h * scale);
+    canvas.hidden = false;
+    $('brandPreviewEmpty').hidden = true;
+    $('brandPickHint').hidden = false;
+    const colors = logoColors(img);
+    $('brandSwatchLabel').hidden = !colors.length;
+    for (const color of colors) {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.className = 'brand-swatch';
+      sw.dataset.color = color;
+      sw.style.background = color;
+      sw.title = color;
+      sw.setAttribute('aria-label', `Use ${color}`);
+      sw.addEventListener('click', () => setBrandAccent(color));
+      $('brandSwatches').appendChild(sw);
+    }
+    setBrandAccent(brandAccent);
+  };
+  img.src = dataUrl;
+}
+
+function loadBranding(cfg) {
+  brandLogoFile = cfg.brandLogo || '';
+  setBrandAccent(cfg.brandAccent || '');
+  window.jpm.getBranding().then(b => { brandLogoFile = b.file; showBrandLogo(b.dataUrl); }).catch(() => showBrandLogo(null));
+}
+
+$('brandUploadBtn').addEventListener('click', async () => {
+  const status = $('brandLogoStatus');
+  const result = await window.jpm.chooseBrandLogo();
+  if (result.canceled) return;
+  if (!result.ok) { status.textContent = '✕ ' + result.error; return; }
+  brandLogoFile = result.file;
+  showBrandLogo(result.dataUrl);
+  status.textContent = 'Logo ready. Click Save & Apply to use it.';
+});
+$('brandRemoveBtn').addEventListener('click', () => {
+  brandLogoFile = '';
+  showBrandLogo(null);
+  $('brandLogoStatus').textContent = 'Back to the JPMixer logo once you click Save & Apply.';
+});
+$('brandAccentPicker').addEventListener('input', e => setBrandAccent(e.target.value));
+$('brandAccentHex').addEventListener('input', e => {
+  const v = e.target.value.trim();
+  const hex = v.startsWith('#') ? v : '#' + v;
+  if (/^#[0-9a-f]{6}$/i.test(hex)) setBrandAccent(hex);
+  else if (!v) setBrandAccent('');
+});
+$('brandAccentHex').addEventListener('blur', () => { $('brandAccentHex').value = brandAccent; });
+$('brandAccentReset').addEventListener('click', () => setBrandAccent(''));
+// Eyedropper: click a spot on the logo to use its color
+$('brandCanvas').addEventListener('click', e => {
+  const canvas = e.currentTarget, rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left) * canvas.width / rect.width);
+  const y = Math.floor((e.clientY - rect.top) * canvas.height / rect.height);
+  let px;
+  try { px = canvas.getContext('2d').getImageData(x, y, 1, 1).data; } catch (_) { return; }
+  if (px[3] < 128) { $('brandPickHint').textContent = 'That spot is transparent. Click on the logo itself.'; return; }
+  $('brandPickHint').textContent = 'Click anywhere on your logo to use that color as the accent.';
+  setBrandAccent(toHex(px[0], px[1], px[2]));
 });
 
 // ── Utility ───────────────────────────────────────────────────────────────
@@ -1702,7 +2319,19 @@ async function init() {
   consoleNames = names  || {};
   auxNames     = anames || {};
   $('localIp').textContent = ip || 'Not found';
-  updatePcoGreenRoomUrl();
+  // The Mac's address changes with the network (a VPN, another Wi-Fi). This
+  // window used to read it once when it opened, and relaunching JPMixer just
+  // brings the open window back, so it kept showing the old address.
+  const refreshLocalIP = async () => {
+    let next;
+    try { next = await window.jpm.getLocalIP(); } catch (_) { return; }
+    if (next === localIP) return;
+    localIP = next;
+    $('localIp').textContent = next || 'Not found';
+    setStatus(isRunning); // rebuilds every link that shows the address
+  };
+  window.addEventListener('focus', refreshLocalIP);
+  setInterval(refreshLocalIP, 15000);
   applyConfig(cfg);
   initPcoAutoSelect(); // fire-and-forget — a PCO round trip shouldn't block the rest of window init
   await syncLiveCounts();

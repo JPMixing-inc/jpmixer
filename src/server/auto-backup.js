@@ -7,23 +7,34 @@ const { app } = require('electron');
 const config  = require('./config');
 const presets = require('./presets');
 const scenes  = require('./scenes');
+const { writeFileAtomic } = require('./safe-write');
 
 // Backup file format, shared by auto-backups and Settings → Export Backup.
 // v2 added scenes and presetAliases; v1 files (config + presets only) are
 // still accepted on import, and leave Ear Scenes and aliases untouched.
 const BACKUP_VERSION = 2;
 
-function buildBackupData() {
+// Left out of an exported backup unless the engineer asks for them — those
+// files get copied to USB sticks and other computers. Auto-backups keep
+// them: they sit next to config.json and are what recovers it if it breaks.
+// A restore without these keeps the credentials already on this Mac.
+const CREDENTIAL_KEYS = ['pcoAppId', 'pcoSecret', 'dlivePassword', 'apiToken', 'fohAccessCode'];
+
+function buildBackupData({ includeCredentials = true } = {}) {
+  const cfg = config.getAll();
+  if (!includeCredentials) for (const key of CREDENTIAL_KEYS) delete cfg[key];
   return {
     app: 'JPMixer',
     type: 'backup',
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     appVersion: app.getVersion(),
-    config: config.getAll(),
+    credentialsIncluded: includeCredentials,
+    config: cfg,
     presets: presets.getAll(),
     presetAliases: presets.getAliases(),
-    scenes: scenes.getAll()
+    scenes: scenes.getAll(),
+    homeLayouts: require('./home-layouts').getAll() // Home page layouts per team member
   };
 }
 
@@ -53,9 +64,15 @@ function listBackups() {
   }
 }
 
+// The newest few are always kept, however old. Pruning purely by age could
+// delete every backup (including the safety ones before a restore or merge)
+// after a long gap between launches, or while auto-backup is turned off,
+// leaving nothing for corrupt-file recovery to fall back on.
+const KEEP_NEWEST = 5;
+
 function pruneOldBackups() {
   const cutoff = Date.now() - RETENTION_MS;
-  for (const b of listBackups()) {
+  for (const b of listBackups().slice(KEEP_NEWEST)) {
     if (b.mtime < cutoff) {
       try { fs.unlinkSync(b.path); } catch (e) {}
     }
@@ -63,11 +80,18 @@ function pruneOldBackups() {
 }
 
 // `label` tags safety backups taken right before a destructive action
-// (import, mix merge) so they're easy to spot in the folder
+// (import, mix merge) so they're easy to spot in the folder. Each backup
+// goes to its own unique timestamped filename (never overwrites an earlier
+// one), so writeFileAtomic's temp-then-rename isn't protecting against
+// corrupting prior backups here — it's just consistency with the rest of
+// the persistence layer (config.js/presets.js/scenes.js), and it means a
+// crash mid-write never leaves a half-written .json in the backups folder
+// for readLatestBackupSection() to trip over. Stays an async function
+// (callers await it) even though the write itself is now synchronous.
 async function writeBackup(label) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filePath = path.join(backupsDir(), `auto-backup-${stamp}${label ? '-' + label : ''}.json`);
-  await fs.promises.writeFile(filePath, JSON.stringify(buildBackupData(), null, 2));
+  writeFileAtomic(filePath, JSON.stringify(buildBackupData(), null, 2));
   return filePath;
 }
 
@@ -100,4 +124,4 @@ function getStatus() {
   };
 }
 
-module.exports = { start, maybeRunBackup, getStatus, listBackups, backupsDir, writeBackup, buildBackupData, BACKUP_VERSION };
+module.exports = { start, maybeRunBackup, getStatus, listBackups, backupsDir, writeBackup, buildBackupData, BACKUP_VERSION, CREDENTIAL_KEYS };

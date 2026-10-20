@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-jpm-view="devices">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,19 +7,52 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Devices — JPMixer</title>
   <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/logo.png" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
   <link rel="stylesheet" href="devices.css" />
+  <link rel="stylesheet" href="devices-stage.css" />
+  <link rel="stylesheet" href="splash.css" />
+  <link rel="stylesheet" href="original-theme.css" />
+  <link rel="stylesheet" href="/branding.css" /><!-- custom accent/logo, last so it wins -->
+  <script src="brand.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="alternate icon" href="favicon.png" type="image/png" />
 </head>
 <body class="disconnected">
+  <script src="splash.js"></script>
 
   <header class="mon-header">
-    <img src="logo.png" class="brand-logo" alt="JPMixer" />
-    <span class="mon-title">Devices</span>
+    <div class="dev-brand jp-brand" aria-label="JPMixer"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /><img class="jp-emblem" src="brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption">ENGINEER WORKSPACE</span></div>
     <span class="mon-snapshot" id="devDeviceCount">0 devices connected</span>
     <span class="conn-dot" id="connDot"></span>
   </header>
 
-  <div class="dev-grid" id="devGrid">
+  <section class="dev-toolbar" aria-label="Device display options">
+    <div><h1>Devices on stage</h1><p id="stageHint">Arrange devices to match your stage. Positions save in this browser.</p></div>
+    <div class="dev-toolbar-actions">
+      <div class="dev-view-switch" role="group" aria-label="Device view"><button type="button" data-device-view="stage" aria-pressed="true">Stage</button><button type="button" data-device-view="grid" aria-pressed="false">Grid</button></div>
+      <button type="button" id="arrangeStageBtn" class="stage-button" aria-pressed="false">Arrange stage</button>
+      <label class="stage-phantom-toggle" id="phantomModeControl" hidden><input type="checkbox" id="phantomModeCheckbox" />Phantom mode <span>All auxes</span></label>
+      <details class="stage-aux-visibility" id="auxVisibilityControl" hidden>
+        <summary><span id="auxVisibilityLabel">Aux visibility</span> ▾</summary>
+        <div class="stage-aux-panel">
+          <p>Choose which auxes appear in the Phantom editor.</p>
+          <div class="stage-aux-actions"><button type="button" id="showAllStageAuxes">Show all</button><button type="button" id="hideDisconnectedStageAuxes" title="Hide auxes with no connected performer">Hide disconnected</button></div>
+          <div id="stageAuxVisibilityList"></div>
+        </div>
+      </details>
+      <button type="button" id="autoArrangeBtn" class="stage-button" hidden>Auto arrange</button>
+      <button type="button" id="undoStageBtn" class="stage-button" hidden>Undo</button>
+    </div>
+  </section>
+  <div class="stage-workspace" id="stageWorkspace">
+    <div class="stage-surface" id="stageSurface" aria-label="Stage layout">
+      <div class="stage-back" aria-hidden="true">UPSTAGE / BACK</div>
+      <div class="stage-devices" id="stageDevices"></div>
+      <div class="stage-empty" id="stageEmpty"><div id="stageEmptyTitle">Devices appear here as performers connect.</div><span id="stageEmptyDescription">Choose Arrange stage to move their cards into position.</span></div>
+      <div class="stage-front" aria-hidden="true">DOWNSTAGE / AUDIENCE</div>
+    </div>
+  </div>
+  <div class="dev-grid" id="devGrid" hidden>
     <div class="dev-empty" id="devEmpty">No musician devices connected yet.</div>
   </div>
 
@@ -30,6 +63,8 @@
     </div>
   </div>
 
+  <div class="stage-announcement" id="stageAnnouncement" role="status" aria-live="polite"></div>
+  <script src="devices-stage.js"></script>
   <script src="devices.js"></script>
 </body>
 </html>

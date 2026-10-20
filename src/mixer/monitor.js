@@ -69,6 +69,7 @@ const levels       = {}; // levels[aux][ch] = sliderValue
 let monMutes       = {}; // monMutes[aux][ch]
 let monSolos       = {}; // monSolos[aux][ch]
 let heartbeatTimer      = null;
+let reconnectTimer = null; // the one pending retry — see connect()
 let hasConnected        = false;
 let disconnectShowTimer = null;
 let activeMixerCounts   = {}; // activeMixerCounts[auxChannel] = number of mixer clients currently on that aux
@@ -89,20 +90,31 @@ function resetHeartbeat() {
 }
 
 function connect() {
+  // One live socket only (same as console.js). The close handler's retry and
+  // the visibilitychange handler could both land here and open a second
+  // socket; a live orphan then kept the heartbeat fed while the real one
+  // was half-open, so this page's sends silently went nowhere.
+  clearTimeout(reconnectTimer);
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}`);
+  const sock = new WebSocket(`${proto}//${location.host}`);
+  ws = sock;
 
-  ws.addEventListener('open', () => {
+  sock.addEventListener('open', () => {
+    if (sock !== ws) return;
     hasConnected = true;
     clearTimeout(disconnectShowTimer);
     document.body.classList.remove('disconnected');
     document.getElementById('connDot').classList.add('connected');
+    document.getElementById('monConnectionLabel').textContent = 'Server connected';
     resetHeartbeat();
   });
 
-  ws.addEventListener('close', () => {
+  sock.addEventListener('close', () => {
+    if (sock !== ws) return;
     clearTimeout(heartbeatTimer);
     document.getElementById('connDot').classList.remove('connected');
+    document.getElementById('monConnectionLabel').textContent = 'Reconnecting';
     clearTimeout(disconnectShowTimer);
     disconnectShowTimer = setTimeout(() => {
       document.body.classList.add('disconnected');
@@ -110,15 +122,16 @@ function connect() {
         document.getElementById('overlayMsg').textContent = 'Reconnecting…';
       }
     }, 2500);
-    setTimeout(connect, 1000);
+    reconnectTimer = setTimeout(connect, 1000);
   });
 
-  ws.addEventListener('message', e => {
+  sock.addEventListener('message', e => {
+    if (sock !== ws) return;
     try {
       const json = JSON.parse(e.data);
       resetHeartbeat();
       if (json.type === 'ping') {
-        ws.send(JSON.stringify({ type: 'pong' }));
+        sock.send(JSON.stringify({ type: 'pong' }));
         return;
       }
       onMessage(json);
@@ -128,6 +141,10 @@ function connect() {
 
 function onMessage(json) {
   if (json.config) {
+    globalThis.jpmSplash?.done();
+    // A new desk session: these levels belong to the old one, and a boost
+    // would re-send them +0.5 dB. request-all-levels below refills them.
+    if (json.config.sessionReload) for (const aux of Object.keys(levels)) delete levels[aux];
     monMutes = json.config.mutes || {};
     monSolos = json.config.solos || {};
     applyConfig(json.config);
@@ -241,6 +258,8 @@ function applyMonMuteSolo(aux, mutes, solos) {
     els.row.classList.toggle('mon-ch-soloed',   soloed);
     els.muteBtn.classList.toggle('active', muted);
     els.soloBtn.classList.toggle('active', soloed);
+    els.muteBtn.setAttribute('aria-pressed', String(muted));
+    els.soloBtn.setAttribute('aria-pressed', String(soloed));
   }
 }
 
@@ -248,6 +267,9 @@ function applyConfig(cfg) {
   auxConfig = (cfg.aux      || []).filter(a => a.enabled);
   chConfig  =  cfg.channels || [];
   document.getElementById('monSnapshot').textContent = cfg.snapshot || '—';
+  document.getElementById('monMixCount').textContent = `${auxConfig.length} ${auxConfig.length === 1 ? 'mix' : 'mixes'}`;
+  const count = chConfig.filter(ch => ch.enabled).length;
+  document.getElementById('monChannelCount').textContent = `${count} ${count === 1 ? 'channel' : 'channels'}`;
   buildGrid();
   applyActiveMixerCounts();
 }
@@ -256,10 +278,15 @@ function applyConfig(cfg) {
 // performers currently have that aux open on their mixer — gives the monitor
 // engineer a live sense of who's actively dialing in their own mix right now.
 function applyActiveMixerCounts() {
+  for (const badge of document.querySelectorAll('[data-mix-presence]')) {
+    const count = activeMixerCounts[badge.dataset.mixPresence] || 0;
+    badge.textContent = count ? `${count} mixing` : 'No performer connected';
+    badge.classList.toggle('is-online', count > 0);
+  }
   for (const [auxStr, badge] of monHdrCache) {
     const n = activeMixerCounts[auxStr] || 0;
     if (n > 0) {
-      badge.textContent = `● ${n}`;
+      badge.textContent = `${n} mixing`;
       badge.title = n === 1 ? '1 performer mixing this aux right now' : `${n} performers mixing this aux right now`;
       badge.style.display = '';
     } else {
@@ -280,11 +307,12 @@ function buildGrid() {
   for (const aux of auxConfig) {
     const col = document.createElement('div');
     col.className = 'aux-col';
+    col.dataset.aux = aux.channel;
+    col.style.setProperty('--aux-color', aux.colour || '#8295bd');
 
     const hdr = document.createElement('div');
     hdr.className = 'aux-col-header';
     hdr.dataset.aux = aux.channel;
-    hdr.style.background = aux.colour || '#444';
 
     const titleWrap = document.createElement('div');
     titleWrap.className = 'aux-col-title';
@@ -292,28 +320,41 @@ function buildGrid() {
     const hdrLabel = document.createElement('div');
     hdrLabel.className = 'aux-col-label';
     hdrLabel.textContent = aux.label || `AUX ${aux.channel}`;
+    hdrLabel.title = hdrLabel.textContent;
+    const heading = document.createElement('div');
+    heading.className = 'aux-col-heading';
+    const kicker = document.createElement('div');
+    kicker.className = 'aux-col-kicker';
+    kicker.textContent = `AUX ${String(aux.channel).padStart(2, '0')} · ${aux.stereo ? 'STEREO' : 'MONO'}`;
+    heading.append(kicker, hdrLabel);
 
     const presenceEl = document.createElement('div');
     presenceEl.className = 'aux-presence';
     presenceEl.style.display = 'none';
     monHdrCache.set(String(aux.channel), presenceEl);
 
-    titleWrap.append(hdrLabel, presenceEl);
+    titleWrap.append(heading, presenceEl);
 
     const cutBtn = document.createElement('button');
     cutBtn.className = 'boost-btn';
     cutBtn.textContent = '−0.5';
     cutBtn.title = 'Cut entire mix −0.5 dB';
+    cutBtn.setAttribute('aria-label', `Cut ${hdrLabel.textContent} by 0.5 dB`);
     cutBtn.addEventListener('click', () => boostAux(aux.channel, -0.5));
 
     const boostBtn = document.createElement('button');
     boostBtn.className = 'boost-btn';
     boostBtn.textContent = '+0.5';
     boostBtn.title = 'Boost entire mix +0.5 dB';
+    boostBtn.setAttribute('aria-label', `Boost ${hdrLabel.textContent} by 0.5 dB`);
     boostBtn.addEventListener('click', () => boostAux(aux.channel, 0.5));
 
-    hdr.appendChild(cutBtn);
     hdr.appendChild(titleWrap);
+    const trimLabel = document.createElement('span');
+    trimLabel.className = 'aux-trim-label';
+    trimLabel.textContent = 'Mix trim · dB';
+    hdr.appendChild(trimLabel);
+    hdr.appendChild(cutBtn);
     hdr.appendChild(boostBtn);
     col.appendChild(hdr);
 
@@ -343,7 +384,10 @@ function buildGrid() {
 
     col.appendChild(chList);
     grid.appendChild(col);
+    applyMonMuteSolo(aux.channel, monMutes[aux.channel] || {}, monSolos[aux.channel] || {});
   }
+  renderMonitorNavigation();
+  filterMonitorChannels();
 }
 
 function buildChannelRow(auxCh, ch) {
@@ -379,7 +423,10 @@ function buildChannelRow(auxCh, ch) {
 
   const nameWrap = document.createElement('div');
   nameWrap.className = 'mon-ch-namewrap';
-  nameWrap.append(iconEl, nameEl);
+  const number = document.createElement('span');
+  number.className = 'mon-ch-number';
+  number.textContent = ch.channel;
+  nameWrap.append(number, iconEl, nameEl);
 
   // dB
   const dbEl = document.createElement('div');
@@ -392,6 +439,7 @@ function buildChannelRow(auxCh, ch) {
   const muteBtn = document.createElement('button');
   muteBtn.className = 'ms-btn mon-mute-btn';
   muteBtn.textContent = 'M';
+  muteBtn.setAttribute('aria-label', `Mute ${ch.label || 'channel ' + ch.channel} in aux ${auxCh}`);
   if (!!(monMutes[auxCh]?.[ch.channel])) muteBtn.classList.add('active');
   muteBtn.addEventListener('click', () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -402,6 +450,7 @@ function buildChannelRow(auxCh, ch) {
   const soloBtn = document.createElement('button');
   soloBtn.className = 'ms-btn mon-solo-btn';
   soloBtn.textContent = 'S';
+  soloBtn.setAttribute('aria-label', `Solo ${ch.label || 'channel ' + ch.channel} in aux ${auxCh}`);
   if (!!(monSolos[auxCh]?.[ch.channel])) soloBtn.classList.add('active');
   soloBtn.addEventListener('click', () => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -411,7 +460,7 @@ function buildChannelRow(auxCh, ch) {
 
   const metaWrap = document.createElement('div');
   metaWrap.className = 'mon-ch-meta';
-  metaWrap.append(dbEl, muteBtn, soloBtn);
+  metaWrap.append(muteBtn, soloBtn);
 
   const topRow = document.createElement('div');
   topRow.className = 'mon-ch-top';
@@ -426,11 +475,14 @@ function buildChannelRow(auxCh, ch) {
   fader.style.setProperty('--val', currentVal);
   fader.dataset.aux = auxCh;
   fader.dataset.ch  = ch.channel;
+  fader.setAttribute('aria-label', `${ch.label || 'Channel ' + ch.channel} level in aux ${auxCh}`);
+  fader.setAttribute('aria-valuetext', `${formatDb(currentVal)} dB`);
 
   fader.addEventListener('input', () => {
     const val = parseFloat(fader.value);
     fader.style.setProperty('--val', val);
     dbEl.textContent = formatDb(val);
+    fader.setAttribute('aria-valuetext', `${formatDb(val)} dB`);
     if (!levels[auxCh]) levels[auxCh] = {};
     levels[auxCh][ch.channel] = val;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -443,7 +495,10 @@ function buildChannelRow(auxCh, ch) {
 
   channelEls.set(`${auxCh}-${ch.channel}`, { fader, db: dbEl });
 
-  row.append(topRow, fader);
+  const faderRow = document.createElement('div');
+  faderRow.className = 'mon-fader-row';
+  faderRow.append(fader, dbEl);
+  row.append(topRow, faderRow);
   return row;
 }
 
@@ -453,6 +508,7 @@ function updateFaderEl(aux, ch, val) {
   els.fader.value = val;
   els.fader.style.setProperty('--val', val);
   els.db.textContent = formatDb(val);
+  els.fader.setAttribute('aria-valuetext', `${formatDb(val)} dB`);
 }
 
 // ── Boost ─────────────────────────────────────────────────────────────────
@@ -461,7 +517,10 @@ function boostAux(auxCh, db) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   for (const ch of chConfig) {
     if (!ch.enabled) continue;
-    const current  = (levels[auxCh] || {})[ch.channel] || 0;
+    // Not loaded from the desk yet: skip it. Counting it as fully down sent
+    // -89.5 dB and silenced a channel that was actually up in the mix.
+    const current  = (levels[auxCh] || {})[ch.channel];
+    if (current === undefined) continue;
     // sliderToDb(0) returns the -150 "off" sentinel, not a real dB value —
     // adding a +0.5 increment on top of literal -150 needs ~120 clicks
     // before it climbs back past dbToSlider's own -90 "off" cutoff and
@@ -489,6 +548,85 @@ function fireSnapshot(action) {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
+
+// Workspace navigation changes only the display.
+let selectedMonitorAux = '';
+let monitorView = 'all';
+try {
+  selectedMonitorAux = localStorage.getItem('jpm_monitor_aux') || '';
+  monitorView = localStorage.getItem('jpm_monitor_view') === 'focus' ? 'focus' : 'all';
+} catch (_) {}
+const monitorPhone = matchMedia('(max-width: 700px)');
+const monitorTouch = matchMedia('(pointer: coarse), (max-width: 700px)');
+function selectMonitorAux(aux) {
+  selectedMonitorAux = String(aux);
+  monitorView = 'focus';
+  updateMonitorWorkspace();
+}
+function updateMonitorWorkspace() {
+  const focus = monitorPhone.matches || monitorView === 'focus';
+  document.body.classList.toggle('mon-focus', focus);
+  for (const col of document.querySelectorAll('.aux-col')) col.hidden = focus && col.dataset.aux !== selectedMonitorAux;
+  for (const button of document.querySelectorAll('[data-select-aux]')) button.setAttribute('aria-pressed', String(button.dataset.selectAux === selectedMonitorAux));
+  for (const button of document.querySelectorAll('[data-monitor-view]')) button.setAttribute('aria-pressed', String(button.dataset.monitorView === (focus ? 'focus' : 'all')));
+  document.getElementById('monMixPicker').value = selectedMonitorAux;
+  try { localStorage.setItem('jpm_monitor_aux', selectedMonitorAux); localStorage.setItem('jpm_monitor_view', monitorView); } catch (_) {}
+}
+function renderMonitorNavigation() {
+  if (!auxConfig.some(aux => String(aux.channel) === selectedMonitorAux)) selectedMonitorAux = String(auxConfig[0]?.channel || '');
+  const nav = document.getElementById('monMixList');
+  const picker = document.getElementById('monMixPicker');
+  nav.replaceChildren(); picker.replaceChildren();
+  for (const aux of auxConfig) {
+    const label = aux.label || `Aux ${aux.channel}`;
+    const button = document.createElement('button');
+    button.type = 'button'; button.dataset.selectAux = aux.channel;
+    button.style.setProperty('--aux-color', aux.colour || '#8295bd');
+    const number = document.createElement('span'); number.className = 'mon-nav-number'; number.textContent = String(aux.channel).padStart(2, '0');
+    const text = document.createElement('span'); text.className = 'mon-nav-copy';
+    const name = document.createElement('strong'); name.textContent = label;
+    const presence = document.createElement('small'); presence.dataset.mixPresence = aux.channel;
+    text.append(name, presence); button.append(number, text);
+    button.addEventListener('click', () => selectMonitorAux(aux.channel));
+    nav.append(button);
+    const option = document.createElement('option'); option.value = aux.channel; option.textContent = `Aux ${aux.channel} · ${label}`; picker.append(option);
+  }
+  document.getElementById('monEmpty').hidden = auxConfig.length > 0;
+  updateMonitorWorkspace();
+}
+function filterMonitorChannels() {
+  const query = document.getElementById('monChannelSearch').value.trim().toLowerCase();
+  for (const list of document.querySelectorAll('.aux-col-channels')) {
+    let groupTitle = null, groupVisible = false;
+    for (const el of list.children) {
+      if (el.classList.contains('mon-section-title')) {
+        if (groupTitle) groupTitle.hidden = !groupVisible;
+        groupTitle = el; groupVisible = false;
+      } else if (el.classList.contains('mon-ch-row')) {
+        el.hidden = !!query && !el.querySelector('.mon-ch-name').textContent.toLowerCase().includes(query) && el.dataset.ch !== query;
+        groupVisible ||= !el.hidden;
+      }
+    }
+    if (groupTitle) groupTitle.hidden = !groupVisible;
+    let empty = list.querySelector('.mon-no-results');
+    if (!empty) { empty = document.createElement('p'); empty.className = 'mon-no-results'; empty.textContent = 'No matching channels.'; }
+    empty.hidden = [...list.querySelectorAll('.mon-ch-row')].some(row => !row.hidden);
+    list.append(empty);
+  }
+}
+function setMonitorAdjusting(adjusting) {
+  document.body.classList.toggle('mon-adjusting', adjusting);
+  document.getElementById('monAdjustLevels').setAttribute('aria-pressed', String(adjusting));
+  document.getElementById('monAdjustLevels').textContent = adjusting ? 'Done adjusting' : 'Adjust levels';
+  document.getElementById('monTouchHint').textContent = adjusting ? 'Drag to adjust sends.' : 'Swipe to browse safely.';
+}
+document.getElementById('monMixPicker').addEventListener('change', e => selectMonitorAux(e.target.value));
+document.getElementById('monChannelSearch').addEventListener('input', filterMonitorChannels);
+document.getElementById('monAdjustLevels').addEventListener('click', () => setMonitorAdjusting(!document.body.classList.contains('mon-adjusting')));
+for (const button of document.querySelectorAll('[data-monitor-view]')) button.addEventListener('click', () => { monitorView = button.dataset.monitorView; updateMonitorWorkspace(); });
+monitorPhone.addEventListener('change', updateMonitorWorkspace);
+monitorTouch.addEventListener('change', () => setMonitorAdjusting(false));
+window.addEventListener('pagehide', () => setMonitorAdjusting(false));
 
 connect();
 

@@ -32,6 +32,7 @@ async function main() {
       let reply;
       if (msg.address === '/ch/1/fdr') reply = ['0.0', 0.5, -6.0];
       else if (msg.address.endsWith('/name')) reply = ['Kick'];
+      else if (msg.address.endsWith('/on')) reply = ['ON', 1.0, 1]; // send currently on
       else reply = ['0.0', 0.5, 0.0];
       const packet = osc.writePacket({ address: msg.address, args: reply });
       mock.send(Buffer.from(packet), rinfo.port, rinfo.address);
@@ -87,10 +88,13 @@ async function main() {
   received.length = 0;
   ws.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 2, muted: true }));
   await new Promise((r) => setTimeout(r, 150));
-  assert.equal(received.length, 1);
+  // First a GET of the send's current on/off state, then the SET.
+  assert.equal(received.length, 2);
   assert.equal(received[0].address, '/ch/2/send/1/on');
-  assert.equal(received[0].args, 0); // on=0 means silenced
-  console.log('ok - set-mute sends a real WING send.on=0 message, not a fake -inf level');
+  assert.deepEqual(received[0].args, []);
+  assert.equal(received[1].address, '/ch/2/send/1/on');
+  assert.equal(received[1].args, 0); // on=0 means silenced
+  console.log('ok - set-mute checks the send is on, then sends a real WING send.on=0 message, not a fake -inf level');
 
   // ── request-aux-levels replays JPMixer's own last-sent values ──────────
   const levelsBack = await new Promise((resolve) => {

@@ -1,27 +1,42 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-jpm-view="greenroom">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Green Room — JPMixer</title>
   <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/logo.png" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
   <link rel="stylesheet" href="greenroom.css" />
+  <link rel="stylesheet" href="splash.css" />
+  <link rel="stylesheet" href="original-theme.css" />
+  <link rel="stylesheet" href="/branding.css" /><!-- custom accent/logo, last so it wins -->
+  <script src="brand.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="alternate icon" href="favicon.png" type="image/png" />
 </head>
 <body>
-
+  <script src="splash.js"></script>
   <header class="gr-header">
-    <img src="logo.png" class="brand-logo" alt="JPMixer" />
-    <span class="gr-title" id="grPlanTitle">Green Room</span>
-    <span class="gr-date" id="grPlanDate"></span>
+    <div class="gr-brand jp-brand" aria-label="JPMixer"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /><img class="jp-emblem" src="brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption">GREEN ROOM</span></div>
+    <div class="gr-header-actions">
+      <span class="gr-status" id="grStatus" role="status">Loading schedule…</span>
+      <button type="button" id="grRefresh">Refresh</button>
+      <button type="button" id="grFullscreen" hidden>Fullscreen</button>
+    </div>
   </header>
-
-  <div class="gr-grid" id="grGrid"></div>
-
-  <div class="gr-empty" id="grEmpty" style="display:none"></div>
-
+  <main class="gr-main">
+    <section class="gr-plan" aria-label="Service details">
+      <div><p class="gr-eyebrow">THE TEAM</p><h1 id="grPlanTitle">Green Room</h1><p class="gr-date" id="grPlanDate"></p></div>
+      <div class="gr-count" id="grCount" hidden><strong id="grMemberCount">0</strong><span id="grCountLabel">people scheduled</span></div>
+    </section>
+    <div class="gr-roster-heading"><h2>Who's serving</h2><span>Planning Center schedule</span></div>
+    <p class="gr-notice" id="grNotice" role="status" hidden></p>
+    <section class="gr-grid" id="grGrid" aria-label="Scheduled team members" aria-busy="true"></section>
+    <div class="gr-empty" id="grEmpty" role="status"><img class="jp-empty-logo" src="brand/jp-monogram.svg" alt="" width="56" height="28" /><h2 id="grEmptyTitle">Getting the team together</h2><p id="grEmptyMessage">Loading the upcoming service and scheduled team.</p></div>
+    <footer class="gr-footer"><span>GREEN ROOM</span><span>Schedule refreshes every 2 minutes</span></footer>
+  </main>
   <script src="greenroom.js"></script>
 </body>
 </html>

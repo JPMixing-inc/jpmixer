@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-jpm-view="monitor">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,24 +7,50 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Monitor Engineer — JPMixer</title>
   <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/logo.png" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
   <link rel="stylesheet" href="monitor.css" />
+  <link rel="stylesheet" href="monitor-studio.css" />
+  <link rel="stylesheet" href="splash.css" />
+  <link rel="stylesheet" href="original-theme.css" />
+  <link rel="stylesheet" href="/branding.css" /><!-- custom accent/logo, last so it wins -->
+  <script src="brand.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="alternate icon" href="favicon.png" type="image/png" />
 </head>
 <body class="disconnected">
+  <script src="splash.js"></script>
 
   <header class="mon-header">
-    <img src="logo.png" class="brand-logo" alt="JPMixer" />
-    <span class="mon-title">Monitor Engineer</span>
-    <span class="mon-snapshot" id="monSnapshot">—</span>
-    <div class="snap-btns">
-      <button class="snap-btn" id="snapPrevBtn" title="Fire Previous Snapshot">⏮</button>
-      <button class="snap-btn" id="snapNextBtn" title="Fire Next Snapshot">⏭</button>
+    <div class="mon-brand jp-brand" aria-label="JPMixer"><img class="jp-wordmark" src="brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /><img class="jp-emblem" src="brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption">ENGINEER WORKSPACE</span></div>
+    <div class="mon-snapshot-group"><span class="mon-snapshot-caption">SNAPSHOT</span><span class="mon-snapshot" id="monSnapshot">—</span>
+      <div class="snap-btns">
+        <button class="snap-btn" id="snapPrevBtn" title="Fire Previous Snapshot" aria-label="Fire previous snapshot">‹</button>
+        <button class="snap-btn" id="snapNextBtn" title="Fire Next Snapshot" aria-label="Fire next snapshot">›</button>
+      </div>
     </div>
     <span class="mon-device-count" id="monDeviceCount" style="display:none">0 devices</span>
-    <span class="conn-dot" id="connDot"></span>
+    <span class="mon-connection" role="status"><span class="conn-dot" id="connDot"></span><span id="monConnectionLabel">Connecting</span></span>
   </header>
 
-  <div class="mon-grid" id="monGrid"></div>
+  <section class="mon-toolbar" aria-label="Monitor display options">
+    <div class="mon-page-title"><h1>Monitor engineer</h1><p><span id="monMixCount">0 mixes</span><span aria-hidden="true">·</span><span id="monChannelCount">0 channels</span></p></div>
+    <div class="mon-density" role="group" aria-label="Display size"><button type="button" data-monitor-view="all" aria-pressed="true">All mixes</button><button type="button" data-monitor-view="focus" aria-pressed="false">Selected mix</button></div>
+  </section>
+  <div class="mon-workspace">
+    <aside class="mon-mix-sidebar" aria-label="Select a monitor mix">
+      <div class="mon-sidebar-heading"><span>MONITOR MIXES</span><small>Select a performer to focus</small></div>
+      <nav id="monMixList" aria-label="Performers"></nav>
+    </aside>
+    <section class="mon-main" aria-label="Monitor mix controls">
+      <div class="mon-workspace-tools">
+        <label class="mon-mobile-picker">Monitor mix<select id="monMixPicker" aria-label="Select monitor mix"></select></label>
+        <details class="mon-search"><summary>Find channels</summary><label for="monChannelSearch">Channel name or number</label><input id="monChannelSearch" type="search" placeholder="Search channels…" autocomplete="off" /></details>
+        <div class="mon-touch-tools"><span id="monTouchHint">Swipe to browse safely.</span><button id="monAdjustLevels" type="button" aria-pressed="false">Adjust levels</button></div>
+      </div>
+      <main class="mon-grid" id="monGrid" aria-label="Aux mixes"></main>
+      <p class="mon-empty" id="monEmpty" hidden>No monitor mixes are enabled.</p>
+    </section>
+  </div>
 
   <div class="overlay" id="overlay">
     <div class="overlay-content">

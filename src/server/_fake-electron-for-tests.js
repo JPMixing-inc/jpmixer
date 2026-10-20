@@ -5,4 +5,4 @@
 // this points that at the OS temp dir by default, or JPM_TEST_USERDATA if a
 // test sets it first (for isolation from other concurrent test runs, or
 // from a real presets.json/scenes.json sitting in the shared OS temp dir).
-module.exports = { app: { getPath: () => process.env.JPM_TEST_USERDATA || require('os').tmpdir() } };
+module.exports = { app: { getPath: () => process.env.JPM_TEST_USERDATA || require('os').tmpdir(), getVersion: () => '0.0.0-test' } };

@@ -1,5 +1,9 @@
 'use strict';
 
+let refreshing = false;
+let lastRoster = '';
+let lastSuccess = null;
+let hasRoster = false;
 const REFRESH_MS = 120000; // 2 min — this page is meant to sit unattended on a green-room iPad/TV
 
 function initials(name) {
@@ -7,7 +11,7 @@ function initials(name) {
 }
 
 function buildCard(member) {
-  const card = document.createElement('div');
+  const card = document.createElement('article');
   card.className = 'gr-card';
 
   if (member.photoUrl) {
@@ -32,68 +36,125 @@ function buildCard(member) {
     card.appendChild(fallback);
   }
 
-  const name = document.createElement('div');
+  const details = document.createElement('div');
+  details.className = 'gr-member-details';
+  const name = document.createElement('h3');
   name.className = 'gr-name';
   name.textContent = member.name;
-  card.appendChild(name);
+  details.appendChild(name);
 
   const position = document.createElement('div');
   position.className = 'gr-position';
   position.textContent = member.position;
-  card.appendChild(position);
+  details.appendChild(position);
+  card.appendChild(details);
 
   return card;
 }
 
-function showEmpty(message) {
-  document.getElementById('grGrid').style.display = 'none';
-  const empty = document.getElementById('grEmpty');
-  empty.textContent = message;
-  empty.style.display = 'flex';
+function showEmpty(title, message) {
+  document.getElementById('grGrid').hidden = true;
+  document.getElementById('grEmptyTitle').textContent = title;
+  document.getElementById('grEmptyMessage').textContent = message;
+  document.getElementById('grEmpty').hidden = false;
+  document.getElementById('grCount').hidden = true;
+  hasRoster = false;
+  lastRoster = '';
 }
 
 function showGrid(members) {
   const grid = document.getElementById('grGrid');
-  document.getElementById('grEmpty').style.display = 'none';
-  grid.style.display = 'grid';
-  grid.innerHTML = '';
-  members.forEach(m => grid.appendChild(buildCard(m)));
+  document.getElementById('grEmpty').hidden = true;
+  grid.hidden = false;
+  // Avoid reloading portraits or interrupting a reader's scroll every refresh.
+  const signature = JSON.stringify(members);
+  if (signature !== lastRoster) {
+    grid.replaceChildren(...members.map(buildCard));
+    lastRoster = signature;
+  }
+  document.getElementById('grMemberCount').textContent = members.length;
+  document.getElementById('grCountLabel').textContent = members.length === 1 ? 'person scheduled' : 'people scheduled';
+  document.getElementById('grCount').hidden = false;
+  hasRoster = true;
+}
+
+function setStatus(state, text) {
+  const status = document.getElementById('grStatus');
+  status.dataset.state = state;
+  status.textContent = text;
+}
+
+function showFailure(message) {
+  setStatus('error', hasRoster ? 'Showing last update' : 'Schedule unavailable');
+  if (hasRoster) {
+    const notice = document.getElementById('grNotice');
+    const time = lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    notice.textContent = `Showing the schedule from ${time}. ${message} Retrying automatically.`;
+    notice.hidden = false;
+  } else {
+    showEmpty('Schedule unavailable', message + '\nThe screen will retry automatically.');
+  }
+}
+
+function planDateLabel(value) {
+  if (!value) return '';
+  // A date-only service date belongs to its calendar day in every time zone.
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value + 'T12:00:00' : value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
 async function refresh() {
-  let data;
+  if (refreshing) return;
+  refreshing = true;
+  const button = document.getElementById('grRefresh');
+  button.disabled = true;
+  button.textContent = 'Refreshing…';
+  document.getElementById('grGrid').setAttribute('aria-busy', 'true');
+  setStatus('loading', lastSuccess ? 'Refreshing schedule…' : 'Loading schedule…');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const res = await fetch('/greenroom-data');
-    data = await res.json();
+    const response = await fetch('/greenroom-data', { signal: controller.signal, cache: 'no-store' });
+    if (!response.ok) throw new Error('Can’t reach JPMixer right now. Check the connection.');
+    const data = await response.json();
+    if (!data.ok) { showFailure(data.error || 'The schedule could not be loaded.'); return; }
+    document.getElementById('grNotice').hidden = true;
+    document.getElementById('grPlanTitle').textContent = data.plan?.title || 'Green Room';
+    document.getElementById('grPlanDate').textContent = planDateLabel(data.plan?.date);
+    if (!data.plan) {
+      showEmpty('No upcoming service', 'The next service and its team will appear here when available in Planning Center.');
+    } else if (!data.members?.length) {
+      showEmpty('The team is still coming together', 'No one is scheduled for this service yet. Check back soon.');
+    } else {
+      showGrid(data.members);
+    }
+    lastSuccess = new Date();
+    setStatus('ready', 'Updated ' + lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
   } catch (_) {
-    showEmpty('Can’t reach JPMixer right now.\nCheck the connection and this page will retry automatically.');
-    return;
+    showFailure('Can’t reach JPMixer right now. Check the connection.');
+  } finally {
+    clearTimeout(timeout);
+    refreshing = false;
+    button.disabled = false;
+    button.textContent = 'Refresh';
+    document.getElementById('grGrid').setAttribute('aria-busy', 'false');
+    globalThis.jpmSplash?.done();
   }
-
-  if (!data.ok) {
-    showEmpty(data.error || 'Something went wrong loading the schedule.');
-    return;
-  }
-
-  if (!data.plan) {
-    showEmpty('No upcoming service found in Planning Center.');
-    document.getElementById('grPlanTitle').textContent = 'Green Room';
-    document.getElementById('grPlanDate').textContent = '';
-    return;
-  }
-
-  document.getElementById('grPlanTitle').textContent = data.plan.title || 'Green Room';
-  document.getElementById('grPlanDate').textContent = data.plan.date
-    ? new Date(data.plan.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-    : '';
-
-  if (!data.members || data.members.length === 0) {
-    showEmpty('No one scheduled yet for this service.');
-    return;
-  }
-
-  showGrid(data.members);
 }
 
+const fullscreenButton = document.getElementById('grFullscreen');
+if (document.fullscreenEnabled) fullscreenButton.hidden = false;
+fullscreenButton.addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch (_) {
+    setStatus('error', 'Fullscreen unavailable in this browser');
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  fullscreenButton.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+});
+document.getElementById('grRefresh').addEventListener('click', refresh);
 refresh();
 setInterval(refresh, REFRESH_MS);

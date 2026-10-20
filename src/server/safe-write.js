@@ -6,9 +6,13 @@ const path = require('path');
 // Write to a temp file, then rename it over the real one — a crash or power
 // loss mid-write leaves either the old file or the new one, never a
 // half-written one that fails to parse on the next launch.
+// Owner-only (0600): config.json and the backups hold the Planning Center
+// secret, dLive password and API token, so other accounts on the Mac
+// shouldn't be able to read them.
 function writeFileAtomic(filePath, data) {
   const tmp = filePath + '.tmp';
-  fs.writeFileSync(tmp, data);
+  try { fs.unlinkSync(tmp); } catch (_) {} // a leftover temp file would keep its old mode
+  fs.writeFileSync(tmp, data, { mode: 0o600 });
   try {
     fs.renameSync(tmp, filePath);
   } catch (e) {

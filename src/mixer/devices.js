@@ -6,6 +6,7 @@ let ws                  = null;
 let auxByChannel        = new Map(); // channel → { label, colour }
 let channelByNumber     = new Map(); // channel → { label }
 let heartbeatTimer       = null;
+let reconnectTimer = null; // the one pending retry — see connect()
 let hasConnected         = false;
 let disconnectShowTimer  = null;
 
@@ -27,10 +28,18 @@ function resetHeartbeat() {
 }
 
 function connect() {
+  // One live socket only (same as console.js). The close handler's retry and
+  // the visibilitychange handler could both land here and open a second
+  // socket; a live orphan then kept the heartbeat fed while the real one
+  // was half-open, so this page's sends silently went nowhere.
+  clearTimeout(reconnectTimer);
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}`);
+  const sock = new WebSocket(`${proto}//${location.host}`);
+  ws = sock;
 
-  ws.addEventListener('open', () => {
+  sock.addEventListener('open', () => {
+    if (sock !== ws) return;
     hasConnected = true;
     clearTimeout(disconnectShowTimer);
     document.body.classList.remove('disconnected');
@@ -40,7 +49,8 @@ function connect() {
     ws.send(JSON.stringify({ type: 'subscribe-activity' }));
   });
 
-  ws.addEventListener('close', () => {
+  sock.addEventListener('close', () => {
+    if (sock !== ws) return;
     clearTimeout(heartbeatTimer);
     document.getElementById('connDot').classList.remove('connected');
     clearTimeout(disconnectShowTimer);
@@ -50,15 +60,16 @@ function connect() {
         document.getElementById('overlayMsg').textContent = 'Reconnecting…';
       }
     }, 2500);
-    setTimeout(connect, 1000);
+    reconnectTimer = setTimeout(connect, 1000);
   });
 
-  ws.addEventListener('message', e => {
+  sock.addEventListener('message', e => {
+    if (sock !== ws) return;
     try {
       const json = JSON.parse(e.data);
       resetHeartbeat();
       if (json.type === 'ping') {
-        ws.send(JSON.stringify({ type: 'pong' }));
+        sock.send(JSON.stringify({ type: 'pong' }));
         return;
       }
       onMessage(json);
@@ -68,6 +79,7 @@ function connect() {
 
 function onMessage(json) {
   if (json.config) {
+    globalThis.jpmSplash?.done();
     auxByChannel = new Map();
     for (const aux of json.config.aux || []) {
       if (!aux.enabled) continue;
@@ -78,6 +90,7 @@ function onMessage(json) {
       channelByNumber.set(ch.channel, { label: ch.label || `Ch ${ch.channel}` });
     }
     renderDevices(lastDevices);
+    globalThis.deviceStage?.setAuxes(json.config.aux || []);
     return;
   }
 
@@ -89,6 +102,17 @@ function onMessage(json) {
 
   if (json.type === 'device-activity') {
     handleActivity(json);
+    return;
+  }
+  if (json.type === 'aux-relabeled') {
+    const aux = auxByChannel.get(json.aux);
+    if (aux) { aux.label = json.label; renderDevices(lastDevices); }
+    globalThis.deviceStage?.relabelAux(json.aux, json.label);
+    return;
+  }
+  if (json.type === 'channel-relabeled') {
+    const channel = channelByNumber.get(json.channel);
+    if (channel) channel.label = json.label;
     return;
   }
 }
@@ -115,15 +139,18 @@ function renderDevices(devices) {
     if (!entry) {
       entry = buildCard(key);
       deviceCards.set(key, entry);
-      grid.appendChild(entry.card);
+      if (globalThis.deviceStage) globalThis.deviceStage.mount(key, entry.card);
+      else grid.appendChild(entry.card);
     }
     updateCard(entry, dev, deviceOrdinals.get(key));
+    globalThis.deviceStage?.update(key, dev);
   }
 
   // Remove cards for devices no longer connected
   for (const [key, entry] of deviceCards) {
     if (!seen.has(key)) {
       entry.card.remove();
+      globalThis.deviceStage?.remove(key);
       clearTimeout(entry.fadeTimer);
       clearTimeout(entry.descTimer);
       clearTimeout(entry.descSettleTimer);
@@ -131,6 +158,7 @@ function renderDevices(devices) {
       deviceCards.delete(key);
     }
   }
+  globalThis.deviceStage?.sync();
 }
 
 function buildCard(key) {
@@ -183,15 +211,16 @@ function updateCard(entry, dev, ordinal) {
   const aux = auxByChannel.get(dev.aux);
   if (dev.aux != null && aux) {
     entry.auxEl.textContent = aux.label;
-    entry.auxEl.style.background = aux.colour;
+    entry.card.style.setProperty('--aux-color', aux.colour);
     entry.auxEl.classList.remove('dev-no-aux');
     entry.subEl.textContent = `Mixing Aux ${dev.aux}`;
   } else {
     entry.auxEl.textContent = 'No mix selected';
-    entry.auxEl.style.background = '';
+    entry.card.style.setProperty('--aux-color', '#708198');
     entry.auxEl.classList.add('dev-no-aux');
     entry.subEl.textContent = '';
   }
+  entry.auxEl.title = entry.auxEl.textContent;
 
   entry.lastActivity = dev.lastActivity || null;
   entry.lastPong = dev.lastPong || null;
@@ -283,6 +312,7 @@ function handleActivity(json) {
 }
 
 function applyDescription(entry, text) {
+  entry.descEl.title = text;
   clearTimeout(entry.descTimer);
   entry.descTimer = setTimeout(() => entry.descEl.classList.remove('visible'), 4000);
 

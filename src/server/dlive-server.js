@@ -86,8 +86,12 @@ const presets   = require('./presets');
 const shared    = require('./shared-handlers');
 const P         = require('./dlive-protocol');
 const { DliveClient } = require('./dlive-client');
+const { createPacedWriter } = require('./paced-writer');
 const config    = require('./config');
 const { mountGreenRoom } = require('./greenroom');
+const { mountBranding } = require('./branding');
+const { mountPerformerAssignments } = require('./performer-assignments');
+const { mountFoh } = require('./foh');
 
 let httpServer = null;
 let wss        = null;
@@ -164,6 +168,29 @@ function rebuildSendLevelPollQueue() {
 // cautionary tale here: an earlier version of that code briefly burst
 // metadata requests instead of pacing them and it's the prime suspect for a
 // console Access Violation crash. Don't repeat that mistake for dLive.
+// Send levels JPMixer asked for: "ch:aux" -> reply deadline. With push
+// listening off (dliveListenSendLevels false), replies to these are still
+// accepted. Poll and mute both depend on them, and both arrive as the same
+// 'sendLevel' event as an unsolicited push.
+const requestedSendLevels = new Map();
+const SEND_LEVEL_REPLY_MS = 5000;
+function requestSendLevel(ch, aux, inputCoord, sendCoord) {
+  if (!client) return;
+  const now = Date.now();
+  if (requestedSendLevels.size > 500) {
+    for (const [k, deadline] of requestedSendLevels) if (deadline < now) requestedSendLevels.delete(k);
+  }
+  requestedSendLevels.set(levelKey(ch, aux), now + SEND_LEVEL_REPLY_MS);
+  client.requestSendLevel(inputCoord, sendCoord);
+}
+
+// Bulk send-level writes (mute/solo, recalls) go through here — see
+// paced-writer.js. A musician's own fader move stays direct.
+const pacer = createPacedWriter();
+function pacedSendLevel(ch, aux, inputCoord, sendCoord, db, urgent) {
+  pacer.write(`lvl:${ch}:${aux}`, () => client && client.setSendLevel(inputCoord, sendCoord, db), urgent);
+}
+
 function startSendLevelPolling(baseN) {
   stopSendLevelPolling();
   if (!serverCfg.dlivePollSendLevels) return;
@@ -175,7 +202,7 @@ function startSendLevelPolling(baseN) {
     }
     const { ch, aux } = sendLevelPollQueue[sendLevelPollIndex++];
     const inputCoord = channelCoord(baseN, ch), sendCoord = auxCoord(baseN, aux);
-    if (inputCoord && sendCoord) client.requestSendLevel(inputCoord, sendCoord);
+    if (inputCoord && sendCoord) requestSendLevel(ch, aux, inputCoord, sendCoord);
   }, 75);
 }
 
@@ -254,8 +281,6 @@ function buildConfig() {
   const auxCount = serverCfg.auxes || 16;
   const chCount  = serverCfg.channels || 48;
   const cfgAuxOverrides = serverCfg.auxOverrides || {};
-  const cfgOverrides    = serverCfg.channelOverrides || {};
-  const cfgGroups       = serverCfg.channelGroups || [];
 
   const auxilaries = [];
   for (let i = 1; i <= auxCount; i++) {
@@ -270,47 +295,11 @@ function buildConfig() {
       icon:      '',
       eqEnabled: false, // aux EQ not implemented for dLive yet
       linkOnly:  ov.linkOnly === true,
+      groups:    shared.auxGroupNames(ov, serverCfg),
     });
   }
 
-  const groupOrder = {};
-  cfgGroups.forEach((g, i) => { groupOrder[String(g.id)] = i; });
-
-  const raw = [];
-  for (let i = 1; i <= chCount; i++) {
-    const ov = cfgOverrides[String(i)] || {};
-    const liveName = nameCache.get(`input:${i}`);
-    raw.push({
-      channel: i,
-      enabled: ov.enabled !== false,
-      label:   ov.label || liveName || '',
-      icon:    ov.icon || '',
-      groupId: ov.groupId || null,
-      order:   ov.order !== undefined ? ov.order : i,
-    });
-  }
-  raw.sort((a, b) => {
-    const ga = a.groupId !== null ? (groupOrder[String(a.groupId)] ?? 9999) : 9999;
-    const gb = b.groupId !== null ? (groupOrder[String(b.groupId)] ?? 9999) : 9999;
-    if (ga !== gb) return ga - gb;
-    return a.order - b.order;
-  });
-
-  const channels = [];
-  let lastGroupId;
-  raw.forEach((ch) => {
-    const isFirst = ch.groupId !== lastGroupId;
-    lastGroupId = ch.groupId;
-    const group = cfgGroups.find(g => String(g.id) === String(ch.groupId));
-    channels.push({
-      enabled: ch.enabled,
-      label: ch.label,
-      channel: ch.channel,
-      order: channels.length,
-      title: (isFirst && group) ? group.name : '',
-      icon: ch.icon,
-    });
-  });
+  const channels = shared.buildChannelList(chCount, serverCfg, i => nameCache.get(`input:${i}`));
 
   return JSON.stringify({
     config: {
@@ -319,6 +308,7 @@ function buildConfig() {
       controlGroups: [], // control groups not implemented for dLive yet
       snapshot: currentSceneNumber != null ? String(currentSceneNumber) : '—',
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
+      earScenes: serverCfg.performerEarScenes !== false, // Settings: Ear Scenes on performer phones
       scenes: scenes.getAll(),
       mutes: muteState,
       solos: soloState,
@@ -354,16 +344,16 @@ function applyMuteSolo(baseN, aux) {
     if (!levelCache.has(key)) {
       // Fetch the real level before silencing an uncached send so unmute
       // can restore it. The reply handler applies the active mute/solo.
-      if (silenced) enqueuePrime(() => client && client.requestSendLevel(inputCoord, snd));
+      if (silenced) enqueuePrime(() => requestSendLevel(ch, aux, inputCoord, snd));
       continue;
     }
 
     if (silenced) {
       if (premuteState[aux][ch] === undefined) premuteState[aux][ch] = levelCache.get(key);
-      client && client.setSendLevel(inputCoord, snd, -Infinity);
+      pacedSendLevel(ch, aux, inputCoord, snd, -Infinity, true);
     } else if (premuteState[aux][ch] !== undefined) {
       const restore = premuteState[aux][ch];
-      client && client.setSendLevel(inputCoord, snd, restore);
+      pacedSendLevel(ch, aux, inputCoord, snd, restore, true);
       levelCache.set(key, restore);
       restoredLevels[ch] = restore;
       delete premuteState[aux][ch];
@@ -384,6 +374,19 @@ function clearMuteSolo() {
 // External Control API (api-server.js) — same validation/dispatch either
 // way, so a Companion/Stream Deck button behaves identically to a browser
 // mute button.
+function reassertSilencing(baseN) {
+  const auxes = new Set([...Object.keys(muteState), ...Object.keys(soloState)].map(Number));
+  for (const aux of auxes) {
+    const snd = auxCoord(baseN, aux);
+    if (!snd) continue;
+    for (let ch = 1; ch <= (serverCfg.channels || 48); ch++) {
+      if (!isSilenced(aux, ch)) continue;
+      const input = channelCoord(baseN, ch);
+      if (input) pacedSendLevel(ch, aux, input, snd, -Infinity, true);
+    }
+  }
+}
+
 function setMute(auxRaw, chRaw, muted) {
   const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
   const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
@@ -445,7 +448,7 @@ function pushSceneValuesToDesk(baseN, auxStr, values) {
     // would otherwise propagate as NaN through sliderToDb/dbToLv all the way
     // to a wire byte (Buffer coerces NaN to 0x00, i.e. a real "-inf" send —
     // wrong, not just unsent). Skip rather than encode garbage.
-    if (!Number.isFinite(sliderVal)) continue;
+    if (!Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
     const db = sliderToDb(sliderVal);
     const muted = !!(muteState[aux]?.[ch]);
     const soloed = !!(soloState[aux]?.[ch]);
@@ -462,10 +465,10 @@ function pushSceneValuesToDesk(baseN, auxStr, values) {
     levelCache.set(levelKey(ch, aux), db);
     if (silenced) {
       premuteState[aux][ch] = db;
-      client && client.setSendLevel(inputCoord, snd, -Infinity);
+      pacedSendLevel(ch, aux, inputCoord, snd, -Infinity, true);
     } else {
       delete premuteState[aux][ch];
-      client && client.setSendLevel(inputCoord, snd, db);
+      pacedSendLevel(ch, aux, inputCoord, snd, db, false);
     }
   }
   return levels;
@@ -492,10 +495,7 @@ function applySceneForSceneNumber(baseN, sceneNumber) {
 // needed server-side: incoming console dB values are broadcast to browsers
 // as-is and converted back to slider positions client-side (mixer.js has
 // its own dbToSlider for that) — a server-side copy would just be dead code.
-function sliderToDb(v) {
-  const db = ((Math.log(v * 100) / Math.log(100)) * 100) - 90;
-  return db === -Infinity ? -150 : db;
-}
+const sliderToDb = shared.sliderToDb; // one clamped copy for every backend
 
 // ── Server lifecycle ───────────────────────────────────────────────────────
 
@@ -504,6 +504,8 @@ function start(cfg) {
   connections = [];
   currentSceneNumber = null;
   levelCache.clear();
+  requestedSendLevels.clear();
+  pacer.clear();
   nameCache.clear();
   colourCache.clear();
   clearMuteSolo();
@@ -519,6 +521,9 @@ function start(cfg) {
   const appExpress = express();
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
   mountGreenRoom(appExpress);
+  mountBranding(appExpress);
+  mountPerformerAssignments(appExpress);
+  mountFoh(appExpress, { isConsoleConnected, getConnectionCount });
 
   const diagOnly = (req, res, next) => {
     const addr = req.socket.remoteAddress;
@@ -569,7 +574,7 @@ function start(cfg) {
       ws.send(JSON.stringify({ type: 'devices-update', devices: getConnectedDevicesInfo() }));
     } catch (_) {}
 
-    ws.on('message', (raw) => {
+    ws.on('message', shared.guarded(logEvent, (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch (_) { return; }
 
@@ -693,6 +698,7 @@ function start(cfg) {
         if (!premuteState[aux]) premuteState[aux] = {};
         premuteState[aux][ch] = db;
       }
+      pacer.cancel(`lvl:${ch}:${aux}`); // this move supersedes a queued recall write
       client.setSendLevel(inputCoord, sendCoord, silenced ? -Infinity : db);
       broadcastToClients(oscMsg, ws);
 
@@ -700,7 +706,7 @@ function start(cfg) {
       let direction = null;
       if (typeof prevDb === 'number' && db !== prevDb) direction = db > prevDb ? 'up' : 'down';
       shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux, channel: ch, kind: 'level', direction }, ws);
-    });
+    }));
 
     ws.on('close', () => {
       connections = connections.filter(c => c !== ws);
@@ -712,7 +718,7 @@ function start(cfg) {
 
   // ── dLive MIDI-over-TCP client ─────────────────────────────────────────
   if (!cfg.deskIp) {
-    logEvent('console-error', 'Console IP Address is not set in the Setup tab — nothing to connect to.');
+    logEvent('console-error', 'Console IP Address is not set on the Console tab — nothing to connect to.');
   }
   // Port defaults to the spec-documented MixRack port, but is overridable —
   // see the port note in dlive-client.js's file header for why.
@@ -737,6 +743,10 @@ function start(cfg) {
     consoleConnected = true;
     logEvent('console-connect', cfg.deskIp);
     if (onConsoleStatusChange) onConsoleStatusChange(true);
+    // A console that restarted has lost the -∞ behind every phone mute and
+    // solo; phones would show M lit on an audible channel. Re-send them
+    // first (nothing to do on the first connect — start() cleared the state).
+    reassertSilencing(baseN);
     // Prime channel/aux names + colours so the mixer shows real labels —
     // paced one request per tick, never bursted (see startPriming above).
     // Settings' Channels/Auxes counts can be configured higher than dLive's
@@ -768,12 +778,11 @@ function start(cfg) {
   client.on('error', (err) => {
     // Common connection failures (e.g. ECONNREFUSED for an unreachable or
     // empty IP) carry an empty .message — logging that alone is useless for
-    // diagnosing a bad Setup tab config, so fall back to .code.
+    // diagnosing a bad Console tab config, so fall back to .code.
     logEvent('console-error', err.message || err.code || String(err));
   });
 
   client.on('sendLevel', (ev) => {
-    if (serverCfg.dliveListenSendLevels === false) return; // push disabled — poll-only mode
     // This same message shape carries Group/Matrix/DCA sends too, not just
     // Input channels — checking the *source's* bank (ev.midiCh) as well as
     // the destination's is what keeps a Group's send from getting
@@ -795,6 +804,12 @@ function start(cfg) {
     const input = channelCoord(baseN, ch), snd = auxCoord(baseN, aux);
     if (!input || !snd) return;
     const key = levelKey(ch, aux);
+    // Push listening off: ignore unsolicited updates, but keep replies to
+    // JPMixer's own requests — dropping those left poll-only mode reading
+    // nothing back and made a mute of an untouched channel do nothing.
+    const deadline = requestedSendLevels.get(key);
+    if (deadline !== undefined) requestedSendLevels.delete(key);
+    if (serverCfg.dliveListenSendLevels === false && !(deadline >= Date.now())) return;
     // Infinity cannot be represented in JSON. Keep the same -150 "off"
     // sentinel as DiGiCo, and never replace the real fader with a mute echo.
     let db = ev.db === -Infinity ? -150 : ev.db;
@@ -802,9 +817,7 @@ function start(cfg) {
     if (isSilenced(aux, ch)) {
       if (!premuteState[aux]) premuteState[aux] = {};
       if (db > -90 || premuteState[aux][ch] === undefined) premuteState[aux][ch] = db;
-      if (db > -90) {
-        client.setSendLevel(input, snd, -Infinity);
-      }
+      if (db > -90) pacedSendLevel(ch, aux, input, snd, -Infinity, true);
       db = premuteState[aux][ch];
     }
     levelCache.set(key, db);
@@ -834,6 +847,7 @@ function stop() {
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   stopPriming();
   stopSendLevelPolling();
+  pacer.flush(); // queued writes are the state people asked for
   // Restore the actual send levels before dropping the mute bookkeeping.
   // Gracefully end TCP after these writes so shutdown cannot discard them.
   if (client) {
@@ -864,6 +878,8 @@ function stop() {
   consoleConnected = false;
   if (onConsoleStatusChange) onConsoleStatusChange(false);
   levelCache.clear();
+  requestedSendLevels.clear();
+  pacer.clear();
   connections = [];
   console.log('[JPMixer/dLive] Server stopped');
   return closed;
@@ -881,6 +897,20 @@ function getAuxNames() {
 }
 // dLive has no live "how many channels/auxes exist" query (see file header) —
 // unlike DiGiCo, Settings' configured counts are the only source of truth.
+// Save & Apply for settings that don't need a reconnect (labels, colours,
+// order, visibility, scene recall…). It used to restart this backend on
+// every save, which dropped every phone mid-service. Everything here reads
+// serverCfg when it runs, so swapping it in and re-sending the layout is
+// enough; phones refill their faders from levelCache, nothing goes to the desk.
+function applyConfigLive(cfg) {
+  serverCfg = cfg;
+  logEvent('config-live', `pushed to ${connections.length} clients`);
+  if (!wss) return;
+  const msg = JSON.parse(buildConfig());
+  msg.config.liveUpdate = true;
+  broadcastToClients(msg);
+}
+
 function getChannelCount() { return null; }
 function getAuxCount() { return null; }
 
@@ -903,8 +933,8 @@ function pushDevicePresets(deviceId) {
   shared.pushDevicePresets(connections, deviceId);
 }
 
-module.exports = { pushDevicePresets,
-  start, stop, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
+module.exports = { getConnectedDevicesInfo, pushDevicePresets,
+  start, stop, applyConfigLive, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,
   startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder,

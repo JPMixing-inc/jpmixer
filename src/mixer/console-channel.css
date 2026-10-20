@@ -1,0 +1,63 @@
+/* Console Controller → channel panel (console-channel.js): gain, filters,
+   EQ and dynamics for one input channel. A side panel on tablets/desktop,
+   full screen on phones. */
+
+/* The strip's button that opens it, under the channel name */
+.ch-open-btn { order: 1; width: 100%; min-height: 30px; border: 1px solid var(--jp-edge); border-radius: 7px; background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 10px; font-weight: 650; letter-spacing: .8px; cursor: pointer; }
+.ch-open-btn:hover { color: var(--text); border-color: var(--accent); }
+.ch-name { cursor: pointer; }
+
+.chp-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, .45); }
+.chp-backdrop[hidden], .chp[hidden] { display: none; }
+.chp { position: fixed; top: 0; right: 0; bottom: 0; z-index: 91; width: min(440px, 100vw); display: flex; flex-direction: column; background: var(--jp-deep); border-left: 1px solid var(--jp-edge); box-shadow: -18px 0 60px rgba(0, 0, 0, .45); animation: chpIn .2s ease-out; padding-bottom: env(safe-area-inset-bottom); }
+@keyframes chpIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.chp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: max(18px, env(safe-area-inset-top)) 20px 12px; }
+.chp-num { display: block; color: var(--accent); font-size: 10px; font-weight: 650; letter-spacing: 1.4px; }
+.chp-head h2 { margin-top: 4px; font-size: 20px; font-weight: 650; color: var(--text); overflow-wrap: anywhere; }
+.chp-close { flex: none; width: 40px; height: 40px; border: 1px solid var(--jp-edge); border-radius: 10px; background: var(--jp-card); color: var(--jp-label); font-size: 15px; cursor: pointer; }
+.chp-tabs { display: flex; gap: 6px; padding: 0 20px 10px; border-bottom: 1px solid var(--jp-line); }
+.chp-tabs button { flex: 1; min-height: 38px; border: 1px solid var(--jp-line); border-radius: 9px; background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.chp-tabs button[aria-selected="true"] { background: rgba(var(--jp-accent-rgb), .15); border-color: rgba(var(--jp-accent-rgb), .55); color: var(--text); }
+.chp-status { min-height: 0; padding: 0 20px; color: var(--jp-secondary); font-size: 11px; }
+.chp-status:not(:empty) { padding-top: 8px; }
+.chp-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 12px 20px 24px; display: grid; gap: 14px; align-content: start; }
+
+.chp-group { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--jp-line); border-radius: 12px; background: var(--jp-card); }
+.chp-group h3 { color: var(--jp-secondary); font-size: 10px; font-weight: 650; letter-spacing: 1.3px; text-transform: uppercase; }
+.chp-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.chp-toggle { min-height: 36px; padding: 0 14px; border: 1px solid var(--jp-edge); border-radius: 18px; background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.chp-toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chp-toggle.armed { background: #6e552b; border-color: #e0b25a; color: #fff; }
+
+.chp-slider { display: grid; gap: 4px; }
+.chp-slider-head { display: flex; justify-content: space-between; align-items: baseline; color: var(--jp-label); font-size: 12px; }
+.chp-slider output { color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; cursor: default; user-select: none; }
+.chp-slider input[type="range"] { width: 100%; height: 30px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
+
+.chp-choice { display: flex; align-items: center; gap: 6px; color: var(--jp-label); font-size: 12px; }
+.chp-choice span { margin-right: auto; }
+.chp-choice button { min-width: 40px; min-height: 32px; border: 1px solid var(--jp-edge); border-radius: 8px; background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 12px; cursor: pointer; }
+.chp-choice button[aria-pressed="true"] { background: rgba(var(--jp-accent-rgb), .18); border-color: rgba(var(--jp-accent-rgb), .6); color: var(--text); }
+
+.chp-eq { width: 100%; height: auto; aspect-ratio: 360 / 170; border-radius: 10px; background: var(--jp-deep); border: 1px solid var(--jp-line); }
+.chp-eq .g { stroke: rgba(255, 255, 255, .06); stroke-width: 1; }
+.chp-eq .g.z { stroke: rgba(255, 255, 255, .18); }
+.chp-eq text { fill: var(--jp-sub); font-size: 8px; text-anchor: middle; }
+.chp-eq text.db { text-anchor: end; }
+.chp-eq .curve { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+.chp-eq .curve.off { stroke: var(--jp-muted); stroke-dasharray: 4 4; }
+.chp-eq .dot { stroke: #0e0f11; stroke-width: 2; cursor: grab; }
+.chp-eq .dot.sel { stroke: #fff; }
+.chp-eq .fhandle { fill: var(--jp-light); stroke: #0e0f11; stroke-width: 2; cursor: ew-resize; }
+.chp-eq .fhandle.off { fill: var(--jp-muted); }
+.chp-bands { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.chp-bands button { min-height: 34px; border: 1px solid var(--jp-edge); border-radius: 8px; background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border-bottom: 3px solid var(--band); }
+.chp-bands button[aria-pressed="true"] { background: var(--jp-raised); color: var(--text); }
+.chp-band-controls { display: grid; gap: 12px; }
+
+@media (max-width: 600px) {
+  .chp { width: 100vw; border-left: none; }
+  .chp-slider input[type="range"] { height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) { .chp { animation: none; } }

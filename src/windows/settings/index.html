@@ -1,15 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-jpm-view="settings">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JPMixer Settings</title>
   <link rel="stylesheet" href="settings.css" />
+  <link rel="stylesheet" href="settings-studio.css" />
+  <link rel="stylesheet" href="../../mixer/original-theme.css" />
+  <link rel="icon" href="../../mixer/favicon.svg" type="image/svg+xml" />
 </head>
 <body>
 
   <header>
-    <div class="logo"><img src="logo.png" class="brand-logo" alt="JPMixer" /></div>
+    <div class="logo studio-brand jp-brand" aria-label="JPMixer"><span class="jp-wordmark-fx intro" id="wordmarkFx"><img class="jp-wordmark" src="../../mixer/brand/jpmixer-wordmark.svg" alt="JPMixer" width="112" height="16" /></span><img class="jp-emblem" src="../../mixer/brand/jp-monogram.svg" alt="JPMixer" width="32" height="16" /><span class="jp-brand-caption">STUDIO WORKSPACE</span></div>
     <div class="header-right">
       <div class="device-count" id="deviceCount" style="display:none">
         <span class="device-icon">⬡</span>
@@ -23,25 +26,93 @@
   </header>
 
   <nav class="tab-nav">
-    <button class="tab active" data-tab="setup">Setup</button>
-    <button class="tab" data-tab="channels">Channels</button>
-    <button class="tab" data-tab="auxes">Auxes</button>
-    <button class="tab" data-tab="views">Views</button>
-    <button class="tab" data-tab="mixes">My Mixes</button>
-    <button class="tab" data-tab="backup">Backup</button>
-    <button class="tab" data-tab="osclog">OSC Log</button>
-    <button class="tab" data-tab="api">Control API</button>
-    <button class="tab" data-tab="pco">Planning Center</button>
+    <span class="nav-section-label">SETUP</span>
+    <button class="tab active" data-tab="general"><span class="nav-symbol" aria-hidden="true">◎</span>General</button>
+    <button class="tab" data-tab="console"><span class="nav-symbol" aria-hidden="true">⌁</span>Console</button>
+    <button class="tab" data-tab="channels"><span class="nav-symbol" aria-hidden="true">☷</span>Channels</button>
+    <button class="tab" data-tab="auxes"><span class="nav-symbol" aria-hidden="true">◫</span>Aux mixes</button>
+    <span class="nav-section-label nav-section-second">PEOPLE &amp; PAGES</span>
+    <button class="tab" data-tab="performers"><span class="nav-symbol" aria-hidden="true">♫</span>Performers</button>
+    <button class="tab" data-tab="views"><span class="nav-symbol" aria-hidden="true">▦</span>Pages</button>
+    <button class="tab" data-tab="branding"><span class="nav-symbol" aria-hidden="true">◐</span>Branding</button>
+    <button class="tab" data-tab="pco"><span class="nav-symbol" aria-hidden="true">◷</span>Planning Center</button>
+    <span class="nav-section-label nav-section-second">SYSTEM</span>
+    <button class="tab" data-tab="backup"><span class="nav-symbol" aria-hidden="true">↻</span>Backup &amp; restore</button>
+    <button class="tab" data-tab="api"><span class="nav-symbol" aria-hidden="true">⌘</span>Control API</button>
+    <button class="tab" data-tab="osclog"><span class="nav-symbol" aria-hidden="true">≋</span>OSC Log</button>
+    <div class="sidebar-note">BUILT FOR THE STAGE<span>Your mixes. Your workspace.</span></div>
   </nav>
 
   <main>
+    <div class="page-intro"><p class="page-eyebrow">JPMIXER / SETTINGS</p><h1 id="settingsPageTitle">General</h1><p id="settingsPageDescription">The web server, and what JPMixer does when this computer starts.</p></div>
 
-    <!-- ── Setup tab (server + network + console type + iPad OSC + startup) ── -->
-    <div class="tab-panel active" id="tab-setup">
+    <!-- ── General: web server, startup, demo ── -->
+    <div class="tab-panel active" id="tab-general">
 
-      <section class="card">
-        <h2>Console</h2>
+      <section class="card" id="setup-server">
+        <div class="settings-heading"><h2>Web server</h2><p class="sub">The address performers’ phones and the engineer pages connect to.</p></div>
+        <div class="card-row space-between">
+          <div>
+            <div class="label">Address</div>
+            <div class="sub" id="serverUrl">Not running</div>
+            <div class="sub url-hint" id="serverUrlHint" style="display:none">Give performers this address. The :8080 address also works, but a phone keeps a separate My Mixes list for each address.</div>
+          </div>
+          <button class="btn" id="toggleBtn">Start</button>
+        </div>
+        <div class="ip-row">
+          <span class="ip-label">This Mac's IP</span>
+          <span class="ip-address" id="localIp">—</span>
+          <button class="btn btn-sm" id="port80Btn" title="Forward port 80 → server port (requires administrator privileges)">Use Port 80</button>
+          <span class="ip-status" id="port80Status"></span>
+        </div>
+        <div class="field-row">
+          <label for="serverPort">Web server port</label>
+          <input type="number" id="serverPort" min="1024" max="65535" /><p class="sub">The port used by performer and engineer web pages.</p>
+        </div>
+      </section>
 
+      <section class="card" id="setup-behavior">
+        <div class="settings-heading"><h2>Startup &amp; power</h2><p class="sub">What JPMixer does when this computer starts, and while the server runs.</p></div>
+        <div class="card-row settings-setting-row">
+          <div>
+            <label class="toggle-label" for="openAtLogin">Open JPMixer when this computer starts</label>
+            <div class="sub">Opens in the menu bar when you log in. With the server set to start automatically, phones can connect as soon as the computer is up.</div>
+            <div class="sub" id="openAtLoginStatus" hidden></div>
+          </div>
+          <input type="checkbox" id="openAtLogin" class="toggle" />
+        </div>
+        <div class="card-row settings-setting-row"><label class="toggle-label" for="autoStart">Start server automatically on launch</label><input type="checkbox" id="autoStart" class="toggle" /></div>
+        <div class="card-row settings-setting-row">
+          <div>
+            <label class="toggle-label" for="keepAwake">Keep this computer awake while the server is running</label>
+            <div class="sub">Sleep would disconnect every phone. The display can still turn off.</div>
+          </div>
+          <input type="checkbox" id="keepAwake" class="toggle" />
+        </div>
+      </section>
+
+      <section class="card" id="setup-demo">
+        <div class="card-row"><div><h2>Demo mode</h2><p class="sub">Explore a simulated console. Fader moves stay local and nothing is sent to hardware.</p></div><input type="checkbox" id="demoMode" class="toggle" /></div>
+      </section>
+
+    </div>
+
+    <!-- ── Console: type, connection, scenes, iPad relay ── -->
+    <div class="tab-panel" id="tab-console">
+
+<nav class="settings-section-nav" aria-label="Console sections"><a href="#setup-console">Console</a><a href="#setup-network">Connection</a><a href="#setup-scenes">Snapshots</a><a href="#setup-ipads">iPad relay</a></nav>
+      <section class="card" id="setup-console">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2>Console</h2><p class="sub">Choose your console and the number of channels and mixes to display.</p></div>
+          <div class="console-status">
+            <div class="status-pill" id="consolePill">
+              <span class="dot" id="consoleDot"></span>
+              <span id="consolePillLabel">Offline</span>
+            </div>
+            <div class="sub" id="consoleStatusLabel">Not connected</div>
+          </div>
+        </div>
+        <div class="ip-status warn console-hint" id="consoleHint" hidden></div>
         <div class="field-row">
           <label for="consoleType">Console Type</label>
           <select id="consoleType">
@@ -49,9 +120,6 @@
             <option value="dlive">Allen &amp; Heath dLive</option>
             <option value="klang">KLANG (paired with dLive)</option>
             <option value="wing">Behringer WING</option>
-            <option value="x32">Behringer X32 / Midas M32</option>
-            <option value="yamaha">Yamaha CL / QL</option>
-            <option value="custom">Custom OSC</option>
           </select>
         </div>
 
@@ -64,48 +132,16 @@
             <label for="auxes">Auxes / Buses</label>
             <input type="number" id="auxes" min="0" max="64" />
           </div>
-          <div>
-            <label for="groups">Groups</label>
+          <div id="groupsField">
+            <label for="groups">Control Groups</label>
             <input type="number" id="groups" min="0" max="64" />
           </div>
         </div>
+        <p class="sub" id="countsHint" hidden></p>
       </section>
 
-      <section class="card">
-        <div class="card-row space-between">
-          <div>
-            <div class="label">Web Server</div>
-            <div class="sub" id="serverUrl">Not running</div>
-            <div class="sub url-hint" id="serverUrlHint" style="display:none">Give performers this address. The :8080 address also works, but a phone keeps a separate My Mixes list for each address.</div>
-          </div>
-          <button class="btn" id="toggleBtn">Start</button>
-        </div>
-        <div class="card-row space-between">
-          <div>
-            <div class="label">Console</div>
-            <div class="sub" id="consoleStatusLabel">Not connected</div>
-          </div>
-          <div class="status-pill" id="consolePill">
-            <span class="dot" id="consoleDot"></span>
-            <span id="consolePillLabel">Offline</span>
-          </div>
-        </div>
-        <div class="ip-row">
-          <span class="ip-label">This Mac's IP</span>
-          <span class="ip-address" id="localIp">—</span>
-          <button class="btn btn-sm" id="port80Btn" title="Forward port 80 → server port (requires administrator privileges)">Use Port 80</button>
-          <span class="ip-status" id="port80Status"></span>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Network</h2>
-
-        <div class="field-row">
-          <label for="serverPort">Server Port</label>
-          <input type="number" id="serverPort" min="1024" max="65535" />
-        </div>
-
+      <section class="card" id="setup-network">
+        <div class="settings-heading"><h2>Console connection</h2><p class="sub">Use addresses on the same network as this Mac.</p></div>
         <div class="field-row">
           <label for="deskIp" id="deskIpLabel">Console IP Address</label>
           <input type="text" id="deskIp" placeholder="192.168.1.100" />
@@ -127,28 +163,28 @@
           </div>
         </div>
 
-        <div id="klangFieldsRow" style="display:none">
-          <div class="sub" style="margin-bottom:10px">⚠️ KLANG support is brand new and hasn't been validated on real hardware yet. Channel gain, mute, solo, and stereo-mode pan work; 3D/i3D positioning, built-in EQ, and the Console Controller are not implemented.</div>
-          <div class="sub" style="margin-bottom:10px">KLANG has no way to confirm back what value it actually applied — JPMixer trusts its own last-sent value as the mix state. If someone also has the real KLANG:app open adjusting the same mix, JPMixer won't notice the difference.</div>
+        <div class="settings-stack" id="klangFieldsRow" style="display:none">
+          <div class="sub">⚠️ KLANG support is brand new and hasn't been validated on real hardware yet. Channel gain, mute, solo, and stereo-mode pan work; 3D/i3D positioning, built-in EQ, and the Console Controller are not implemented.</div>
+          <details class="settings-help"><summary>How KLANG reports mix changes</summary><div class="settings-help-body"><div class="sub">KLANG has no way to confirm back what value it actually applied — JPMixer trusts its own last-sent value as the mix state. If someone also has the real KLANG:app open adjusting the same mix, JPMixer won't notice the difference.</div></div></details>
           <div class="field-row">
             <label for="klangPort">KLANG Port Override</label>
             <input type="number" id="klangPort" min="0" max="65535" placeholder="Leave 0 for default (9110)" />
           </div>
-          <div class="sub" style="margin-bottom:10px">The dLive console fields below are optional in this mode — set them to pull channel names and drive Ear Scene recall from the paired console's own snapshot changes. Leave the Console IP Address blank to skip that and control channel names manually on the Channels tab instead.</div>
+          <details class="settings-help"><summary>Pairing KLANG with dLive</summary><div class="settings-help-body"><div class="sub">The dLive console fields below are optional in this mode — set them to pull channel names and drive Ear Scene recall from the paired console's own snapshot changes. Leave the Console IP Address blank to skip that and control channel names manually on the Channels tab instead.</div></div></details>
         </div>
 
-        <div id="wingFieldsRow" style="display:none">
-          <div class="sub" style="margin-bottom:10px">⚠️ WING support is brand new and hasn't been validated on real hardware yet. Aux send levels, mute, solo, and per-send pan work; built-in EQ, Console Controller, and Ear Scene / snapshot recall are not implemented — WING's OSC layer doesn't expose scene recall at all.</div>
+        <div class="settings-stack" id="wingFieldsRow" style="display:none">
+          <div class="sub">⚠️ WING support is brand new and hasn't been validated on real hardware yet. Aux send levels, mute, solo, and per-send pan work; built-in EQ, Console Controller, and Ear Scene / snapshot recall are not implemented — WING's OSC layer doesn't expose scene recall at all.</div>
           <div class="field-row">
             <label for="wingPort">WING Port Override</label>
             <input type="number" id="wingPort" min="0" max="65535" placeholder="Leave 0 for default (2223)" />
           </div>
-          <div class="sub" style="margin-bottom:10px">Leave at 0 to use the documented default OSC port. WING confirms it's actually reachable with a real round trip on connect, unlike dLive/KLANG — the Console status pill above reflects that directly.</div>
+          <div class="sub">Leave at 0 to use the documented default OSC port. WING confirms it's actually reachable with a real round trip on connect, unlike dLive/KLANG — the Console status pill above reflects that directly.</div>
         </div>
 
-        <div id="dliveFieldsRow" style="display:none">
-          <div class="sub" style="margin-bottom:10px" id="dliveWarningText">⚠️ dLive support is new and hasn't been validated on real hardware yet. Aux send levels, mute, and scene recall work; per-send pan, EQ, and the Console Controller are not implemented for dLive.</div>
-          <div class="sub" style="margin-bottom:10px"><strong>On the console:</strong> Utility → Control → MIDI has its own On/Off/Secure Mode switch for MIDI/TCP — it must be turned on there before JPMixer (or anything else) can connect, the same way DiGiCo consoles need DiGiCo Pad enabled. Unlike DiGiCo Pad, though, dLive doesn't limit this to one connection at a time — JPMixer can run alongside Director, MixPad, and other control apps without conflict.</div>
+        <div class="settings-stack" id="dliveFieldsRow" style="display:none">
+          <div class="settings-notice sub" id="dliveWarningText">⚠️ dLive support is new and hasn't been validated on real hardware yet. Aux send levels, mute, and scene recall work; per-send pan, EQ, and the Console Controller are not implemented for dLive.</div>
+          <details class="settings-help"><summary>Enable MIDI control on the dLive console</summary><div class="settings-help-body"><div class="sub"><strong>On the console:</strong> Utility → Control → MIDI has its own On/Off/Secure Mode switch for MIDI/TCP — it must be turned on there before JPMixer (or anything else) can connect, the same way DiGiCo consoles need DiGiCo Pad enabled. Unlike DiGiCo Pad, though, dLive doesn't limit this to one connection at a time — JPMixer can run alongside Director, MixPad, and other control apps without conflict.</div></div></details>
           <div class="field-row two-col">
             <div>
               <label for="dliveBaseChannel">Base MIDI Channel</label>
@@ -159,12 +195,12 @@
               <input type="checkbox" id="dliveTlsEnabled" class="toggle" />
             </div>
           </div>
-          <div class="sub" style="margin-bottom:10px">Base MIDI Channel must match the value set on the console under Utility → Control → MIDI (0-11, i.e. MIDI channel 1-12).</div>
+          <div class="sub">Base MIDI Channel must match the value set on the console under Utility → Control → MIDI (0-11, i.e. MIDI channel 1-12).</div>
           <div class="field-row">
             <label for="dliveMidiPort">MIDI/TCP Port Override</label>
             <input type="number" id="dliveMidiPort" min="0" max="65535" placeholder="Leave 0 for default (51325, or 51327 with TLS)" />
           </div>
-          <div class="sub" style="margin-bottom:10px">Leave at 0 to use the documented default. If the console doesn't respond, try 51328 (the alternate port some tools use) — see JPMixer's dLive notes for why this isn't fully settled yet.</div>
+          <details class="settings-help"><summary>Port troubleshooting</summary><div class="settings-help-body"><div class="sub">Leave at 0 to use the documented default. If the console doesn't respond, try 51328 (the alternate port some tools use) — see JPMixer's dLive notes for why this isn't fully settled yet.</div></div></details>
           <div class="field-row two-col" id="dliveAuthRow" style="display:none">
             <div>
               <label for="dliveUsername">Username</label>
@@ -176,6 +212,7 @@
             </div>
           </div>
 
+          <details class="settings-help"><summary>Advanced send-level updates</summary><div class="settings-help-body settings-stack">
           <div class="card-row" style="margin-top:6px">
             <div>
               <label class="toggle-label" for="dliveListenSendLevels">Listen for live send-level updates</label>
@@ -190,38 +227,31 @@
             </div>
             <input type="checkbox" id="dlivePollSendLevels" class="toggle" />
           </div>
+          </div></details>
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" id="setup-scenes">
+        <div class="settings-heading"><h2>Snapshots &amp; Ear Scenes</h2><p class="sub">What happens when the console changes snapshots.</p></div>
+        <div class="card-row settings-setting-row">
+          <div>
+            <label class="toggle-label" for="sceneRecallEnabled">Auto-recall scenes on snapshot change</label>
+            <div class="sub">When enabled, saved ear mixes are pushed to the console whenever the snapshot changes.</div>
+          </div>
+          <input type="checkbox" id="sceneRecallEnabled" class="toggle" />
+        </div>
+      </section>
+
+      <section class="card" id="setup-ipads">
         <div class="card-row space-between">
-          <h2>iPad OSC Connections</h2>
+          <h2>iPad OSC relay</h2>
           <button class="btn btn-sm" id="addIpadBtn">+ Add iPad</button>
         </div>
-        <div class="sub" style="margin-bottom:10px">JPMixer relays all console OSC to connected iPads. The iPad app should send to <strong>JPMixer's IP</strong> on the Listen Port above. Set <em>Send Port</em> to the port the iPad app receives on.</div>
+        <details class="settings-help"><summary>How to connect an iPad app</summary><div class="settings-help-body"><div class="sub">JPMixer relays all console OSC to connected iPads. The iPad app should send to <strong>JPMixer's IP</strong> on the Listen Port above. Set <em>Send Port</em> to the port the iPad app receives on.</div></div></details>
         <div id="ipadList">
           <div class="empty-hint">No iPads configured — click + Add iPad to add one.</div>
         </div>
         <div id="ipadUnknown"></div>
-      </section>
-
-      <section class="card">
-        <h2>Startup</h2>
-        <div class="card-row">
-          <label class="toggle-label" for="autoStart">Start server automatically on launch</label>
-          <input type="checkbox" id="autoStart" class="toggle" />
-        </div>
-      </section>
-
-      <section class="card card-demo">
-        <h2>Demo / Simulate</h2>
-        <div class="card-row">
-          <div>
-            <label class="toggle-label" for="demoMode">Simulate console (no desk connection)</label>
-            <div class="sub">Loads a fake channel &amp; aux setup so you can explore the mixer UI without a live console. Nothing is sent to hardware — all fader moves stay local.</div>
-          </div>
-          <input type="checkbox" id="demoMode" class="toggle" />
-        </div>
       </section>
 
     </div>
@@ -229,137 +259,336 @@
     <!-- ── Channels tab ── -->
     <div class="tab-panel" id="tab-channels">
 
-      <section class="card">
-        <div class="card-row space-between">
-          <h2>Channel Groups</h2>
-          <button class="btn btn-sm" id="addGroupBtn">+ Add Group</button>
-        </div>
-        <div id="groupsList" class="groups-list">
-          <div class="empty-hint">No groups yet — click + Add Group to create one.</div>
-        </div>
-      </section>
-
       <section class="card channels-card">
-        <h2>Channels</h2>
+        <div class="settings-heading"><h2>Channel layout</h2><p class="sub">Drag the handle to reorder. Choose an icon, name, group, and whether each channel is shown.</p><a class="settings-inline-link" href="#channel-groups">Manage channel groups ↓</a></div>
         <div class="ch-editor-header">
           <span></span>
-          <span></span>
+          <span>#</span>
           <span>Icon</span>
-          <span>Label Override</span>
+          <span>Name</span>
           <span>Group</span>
-          <span>On</span>
+          <span>Show</span>
         </div>
         <div id="channelsList" class="channels-editor"></div>
       </section>
+
+      <details class="card groups-card" id="channel-groups">
+        <summary>Channel groups <span>Create and rename groups</span></summary>
+        <div class="groups-content">
+          <div class="card-row space-between">
+            <p class="sub">Use groups to organize channels in the performer mixer.</p>
+            <button class="btn btn-sm" id="addGroupBtn">+ Add Group</button>
+          </div>
+          <div id="groupsList" class="groups-list">
+            <div class="empty-hint">No groups yet — click + Add Group to create one.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="card settings-maintenance" id="channel-reset"><summary>Reset channel layout &amp; icons<span>Clear channel customization</span></summary><div class="settings-stack settings-details-body">
+        <div class="sub">Clears all channel groups, icon assignments, and label overrides — restoring the Channels tab to its default state. Console network settings, aux visibility, and saved ear mixes are not affected.</div>
+        <div class="card-row">
+          <button class="btn btn-danger" id="resetLayoutBtn">Reset Layout &amp; Icons…</button>
+        </div>
+        <div class="backup-status" id="resetLayoutStatus"></div>
+      </div></details>
 
     </div>
 
     <!-- ── Auxes tab ── -->
     <div class="tab-panel" id="tab-auxes">
 
-      <section class="card channels-card">
-        <h2>Aux / Bus Visibility</h2>
-        <div class="ch-editor-header" style="grid-template-columns: 28px 1fr 32px 28px 28px 28px">
-          <span></span>
-          <span>Name</span>
-          <span>Color</span>
-          <span>Show</span>
-          <span>EQ</span>
-          <span title="Hidden from the mix picker — only reachable via its direct link">Link</span>
-        </div>
-        <div id="auxesList" class="channels-editor"></div>
+      <section class="card aux-card">
+        <div class="settings-heading"><h2>Mixes</h2><p class="sub">Names come from the console. Pick a color for each mix's button and what performers can do with it.</p></div>
+        <dl class="aux-key">
+          <div><dt>Show</dt><dd>Listed in the performer mix picker</dd></div>
+          <div><dt>EQ</dt><dd>Performers can adjust this mix's EQ</dd></div>
+          <div><dt>Link only</dt><dd>Hidden from the picker; open it with its direct link below</dd></div>
+          <div class="aux-key-groups" id="auxKeyGroups" hidden><dt>Opens to</dt><dd>The channel groups phones start on. Performers can still tap All.</dd></div>
+        </dl>
+        <div class="aux-list" id="auxesList" role="table" aria-label="Aux mixes"></div>
       </section>
 
       <section class="card">
-        <h2>Hidden Aux Channels — Link Only</h2>
-        <div class="sub" style="margin-bottom:12px">Auxes marked <strong>Link</strong> above don't appear in the mix picker musicians see — the only way in is the direct link below. Useful for a private reference mix, a guest, or anyone you don't want cluttering the public picker.</div>
-        <div id="hiddenAuxLinks">
-          <div class="empty-hint">No hidden auxes — turn on the Link toggle above to add one here.</div>
+        <div class="settings-heading"><h2>Direct links</h2><p class="sub">Mixes set to <strong>Link only</strong> don't appear in the picker. Send the performer who needs one its link.</p></div>
+        <div id="hiddenAuxLinks" class="aux-links">
+          <div class="empty-hint">No link-only mixes. Turn on Link only above to add one here.</div>
         </div>
       </section>
 
     </div>
 
-    <!-- ── Views tab (Monitor + Console views) ── -->
-    <div class="tab-panel" id="tab-views">
+    <!-- ── Performers: phone options and My Mixes ── -->
+    <div class="tab-panel" id="tab-performers">
 
-      <section class="card">
-        <h2>Monitor Engineer View</h2>
-        <div class="sub" style="margin-bottom:16px">A full-screen grid showing every aux mix at once — all channels, all faders, live. Designed for a monitor engineer's iPad or second screen.</div>
-        <div class="card-row">
-          <button class="btn btn-primary" id="openMonitorBtn">Open Monitor View</button>
-          <div class="sub" id="monitorBtnHint">Start the server first to open.</div>
-        </div>
-        <div class="ip-row" style="margin-top:12px">
-          <span class="ip-label">Direct link</span>
-          <span class="ip-address" id="monitorUrl">—</span>
+      <section class="card" id="performer-phones">
+        <div class="settings-heading"><h2>Performer phones</h2><p class="sub">What performers see on the mixer page.</p></div>
+        <div class="card-row settings-setting-row">
+          <div>
+            <label class="toggle-label" for="performerEarScenes">Show Ear Scenes on performer phones</label>
+            <div class="sub">Turn off to hide Ear Scenes and the Saved / Not Saved button from performers. Saved Ear Scenes are kept.</div>
+          </div>
+          <input type="checkbox" id="performerEarScenes" class="toggle" />
         </div>
       </section>
-
-      <section class="card">
-        <h2>Console Controller</h2>
-        <div class="sub" style="margin-bottom:16px">A full channel strip view — main faders, mutes, solos, and aux output faders. Open from any browser on the same network, or launch it here.</div>
-        <div class="card-row">
-          <button class="btn btn-primary" id="openConsoleBtn">Open Console View</button>
-          <div class="sub" id="consoleBtnHint">Start the server first to open.</div>
-        </div>
-        <div class="ip-row" style="margin-top:12px">
-          <span class="ip-label">Direct link</span>
-          <span class="ip-address" id="consoleUrl">—</span>
-        </div>
-        <div class="sub" style="margin-top:12px">The Console Controller sends commands directly to the desk — main faders, mutes, and solos affect the console for <strong>everyone</strong> (FOH included). Restrict access to engineers only.</div>
-      </section>
-
-      <section class="card">
-        <h2>Devices View</h2>
-        <div class="sub" style="margin-bottom:16px">A live grid of every connected musician's device — which aux mix they've selected, and a dot that lights up whenever they move a fader or pan. Designed for the sound engineer to keep an eye on who's actively mixing.</div>
-        <div class="card-row">
-          <button class="btn btn-primary" id="openDevicesBtn">Open Devices View</button>
-          <div class="sub" id="devicesBtnHint">Start the server first to open.</div>
-        </div>
-        <div class="ip-row" style="margin-top:12px">
-          <span class="ip-label">Direct link</span>
-          <span class="ip-address" id="devicesUrl">—</span>
-        </div>
-      </section>
-
-    </div>
-
-    <!-- ── My Mixes tab ── -->
-    <div class="tab-panel" id="tab-mixes">
       <section class="card">
         <div class="card-row space-between">
           <h2>Saved Mixes</h2>
           <button class="btn btn-sm" id="refreshMixesBtn">Refresh</button>
         </div>
-        <div class="sub" style="margin-bottom:12px">All mixes saved by performers, organized by device. A new phone, a cleared browser, or a different address (port 80 vs :8080) shows up as a new device — use <strong>Merge Into</strong> to put one person's mixes back together (that phone picks them up on its next connect), and <strong>Set Name</strong> so Find My Mixes can find them by name. A backup is saved before every merge.</div>
+        <p class="sub">Performer mixes are organized by device. Use Set Name to make a performer’s mixes easier to find.</p><details class="settings-help"><summary>Combine mixes from another phone or browser</summary><div class="settings-help-body"><p>A new phone, a cleared browser, or a different server address can create a separate device entry. Use <strong>Merge Into</strong> to combine a performer’s mixes; their phone picks them up when it next connects. A backup is saved before every merge.</p></div></details>
+        <p class="sub">Copy one mix or all mixes from a device, then paste into another device below. Connected performers can receive copies immediately; offline devices receive them when they reconnect.</p>
+        <div class="mix-clipboard" id="mixClipboard" hidden><p id="mixClipboardLabel" role="status"></p><button type="button" class="btn btn-sm" id="clearMixClipboardBtn">Clear copy</button></div>
+        <p class="backup-status" id="mixCopyStatus" role="status" aria-live="polite"></p>
         <div id="mixesByAux"></div>
       </section>
-    </div>
-
-    <!-- ── Backup tab (ear scene recall + backups + reset) ── -->
-    <div class="tab-panel" id="tab-backup">
-
       <section class="card">
-        <h2>Ear Scene Recall</h2>
-        <div class="card-row">
-          <div>
-            <label class="toggle-label" for="sceneRecallEnabled">Auto-recall scenes on snapshot change</label>
-            <div class="sub">When enabled, saved ear mixes are pushed to the console whenever the snapshot changes.</div>
-          </div>
-          <input type="checkbox" id="sceneRecallEnabled" class="toggle" />
-        </div>
-        <div class="card-row">
-          <div>
-            <label class="toggle-label" for="clearScenesOnLaunch">Clear Ear Scenes on launch</label>
-            <div class="sub">Off (recommended): Ear Scenes are kept when JPMixer quits, crashes or the computer restarts. On: every launch starts with no Ear Scenes.</div>
-          </div>
-          <input type="checkbox" id="clearScenesOnLaunch" class="toggle" />
-        </div>
+        <div class="settings-heading"><h2>Back up &amp; recover My Mixes</h2><p class="sub">Keep a separate copy of every performer’s saved mixes, including levels and pans.</p></div>
+        <div class="card-row"><button type="button" class="btn btn-primary" id="exportMixBackupBtn">Back Up My Mixes…</button><button type="button" class="btn" id="importMixBackupBtn">Load a Backup…</button></div>
+        <p class="sub">Load any backup through the shared loader, review what it contains, and select My Mixes to recover saved mixes while keeping this computer’s settings.</p>
+        <p class="backup-status" id="mixBackupStatus" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="card">
-        <h2>Automatic Backups</h2>
+    </div>
+
+    <!-- ── Pages: every page JPMixer serves, with each Home page's own setup ── -->
+    <div class="tab-panel" id="tab-views">
+
+      <div class="views-section-heading"><h2>Production team</h2><p>One link per station. Each Home page welcomes whoever Planning Center has scheduled in the team and role you pick here.</p>
+        <div class="views-section-actions"><button type="button" class="btn btn-sm" id="pagesRefreshPcoBtn">Refresh team &amp; role lists</button><button type="button" class="btn btn-sm" data-settings-target="pco">Planning Center setup</button><span class="sub" id="pagesPcoStatus" role="status"></span></div>
+      </div>
+      <div class="views-directory">
+        <section class="card view-directory-card" data-engineer-view="home">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></span><h2>Home page picker</h2></div>
+          <p class="sub view-directory-description">One link for the whole production team: pick FOH, ProPresenter, Lighting or Switcher Home, with who’s on today.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openHomePickerViewBtn">Open Home page picker</button></div>
+          <p class="sub view-directory-hint" id="homePickerViewHint" role="status">Start the server first to open.</p>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="homePickerViewUrl">—</span></div>
+        </section>
+        <section class="card view-directory-card" data-engineer-view="foh">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><path d="m3 10 9-7 9 7v10H3Z"/><path d="M9 20v-6h6v6M7 10h2m6 0h2"/></svg></span><h2>FOH Home</h2></div>
+          <p class="sub view-directory-description">Your customizable dashboard: live service items, team roster, order of service, and quick links.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openFohViewBtn">Open FOH Home</button></div>
+          <p class="sub view-directory-hint" id="fohViewHint" role="status">Start the server first to open.</p>
+          <div class="view-page-setup">
+            <p class="view-page-setup-title">Who it welcomes</p>
+            <div class="pco-field-grid">
+              <div class="field-row"><label for="pcoFohTeam">Team</label><select id="pcoFohTeam"><option value="">— Select Team —</option></select></div>
+              <div class="field-row"><label for="pcoFohPosition">Role</label><select id="pcoFohPosition"><option value="">— None —</option></select></div>
+            </div>
+            <div class="field-row pco-access-code">
+              <label for="fohAccessCode">Access code</label>
+              <input type="text" id="fohAccessCode" maxlength="32" autocomplete="off" spellcheck="false" placeholder="None — anyone on the network can open it" />
+              <p class="sub">Other devices enter this once to open FOH Home; this computer never needs it. Changing it signs every device out. Leave empty to turn it off.</p>
+            </div>
+          </div>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="fohViewUrl">—</span></div>
+        </section>
+        <section class="card view-directory-card" data-engineer-view="propresenter">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M7 9h10M7 12h6"/></svg></span><h2>ProPresenter Home</h2></div>
+          <p class="sub view-directory-description">Welcome, live service item, team and order of service for the lyrics and slides operator.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openProPresenterViewBtn">Open ProPresenter Home</button></div>
+          <p class="sub view-directory-hint" id="propresenterViewHint" role="status">Start the server first to open.</p>
+          <div class="view-page-setup">
+            <p class="view-page-setup-title">Who it welcomes</p>
+            <div class="pco-field-grid">
+              <div class="field-row"><label for="pcoProPresenterTeam">Team</label><select id="pcoProPresenterTeam"><option value="">— Select Team —</option></select></div>
+              <div class="field-row"><label for="pcoProPresenterPosition">Role</label><select id="pcoProPresenterPosition"><option value="">— None —</option></select></div>
+            </div>
+          </div>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="propresenterViewUrl">—</span></div>
+        </section>
+        <section class="card view-directory-card" data-engineer-view="lighting">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3Z"/></svg></span><h2>Lighting Home</h2></div>
+          <p class="sub view-directory-description">Welcome, live service item, team and order of service for the lighting operator.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openLightingViewBtn">Open Lighting Home</button></div>
+          <p class="sub view-directory-hint" id="lightingViewHint" role="status">Start the server first to open.</p>
+          <div class="view-page-setup">
+            <p class="view-page-setup-title">Who it welcomes</p>
+            <div class="pco-field-grid">
+              <div class="field-row"><label for="pcoLightingTeam">Team</label><select id="pcoLightingTeam"><option value="">— Select Team —</option></select></div>
+              <div class="field-row"><label for="pcoLightingPosition">Role</label><select id="pcoLightingPosition"><option value="">— None —</option></select></div>
+            </div>
+          </div>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="lightingViewUrl">—</span></div>
+        </section>
+        <section class="card view-directory-card" data-engineer-view="switcher">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3"/></svg></span><h2>Switcher Home</h2></div>
+          <p class="sub view-directory-description">Welcome, live service item, team and order of service for the video switcher operator.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openSwitcherViewBtn">Open Switcher Home</button></div>
+          <p class="sub view-directory-hint" id="switcherViewHint" role="status">Start the server first to open.</p>
+          <div class="view-page-setup">
+            <p class="view-page-setup-title">Who it welcomes</p>
+            <div class="pco-field-grid">
+              <div class="field-row"><label for="pcoSwitcherTeam">Team</label><select id="pcoSwitcherTeam"><option value="">— Select Team —</option></select></div>
+              <div class="field-row"><label for="pcoSwitcherPosition">Role</label><select id="pcoSwitcherPosition"><option value="">— None —</option></select></div>
+            </div>
+          </div>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="switcherViewUrl">—</span></div>
+        </section>
+      </div>
+      <section class="card companion-card" id="companionCard">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2>Companion buttons</h2><p class="sub">Put Bitfocus Companion buttons on the Home pages. JPMixer connects to Companion as a Satellite and adds one surface per page.</p></div>
+          <input type="checkbox" id="companionEnabled" class="toggle" aria-label="Show Companion buttons on the Home pages" />
+        </div>
+        <div class="companion-fields" id="companionFields">
+          <div class="field-row companion-host"><label for="companionHost">Companion computer</label><input type="text" id="companionHost" placeholder="192.168.1.50, or 127.0.0.1 on this Mac" autocomplete="off" spellcheck="false" /></div>
+          <div class="field-row"><label for="companionPort">Satellite port</label><input type="number" id="companionPort" min="1" max="65535" placeholder="16622" /></div>
+          <div class="field-row"><label for="companionColumns">Buttons per row</label><input type="number" id="companionColumns" min="1" max="12" /></div>
+          <div class="field-row"><label for="companionRows">Rows</label><input type="number" id="companionRows" min="1" max="8" /></div>
+        </div>
+        <div class="companion-status" id="companionStatus" role="status"><span class="dot" id="companionDot"></span><span id="companionStatusText">Off</span></div>
+        <details class="settings-help"><summary>Setting it up in Companion</summary><div class="settings-help-body"><div class="sub">In Companion, open <strong>Surfaces</strong>. After Save &amp; Apply, four Satellite surfaces appear: <strong>JPMixer FOH Home</strong>, <strong>JPMixer ProPresenter Home</strong>, <strong>JPMixer Lighting Home</strong> and <strong>JPMixer Switcher Home</strong>. Give each one the page of buttons that station needs. Companion’s Satellite port is 16622 unless you changed it. Each Home page shows its buttons in a Companion card you can move and resize with Arrange page.</div></div></details>
+      </section>
+      <div class="views-section-heading"><h2>Engineer tools</h2><p>Mixing and monitoring pages for the audio team.</p></div>
+      <div class="views-directory">
+        <section class="card view-directory-card" data-engineer-view="monitor">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><path d="M4 13v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="11" width="4" height="9" rx="2"/><rect x="17" y="11" width="4" height="9" rx="2"/></svg></span><h2>Monitor Engineer</h2></div>
+          <p class="sub view-directory-description">Compare all aux mixes or focus on one performer, with channel search and protected touch browsing.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openMonitorBtn">Open Monitor Engineer</button></div>
+          <p class="sub view-directory-hint" id="monitorBtnHint" role="status">Start the server first to open.</p>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="monitorUrl">—</span></div>
+        </section>
+        <section class="card view-directory-card" data-engineer-view="console">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><path d="M5 3v8m0 4v6M12 3v3m0 4v11m7-18v12m0 4v2"/><rect x="2.5" y="11" width="5" height="4" rx="1"/><rect x="9.5" y="6" width="5" height="4" rx="1"/><rect x="16.5" y="15" width="5" height="4" rx="1"/></svg></span><h2>Console Controller</h2></div>
+          <p class="sub view-directory-description">Main channel faders, mutes, solos, control groups, and aux outputs. Changes affect the console mix.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openConsoleBtn">Open Console Controller</button></div>
+          <p class="sub view-directory-hint" id="consoleBtnHint" role="status">Start the server first to open.</p>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="consoleUrl">—</span></div>
+        </section>
+        <section class="card view-directory-card" data-engineer-view="devices">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><rect x="2" y="3" width="11" height="16" rx="2"/><path d="M6 16h3"/><rect x="16" y="8" width="6" height="13" rx="1.5"/><path d="M18 18h2"/></svg></span><h2>Devices & Stage</h2></div>
+          <p class="sub view-directory-description">See connected performers and their selected mixes. Arrange devices on stage and plan unused auxes in Phantom mode.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openDevicesBtn">Open Devices</button></div>
+          <p class="sub view-directory-hint" id="devicesBtnHint" role="status">Start the server first to open.</p>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="devicesUrl">—</span></div>
+        </section>
+      </div>
+      <div class="views-section-heading"><h2>Performers &amp; rooms</h2><p>Pages for the band and the rooms around the stage.</p></div>
+      <div class="views-directory">
+        <section class="card view-directory-card" data-engineer-view="performer">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><path d="M3 6h7m4 0h7M3 12h2m4 0h12M3 18h11m4 0h3"/><rect x="10" y="3" width="4" height="6" rx="1"/><rect x="5" y="9" width="4" height="6" rx="1"/><rect x="14" y="15" width="4" height="6" rx="1"/></svg></span><h2>Performer Mixer</h2></div>
+          <p class="sub view-directory-description">The mix picker and personal aux controls for musicians, including saved mixes and Ear Scenes.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openPerformerBtn">Open Performer Mixer</button></div>
+          <p class="sub view-directory-hint" id="performerBtnHint" role="status">Start the server first to open.</p>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="performerUrl">—</span></div>
+        </section>
+        <section class="card view-directory-card" data-engineer-view="greenroom">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v3"/></svg></span><h2>Green Room</h2></div>
+          <p class="sub view-directory-description">A room display of the upcoming service, scheduled team members, photos, and roles.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openGreenRoomViewBtn">Open Green Room</button><button type="button" class="btn view-settings-link" data-settings-target="pco">Planning Center setup</button></div>
+          <p class="sub view-directory-hint" id="greenRoomViewHint" role="status">Start the server first to open.</p>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="greenRoomViewUrl">—</span></div>
+        </section>
+      </div>
+
+    </div>
+
+    <!-- ── Branding ── -->
+    <div class="tab-panel" id="tab-branding">
+
+      <div class="views-section-heading"><h2>Your logo and color</h2><p>Shown on every page JPMixer serves to phones, iPads and screens. Settings, the launch screen, the browser tab icon and the app icon stay JPMixer.</p></div>
+      <section class="card brand-card" id="brandingCard">
+        <div class="brand-grid">
+          <div class="brand-logo-panel">
+            <h2>Logo</h2>
+            <div class="brand-preview" id="brandPreview">
+              <canvas id="brandCanvas" width="560" height="200" hidden title="Click to use this color as the accent"></canvas>
+              <span class="brand-preview-empty" id="brandPreviewEmpty">Using the JPMixer logo</span>
+            </div>
+            <p class="sub" id="brandPickHint" hidden>Click anywhere on your logo to use that color as the accent.</p>
+            <div class="card-row brand-actions">
+              <button type="button" class="btn" id="brandUploadBtn">Upload logo…</button>
+              <button type="button" class="btn" id="brandRemoveBtn" hidden>Use the JPMixer logo</button>
+            </div>
+            <p class="sub" id="brandLogoStatus" role="status">A PNG or SVG with a transparent background works best. Up to 5 MB.</p>
+          </div>
+          <div class="brand-color-panel">
+            <h2>Accent color</h2>
+            <div class="brand-color-row">
+              <input type="color" id="brandAccentPicker" value="#e8003c" aria-label="Accent color" />
+              <input type="text" id="brandAccentHex" class="mono" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Accent color hex code" />
+              <button type="button" class="btn btn-sm" id="brandAccentReset">JPMixer red</button>
+            </div>
+            <p class="sub brand-swatch-label" id="brandSwatchLabel" hidden>From your logo</p>
+            <div class="brand-swatches" id="brandSwatches" role="group" aria-label="Colors from your logo"></div>
+            <p class="sub brand-contrast" id="brandContrastNote" hidden>Light colors can make white text on buttons hard to read.</p>
+            <p class="sub brand-swatch-label">Preview</p>
+            <div class="brand-sample" id="brandSample" aria-hidden="true"><span class="brand-sample-chip">All</span><span class="brand-sample-chip off">Drums</span><span class="brand-sample-btn">Save</span><span class="brand-sample-dot"></span></div>
+          </div>
+        </div>
+        <p class="sub">Changes reach open pages within about 30 seconds of Save &amp; Apply.</p>
+      </section>
+
+    </div>
+
+    <!-- ── Planning Center tab ── -->
+    <div class="tab-panel" id="tab-pco">
+
+      <nav class="pco-section-nav" aria-label="Planning Center sections">
+        <a href="#pco-connection">Connection</a><a href="#pco-schedule">Service &amp; team</a><a href="#pco-mapping">Aux mapping</a><a href="#pco-sync">Sync</a>
+      </nav>
+
+      <details class="card pco-card pco-connection" id="pco-connection" open>
+        <summary><strong>Connection</strong><span>Planning Center Services credentials</span></summary>
+        <div class="pco-section-body">
+          <div class="pco-field-grid">
+            <div class="field-row"><label for="pcoAppId">Application ID</label><input type="text" id="pcoAppId" autocomplete="off" /></div>
+            <div class="field-row"><label for="pcoSecret">Secret</label><input type="password" id="pcoSecret" autocomplete="off" /></div>
+          </div>
+          <details class="pco-help"><summary>Where do I find these credentials?</summary><p>Create a personal access token for your Planning Center account at <span class="mono">api.planningcenteronline.com/personal_access_tokens</span>. Enter its Application ID and Secret here. Credentials are stored in JPMixer’s local configuration, like the console password.</p></details>
+        </div>
+      </details>
+
+      <section class="card pco-card" id="pco-schedule" aria-labelledby="pcoScheduleHeading">
+        <div class="pco-section-heading"><div><h2 id="pcoScheduleHeading">Service &amp; team</h2><p class="sub">Choose the schedule and people to display.</p></div></div>
+        <div class="pco-field-action">
+          <div class="field-row"><label for="pcoServiceType">Service type</label><select id="pcoServiceType"><option value="">— load service types —</option></select></div>
+          <button type="button" class="btn" id="pcoRefreshTypesBtn">Refresh service types</button>
+        </div>
+        <p class="sub pco-field-status" id="pcoServiceTypeStatus" role="status"></p>
+        <div class="pco-field-grid">
+          <div class="pco-field-stack">
+            <div class="field-row"><label for="pcoTeam">Team</label><select id="pcoTeam"><option value="">— All Teams —</option></select></div>
+            <button type="button" class="btn" id="pcoRefreshTeamsBtn">Refresh teams</button>
+          </div>
+          <div class="pco-field-stack">
+            <div class="field-row"><label for="pcoDay">Service day</label><select id="pcoDay">
+              <option value="auto">Automatic — closest service time</option><option value="">— Every Day —</option>
+              <option value="Sunday">Sunday</option><option value="Monday">Monday</option><option value="Tuesday">Tuesday</option><option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option><option value="Friday">Friday</option><option value="Saturday">Saturday</option>
+            </select></div>
+            <details class="pco-help"><summary>How does Automatic work?</summary><p>Automatic follows the service time nearest to now, including upcoming times before the show. A specific day narrows Sync Now and, once saved, the Green Room display. This applies when your Planning Center plan uses different people for different service times; otherwise everyone is shown.</p></details>
+          </div>
+        </div>
+        <p class="sub pco-field-status" id="pcoTeamStatus" role="status"></p>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoIncludeUnconfirmed">Include unconfirmed team members</label><p class="sub">Show scheduled people who have not confirmed yet.</p></div><input type="checkbox" id="pcoIncludeUnconfirmed" class="toggle" /></div>
+      </section>
+
+      <section class="card pco-card" id="pco-mapping" aria-labelledby="pcoMappingHeading">
+        <div class="pco-section-heading"><div><h2 id="pcoMappingHeading">Position → aux mapping</h2><p class="sub">Assign each team position to a monitor mix.</p></div><button type="button" class="btn" id="pcoRefreshPositionsBtn">Refresh positions</button></div>
+        <details class="pco-help"><summary>Mapping and display behavior</summary><p>The selected team filters this list and, once saved, the Green Room display. Sync Now applies all saved mappings, regardless of the team shown here. Unmapped positions are skipped and listed in the sync results. Hide from Green Room only changes that display.</p></details>
+        <div class="pco-mapping-head" aria-hidden="true"><span>Team position</span><span>Aux mix</span><span>Green Room</span></div>
+        <div id="pcoPositionsList">Choose a service type, then refresh positions.</div>
+      </section>
+
+      <section class="card pco-card" id="pco-sync" aria-labelledby="pcoSyncHeading">
+        <div class="pco-section-heading"><div><h2 id="pcoSyncHeading">Sync aux names</h2><p class="sub">Use scheduled names to identify each performer’s mix.</p></div></div>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoUpdateAuxNames">Rename aux channels when syncing</label><p class="sub">Turn off to use the room displays without changing aux names.</p></div><input type="checkbox" id="pcoUpdateAuxNames" class="toggle" /></div>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoPhoneAssignments">Assign phones by Planning Center performer</label><p class="sub">Performers choose their name once. JPMixer selects their mapped aux and keeps My Mixes under their Planning Center identity, so a changed device ID can recover them. If browser data is cleared, choose the name again.</p><p class="sub" id="pcoPhoneAssignmentsNote" hidden>Turn on aux renaming above to use this.</p></div><input type="checkbox" id="pcoPhoneAssignments" class="toggle" /></div>
+        <p class="sub">When enabled, names update at startup and after Save &amp; Apply. Sync Now applies the current mappings immediately. Unmapped positions are listed in the results.</p>
+        <div class="pco-sync-action"><p class="sub" id="pcoSyncStatus" role="status"></p><button type="button" class="btn btn-primary" id="pcoSyncNowBtn">Sync Now</button></div>
+        <div id="pcoSyncResults" aria-live="polite"></div>
+      </section>
+      <p class="sub">Who each Home page welcomes is set on the <button type="button" class="settings-text-link" data-settings-target="views">Pages</button> tab.</p>
+
+    </div>
+
+    <!-- ── Backup tab ── -->
+    <div class="tab-panel" id="tab-backup">
+<nav class="settings-section-nav" aria-label="Backup sections"><a href="#backup-automatic">Automatic backups</a><a href="#backup-files">Export &amp; restore</a></nav>
+      <section class="card" id="backup-automatic">
+        <div class="settings-heading"><h2>Automatic backups</h2><p class="sub">Protect your setup on a schedule.</p></div>
         <div class="card-row">
           <div>
             <label class="toggle-label" for="autoBackupEnabled">Automatically back up</label>
@@ -383,58 +612,33 @@
         </div>
       </section>
 
+      <div class="settings-section-heading" id="backup-files"><h2>Backup files</h2><p class="sub">Export a copy to keep, or restore an existing setup.</p></div><div class="settings-transfer-grid">
       <section class="card">
         <h2>Export Backup</h2>
-        <div class="sub" style="margin-bottom:16px">Save your console settings, channel/aux setup, My Mixes and Ear Scenes to a file. Useful before an app update, or to move everything to a new computer.</div>
+        <div class="sub">Save your console settings, channel/aux setup, My Mixes and Ear Scenes to a file. Useful before an app update, or to move everything to a new computer.</div>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="exportIncludeCredentials">Include passwords and keys</label><p class="sub">The Planning Center App ID and Secret, dLive password and Control API token. Leave off for a backup you’ll share or keep somewhere others can open it. Restoring a backup without them keeps the ones on this Mac.</p></div><input type="checkbox" id="exportIncludeCredentials" class="toggle" /></div>
         <div class="card-row">
           <button class="btn btn-primary" id="exportBackupBtn">Export Backup…</button>
         </div>
         <div class="backup-status" id="exportStatus"></div>
       </section>
 
-      <section class="card">
-        <h2>Import / Restore</h2>
-        <div class="sub" style="margin-bottom:16px">Restore from a previously exported backup file. This <strong>replaces</strong> your current console settings, channel/aux setup, My Mixes and Ear Scenes. Backups from before Ear Scenes were included leave your current Ear Scenes as they are. Your current setup is saved to the automatic backups folder first.</div>
-        <div class="card-row">
-          <button class="btn" id="importBackupBtn">Choose Backup File…</button>
+      <section class="card restore-loader-card" id="backup-loader">
+        <div class="settings-heading"><h2>Load &amp; restore a backup</h2><p class="sub">One loader for JPMixer backups, My Mixes backups, and extracted JSON or ZIP files. Review the contents before anything changes.</p></div>
+        <div class="card-row"><button type="button" class="btn btn-primary" id="importBackupBtn">Load Backup…</button></div>
+        <div id="restorePreview" class="settings-stack" hidden>
+          <div class="restore-file"><strong id="restoreFilename"></strong><p class="sub" id="restoreFileType"></p></div>
+          <p class="sub">Choose what to restore. Unchecked sections and anything missing from the file stay as they are. Credentials are never selected automatically.</p>
+          <fieldset class="restore-options" id="restoreOptions" aria-label="Sections to restore"><legend class="sr-only">Sections to restore</legend></fieldset>
+          <div class="field-row" id="restoreMixModeRow" hidden><label for="restoreMixMode">How to restore My Mixes</label><select id="restoreMixMode"><option value="merge">Merge — keep existing mixes and add missing copies</option><option value="replace">Replace — use only the mixes in this backup</option></select><p class="sub" id="restoreMixModeHelp">Identical copies are skipped. Different mixes with the same name receive a numbered suffix.</p></div>
+          <p class="restore-summary sub" id="restoreSelectionSummary" role="status"></p>
+          <p class="sub">A safety backup is created first. Restoring saved mixes does not apply their levels to the console. Selected settings replace their saved values and reload Settings.</p>
+          <div class="card-row"><button type="button" class="btn btn-primary" id="applyRestoreBtn" disabled>Restore Selected</button><button type="button" class="btn" id="cancelRestoreBtn">Cancel</button></div>
         </div>
-        <div class="backup-status" id="importStatus"></div>
+        <p class="backup-status" id="importStatus" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="card">
-        <h2>Reset Layout &amp; Icons</h2>
-        <div class="sub" style="margin-bottom:16px">Clears all channel groups, icon assignments, and label overrides — restoring the Channels tab to its default state. Console network settings, aux visibility, and saved ear mixes are not affected.</div>
-        <div class="card-row">
-          <button class="btn btn-danger" id="resetLayoutBtn">Reset Layout &amp; Icons…</button>
-        </div>
-        <div class="backup-status" id="resetLayoutStatus"></div>
-      </section>
-
-    </div>
-
-    <!-- ── OSC Log tab — live raw OSC traffic between JPMixer and the console ── -->
-    <div class="tab-panel" id="tab-osclog">
-
-      <section class="card osclog-card">
-        <div class="card-row space-between">
-          <h2>OSC Traffic</h2>
-          <div class="osclog-controls">
-            <input type="text" id="oscLogFilter" class="osclog-filter" placeholder="Filter by address…" />
-            <button class="btn btn-sm" id="oscLogPauseBtn">Pause</button>
-            <button class="btn btn-sm" id="oscLogClearBtn">Clear</button>
-          </div>
-        </div>
-        <div class="sub" style="margin-bottom:10px"><span class="osclog-dir-in">← in</span> from the desk, <span class="osclog-dir-out">→ out</span> to the desk. Kept in memory only while this window is open.</div>
-        <div class="osclog-terminal" id="oscLogTerminal"></div>
-
-        <div class="card-row space-between osclog-record-row">
-          <div class="sub" id="oscLogRecordStatus">Not recording.</div>
-          <div class="osclog-controls">
-            <button class="btn btn-sm" id="oscLogShowFolderBtn">Show Logs Folder</button>
-            <button class="btn btn-sm btn-primary" id="oscLogRecordBtn">Start Logging</button>
-          </div>
-        </div>
-      </section>
+      </div>
 
     </div>
 
@@ -443,7 +647,7 @@
 
       <section class="card">
         <h2>External Control API</h2>
-        <div class="sub" style="margin-bottom:10px">Lets external tools — Bitfocus Companion, Elgato Stream Deck (via Companion or a plain HTTP action), or anything else that can make an HTTP request — mute channels, fire snapshots, and rename channel/aux labels. Anyone with the token below can do all of that, so treat it like a password. (Planning Center has its own tab — it doesn't need this API enabled.)</div>
+        <p class="sub">Connect Companion, Stream Deck, or another HTTP tool to control mutes, snapshots, and channel or aux names. Planning Center is configured separately.</p>
         <div class="card-row">
           <div>
             <label class="toggle-label" for="apiEnabled">Enable Control API</label>
@@ -452,7 +656,8 @@
           <input type="checkbox" id="apiEnabled" class="toggle" />
         </div>
 
-        <div id="apiFieldsRow" style="display:none">
+        </section>
+      <div id="apiFieldsRow" class="settings-stack" style="display:none"><section class="card"><div class="settings-heading"><h2>Connection &amp; access token</h2><p class="sub">Anyone with this token can control the functions above. Treat it like a password.</p></div>
           <div class="field-row">
             <label for="apiPort">Port</label>
             <input type="number" id="apiPort" min="1" max="65535" placeholder="9096" />
@@ -468,82 +673,46 @@
               <button class="btn btn-sm" id="apiRegenTokenBtn">Regenerate</button>
             </div>
           </div>
-          <div class="sub" style="margin-top:14px"><strong>Auth:</strong> send the token as <code>Authorization: Bearer &lt;token&gt;</code>, or as a <code>?token=</code> query parameter if your tool can't set headers.</div>
-          <div class="sub" style="margin-top:6px"><strong>Endpoints</strong> (all under <code>http://&lt;this Mac's IP&gt;:&lt;port&gt;/api/v1/</code>):</div>
-          <div class="sub">
-            <code>GET  /status</code> · <code>GET  /channels</code> · <code>GET  /auxes</code><br/>
-            <code>POST /channels/:n/label</code> <code>{label}</code><br/>
-            <code>POST /auxes/:n/label</code> <code>{label}</code><br/>
-            <code>POST /auxes/:n/mute</code> <code>{channel, muted}</code> · <code>POST /auxes/:n/solo</code> <code>{channel, soloed}</code><br/>
-            <code>POST /scenes/fire</code> <code>{action: "next"|"prev"}</code>
+        </section>
+        <details class="card settings-maintenance"><summary>HTTP request reference<span>Authentication and available endpoints</span></summary><div class="settings-stack settings-details-body">
+          <p class="sub">Send <code>Authorization: Bearer &lt;token&gt;</code> with each request. If your tool cannot set headers, use the <code>?token=</code> query parameter.</p>
+          <p class="sub">Base URL: <code>http://&lt;this Mac's IP&gt;:&lt;port&gt;/api/v1/</code></p>
+          <div class="settings-api-reference">
+            <div><code>GET /status</code><span>Connection status</span></div>
+            <div><code>GET /channels</code><span>Channel list</span></div>
+            <div><code>GET /auxes</code><span>Aux list</span></div>
+            <div><code>POST /channels/:n/label</code><code>{label}</code></div>
+            <div><code>POST /auxes/:n/label</code><code>{label}</code></div>
+            <div><code>POST /auxes/:n/mute</code><code>{channel, muted}</code></div>
+            <div><code>POST /auxes/:n/solo</code><code>{channel, soloed}</code></div>
+            <div><code>POST /scenes/fire</code><code>{action: "next"|"prev"}</code></div>
           </div>
-        </div>
-      </section>
+        </div></details>
+      </div>
 
     </div>
 
-    <!-- ── Planning Center tab — auto-label auxes from the service schedule ── -->
-    <div class="tab-panel" id="tab-pco">
+    <!-- ── OSC Log tab — live raw OSC traffic between JPMixer and the console ── -->
+    <div class="tab-panel" id="tab-osclog">
 
-      <section class="card">
-        <h2>Planning Center Services</h2>
-        <div class="sub" style="margin-bottom:10px">Pulls who's scheduled on the next upcoming service and renames the matching aux mixes for you — "Acoustic Guitar - John Smith" instead of just "AUX 3". Nothing runs automatically; use <strong>Sync Now</strong> below whenever you want it applied.</div>
-        <div class="sub" style="margin-bottom:14px">⚠️ Stored the same way your console password is — in JPMixer's local config file. This is a credential to your Planning Center account specifically, generated at <span class="mono">api.planningcenteronline.com/personal_access_tokens</span>.</div>
-
-        <div class="card-row space-between" style="margin-bottom:14px">
-          <div>
-            <div class="label">Green Room Display</div>
-            <div class="sub mono" id="pcoGreenRoomUrl">—</div>
-          </div>
-          <button class="btn btn-sm" id="pcoOpenGreenRoomBtn">Open</button>
-        </div>
-
-        <div class="field-row two-col">
-          <div>
-            <label for="pcoAppId">Application ID</label>
-            <input type="text" id="pcoAppId" autocomplete="off" />
-          </div>
-          <div>
-            <label for="pcoSecret">Secret</label>
-            <input type="password" id="pcoSecret" autocomplete="off" />
-          </div>
-        </div>
-
-        <div class="field-row">
-          <label for="pcoServiceType">Service Type</label>
-          <select id="pcoServiceType"><option value="">— load service types —</option></select>
-        </div>
-        <div class="card-row space-between" style="margin-bottom:14px">
-          <div class="sub" id="pcoServiceTypeStatus"></div>
-          <button class="btn btn-sm" id="pcoRefreshTypesBtn">Refresh Service Types</button>
-        </div>
-
-        <div class="field-row">
-          <label for="pcoTeam">Team</label>
-          <select id="pcoTeam"><option value="">— All Teams —</option></select>
-        </div>
-        <div class="card-row space-between" style="margin-bottom:14px">
-          <div class="sub" id="pcoTeamStatus">Narrows the Position mapping table below, and — once saved with Save & Apply — the Green Room display too. Sync Now still applies every saved mapping regardless of team.</div>
-          <button class="btn btn-sm" id="pcoRefreshTeamsBtn">Refresh Teams</button>
-        </div>
-
+      <section class="card osclog-card">
         <div class="card-row space-between">
-          <h2 style="font-size:14px">Position → Aux Mapping</h2>
-          <button class="btn btn-sm" id="pcoRefreshPositionsBtn">Refresh Positions</button>
+          <h2>OSC Traffic</h2>
+        </div><div class="osclog-controls settings-log-toolbar">
+            <div class="field-row"><label for="oscLogFilter">Filter by OSC address</label><input type="text" id="oscLogFilter" class="osclog-filter" placeholder="e.g. /Input_Channels" /></div>
+            <button class="btn btn-sm" id="oscLogPauseBtn">Pause</button>
+            <button class="btn btn-sm" id="oscLogClearBtn">Clear</button>
         </div>
-        <div class="sub" style="margin-bottom:10px">One row per Team Position — filtered to the Team selected above, or every team if left on "— All Teams —". Anyone scheduled to a position left as "— unmapped —" is skipped and listed as a warning after Sync Now, rather than silently doing nothing.</div>
-        <div id="pcoPositionsList" class="sub">Pick a Service Type above, then click Refresh Positions.</div>
+        <div class="sub"><span class="osclog-dir-in">← in</span> from the desk, <span class="osclog-dir-out">→ out</span> to the desk. Kept in memory only while this window is open.</div>
+        <div class="osclog-terminal" id="oscLogTerminal"></div>
 
-        <div class="card-row" style="margin-top:10px">
-          <label class="toggle-label" for="pcoIncludeUnconfirmed">Include unconfirmed team members</label>
-          <input type="checkbox" id="pcoIncludeUnconfirmed" class="toggle" />
+        <div class="card-row space-between osclog-record-row">
+          <div class="sub" id="oscLogRecordStatus">Not recording.</div>
+          <div class="osclog-controls">
+            <button class="btn btn-sm" id="oscLogShowFolderBtn">Show Logs Folder</button>
+            <button class="btn btn-sm btn-primary" id="oscLogRecordBtn">Start Logging</button>
+          </div>
         </div>
-
-        <div class="card-row space-between" style="margin-top:14px">
-          <div class="sub" id="pcoSyncStatus"></div>
-          <button class="btn btn-primary" id="pcoSyncNowBtn">Sync Now</button>
-        </div>
-        <div id="pcoSyncResults"></div>
       </section>
 
     </div>
@@ -551,7 +720,7 @@
   </main>
 
   <footer>
-    <span class="version">v1.7.2</span>
+    <div class="footer-meta"><span class="version">v2.0.0-beta.1</span><span>Changes apply when you save.</span></div>
     <button class="btn btn-primary" id="saveBtn">Save &amp; Apply</button>
   </footer>
 
@@ -561,5 +730,6 @@
   </div>
 
   <script src="settings.js"></script>
+  <script src="settings-studio.js"></script>
 </body>
 </html>
