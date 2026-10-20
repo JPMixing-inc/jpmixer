@@ -1,7 +1,7 @@
 {
   "name": "jpmixer",
-  "version": "2.0.0-beta.1",
-  "description": "JPMixer — browser-based monitor mix control for DiGiCo consoles",
+  "version": "2.0.0",
+  "description": "JPMixer — browser-based monitor mixes and production Home pages for DiGiCo, dLive, KLANG and WING consoles",
   "main": "main.js",
   "scripts": {
     "test": "node --test tests/*.test.js src/server/*.test.js",

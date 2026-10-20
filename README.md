@@ -1,148 +1,243 @@
-# JPMixer
-
-**Browser-based monitor mix controller for DiGiCo, Allen & Heath dLive, KLANG, and Behringer WING**
-
-JPMixer is a Mac and Windows desktop app that runs a local web server, letting musicians control their own in-ear monitor (IEM) or wedge mixes from any phone, tablet, or laptop on the same network — without touching the front-of-house console.
-
-> **v2.0.0-beta.1** (pre-release)
-
----
-
-## Screenshots
-
 <p align="center">
-  <img src="assets/ScreenShots/Aux Select Screen.png" width="220" alt="Aux select"/>
-  <img src="assets/ScreenShots/PC Ear change Screen.png" width="220" alt="IEM mix control"/>
-  <img src="assets/ScreenShots/Monitior Engineer Screen.png" width="220" alt="Monitor engineer view"/>
-</p>
-<p align="center">
-  <img src="assets/ScreenShots/Phone Earchange.PNG" width="160" alt="Phone IEM control"/>
-  <img src="assets/ScreenShots/Phone Solo channel.PNG" width="160" alt="Phone solo channel"/>
-  <img src="assets/ScreenShots/Settings connection screen.png" width="220" alt="Settings"/>
+  <img src="assets/brand/jpmixer-wordmark.svg" alt="JPMixer" width="420" />
 </p>
 
----
+<h3 align="center">Personal monitor mixes for every musician, and a home page for every production station.</h3>
 
-## Features
+<p align="center">
+  <a href="https://github.com/JPMixing-inc/jpmixer/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/JPMixing-inc/jpmixer?label=release&color=e8003c&style=for-the-badge" /></a>
+  <img alt="macOS and Windows" src="https://img.shields.io/badge/macOS%20%7C%20Windows-1f2128?style=for-the-badge" />
+  <img alt="DiGiCo, dLive, KLANG, WING" src="https://img.shields.io/badge/DiGiCo%20%C2%B7%20dLive%20%C2%B7%20KLANG%20%C2%B7%20WING-1f2128?style=for-the-badge" />
+  <a href="https://github.com/JPMixing-inc/jpmixer/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/JPMixing-inc/jpmixer/total?color=1f2128&style=for-the-badge" /></a>
+</p>
 
-### Musician Mix Control
-- **Per-aux mix control** — each musician controls only their own IEM or wedge mix from their phone
-- **Real-time faders, mute & solo, pan** — per-channel, per-aux, from the browser UI
-- **Ear scene recall** — save a full mix per snapshot; it pushes to the console and every screen automatically when the snapshot fires, then locks the faders against accidental bumps until unlocked
-- **Ear Scenes editor** — browse and edit a saved mix for any snapshot without touching the live sound; resets fresh every launch (unlike My Mixes)
-- **My Mixes** — personal named mixes musicians can save anytime, backed up per-device on JPMixer's side
-- **Built-in aux EQ** — optional 8-band parametric EQ per aux (DiGiCo only — see [Console Support](#console-support))
-- **Hidden, link-only aux mixes** — hide an aux from the public picker, reachable only via its own direct URL
-- **Works on any device, no app install** — iOS, Android, Mac, Windows, any browser on the same WiFi; installs as a full-screen PWA on iPhone/iPad
-
-### Monitor Engineer
-- Full-screen grid of every aux mix at once, fully interactive
-- ±0.5 dB buttons to trim an entire mix in one tap
-- Live presence indicators — who's currently mixing what
-- Snapshot fire controls
-
-### Devices View
-- Live grid of connected musician devices, showing each one's selected mix
-- Activity dot + short description of the last change ("Turned up Kick", "Saved mix \"Soundcheck\"")
-- Last-active time and connection quality per device
-
-### Console Controller
-*(DiGiCo only — see [Console Support](#console-support))*
-- Input channel strips, control groups, and aux output masters — faders, mute, solo
-- Thumb-only fader drag (touching elsewhere scrolls instead of jumping the fader)
-- Snapshot fire controls
-
-### System
-- Channel labels & instrument icon library
-- Demo Mode — explore the full UI with simulated data, no desk required
-- Automatic + manual backups, one-click export/import
-- Live OSC traffic log in Settings, with optional recording to a file
-- iPad OSC relay (TouchOSC, Lemur, etc.)
-- [External Control API](#external-control-api) — token-gated HTTP endpoints for Bitfocus Companion, Elgato Stream Deck, and other external tools
-- [Planning Center Services integration](#planning-center-services) — auto-label aux mixes from who's actually scheduled
-- Auto-update check, tray app, optional port-80 forwarding
+<p align="center">
+  <a href="#download"><b>Download</b></a> ·
+  <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#consoles">Consoles</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#setup-guides">Setup guides</a>
+</p>
 
 ---
 
-## Download
+**JPMixer** is a Mac and Windows app that turns any phone, tablet or laptop on your network into a monitor mixer. Musicians open a web page and control **their own** in-ear or wedge mix, with no app to install and without touching the front-of-house console. In **2.0**, JPMixer also gives the whole production team a home: FOH, ProPresenter, Lighting and Switcher stations, each welcoming whoever Planning Center has scheduled, with team chat and live Companion buttons.
 
-Go to the [**Releases page**](https://github.com/JPMixing-inc/jpmixer/releases/latest) and download the installer for your platform:
+<p align="center">
+  <img src="assets/ScreenShots/2.0/01-mix-picker.png" alt="Mix picker" width="230" />&nbsp;&nbsp;
+  <img src="assets/ScreenShots/2.0/02-performer-mixer.png" alt="Performer mixer" width="230" />&nbsp;&nbsp;
+  <img src="assets/ScreenShots/2.0/03-performer-groups.png" alt="Group chips" width="230" />
+</p>
+
+<p align="center">
+  <img src="assets/ScreenShots/2.0/05-foh-home.png" alt="FOH Home" width="880" />
+</p>
+
+<p align="center"><sub>Screens shown with JPMixer's demo console and a sample schedule. Every name is fictional and every avatar is an illustration.</sub></p>
+
+---
+
+<a id="new-in-2"></a>
+
+## ✨ New in 2.0
+
+| | |
+|---|---|
+| 🏠 **Production Home pages** | FOH, ProPresenter, Lighting and Switcher stations, each welcoming whoever is scheduled, with the live item, the team and the order of service. |
+| 🎛️ **Companion buttons** | Every station gets its own live Bitfocus Companion button surface. Tap to press, hold to hold. |
+| 💬 **Team chat** | Live messages between all four production stations. |
+| 🎚️ **Channel processing** | Gain, 48V, filters, a draggable 4-band EQ, compressor and gate, from a browser (DiGiCo). |
+| 📱 **Phone-first mixer** | Group chips, tucked-away search, and mixes that open to each performer's groups. |
+| 🎨 **Your branding** | Your logo and accent colour on every page JPMixer serves. |
+| 🔄 **In-app updates** | Downloads from GitHub, verifies the checksum, installs and reopens. |
+| 🛡️ **Stronger connections** | Detects a console dropping off, finds a console that moved, and restores phone mutes when it's back. |
+
+See the [2.0 release notes](https://github.com/JPMixing-inc/jpmixer/releases/tag/v2.0.0) for the full list.
+
+---
+
+<a id="features"></a>
+
+## 🎯 Features
+
+### For musicians
+- **Their own mix, from their own phone:** levels, mute, solo and pan for their aux only, in any browser on the network. It installs as a full-screen app on iPhone and iPad.
+- **Group chips:** show just Drums, Vocals or any group in one tap. Each mix can open to the groups that performer uses.
+- **My Mixes:** personal saved mixes, backed up on JPMixer's side and recoverable on a new phone with **Find My Mixes**.
+- **Ear Scenes:** a mix saved per snapshot that recalls automatically when the console changes snapshot, then locks the faders against bumps. It can be hidden from performers.
+- **Built-in aux EQ:** an optional 8-band EQ per mix (DiGiCo).
+- **Private mixes:** hide a mix from the picker and share it by direct link.
+
+### For engineers
+- **Monitor Engineer:** every aux mix at once, grouped, with ±0.5 dB mix trims, channel search, presence indicators and snapshot controls.
+- **Console Controller:** inputs, control groups and aux outputs, plus a **channel processing panel** with gain, 48V, phase, delay, pan, inserts, filters, a 4-band EQ graph and dynamics (DiGiCo).
+- **Devices on stage:** every connected phone and the mix it's on, arranged to match your stage.
+- **iPad relay:** run the DiGiCo iPad app through JPMixer alongside the phones. Moved iPads are followed automatically.
+
+### For the production team
+- **Home pages for FOH, ProPresenter, Lighting and Switcher:** the scheduled person with their photo, the live service item (previous, now, next), the team and the order of service.
+- **Production View Select:** one link for the whole team, showing who's on at each station.
+- **Arrange and save:** drag and resize cards, and **save a layout per person**. It follows them to any device and any station.
+- **Team chat and Companion buttons** on every station. FOH Home can sit behind an **access code**.
+- **Green Room display:** the upcoming team with photos and roles, for a TV or iPad.
+
+### Planning Center, Companion & more
+- **Planning Center:** rename aux mixes from the schedule ("Acoustic Guitar - John Smith"), drive the Green Room and Home pages, and assign phones by performer.
+- **Bitfocus Companion:** a Satellite surface per station, plus a token-protected **Control API** for Companion, Stream Deck and HTTP tools.
+- **Branding:** your logo and accent colour on every served page.
+- **Backups:** automatic and manual, with a one-screen restore that lets you choose what to bring back and rolls back on any failure.
+- **Menu bar app:** a green or red status dot, one menu for every view, keep awake, open at login, and **in-app updates**.
+- **Demo mode** to explore everything without a console.
+
+---
+
+<a id="screenshots"></a>
+
+## 📸 A look inside
+
+<table>
+<tr>
+<td align="center" width="50%"><img src="assets/ScreenShots/2.0/04-production-view-select.png" alt="Production View Select" /><br/><sub><b>Production View Select</b>: every station, with who's on today</sub></td>
+<td align="center" width="50%"><img src="assets/ScreenShots/2.0/06-switcher-home.png" alt="Team chat and Companion buttons" /><br/><sub><b>Team chat</b> and <b>live Companion buttons</b></sub></td>
+</tr>
+<tr>
+<td align="center"><img src="assets/ScreenShots/2.0/07-green-room.png" alt="Green Room" /><br/><sub><b>Green Room</b> display</sub></td>
+<td align="center"><img src="assets/ScreenShots/2.0/08-monitor-engineer.png" alt="Monitor Engineer" /><br/><sub><b>Monitor Engineer</b>: every mix, grouped</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="assets/ScreenShots/2.0/10-channel-eq.png" alt="Channel processing" /><br/><sub><b>Channel processing</b>: EQ graph, filters, dynamics</sub></td>
+<td align="center"><img src="assets/ScreenShots/2.0/11-devices.png" alt="Devices on stage" /><br/><sub><b>Devices on stage</b></sub></td>
+</tr>
+</table>
+
+<details>
+<summary><b>More: Console Controller and Settings</b></summary>
+<br/>
+<table>
+<tr>
+<td align="center" width="50%"><img src="assets/ScreenShots/2.0/09-console-controller.png" alt="Console Controller" /><br/><sub><b>Console Controller</b></sub></td>
+<td align="center" width="50%"><img src="assets/ScreenShots/2.0/12-settings-general.png" alt="Settings: General" /><br/><sub><b>Settings</b>: General</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="assets/ScreenShots/2.0/13-settings-pages.png" alt="Settings: Pages" /><br/><sub><b>Pages</b> and Companion buttons</sub></td>
+<td align="center"><img src="assets/ScreenShots/2.0/14-settings-aux-mixes.png" alt="Settings: Aux mixes" /><br/><sub><b>Aux mixes</b> with "Opens to" groups</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="assets/ScreenShots/2.0/15-settings-performers.png" alt="Settings: Performers" /><br/><sub><b>Performers</b> and saved My Mixes</sub></td>
+<td align="center"><img src="assets/ScreenShots/2.0/16-settings-branding.png" alt="Settings: Branding" /><br/><sub><b>Branding</b></sub></td>
+</tr>
+</table>
+</details>
+
+---
+
+<a id="download"></a>
+
+## ⬇️ Download
+
+Get the latest version from the [**Releases page**](https://github.com/JPMixing-inc/jpmixer/releases/latest):
 
 | Platform | File |
-|----------|------|
-| macOS Apple Silicon (M1/M2/M3/M4) | `JPMixer-x.x.x-arm64.dmg` |
-| macOS Intel | `JPMixer-x.x.x.dmg` |
-| Windows 10 / 11 | `JPMixer.Setup.x.x.x.exe` |
+|---|---|
+| **macOS**, Apple Silicon and Intel | `JPMixer-<version>.dmg` (one universal app) |
+| **Windows** 10 / 11 | `JPMixer.Setup.<version>.exe` |
 
-**First launch on Mac:** If macOS says the app is "damaged and can't be opened", run this in Terminal after dragging it to Applications:
+From 2.0 on, **Check for Updates** in the menu bar installs new versions for you.
+
+**Mac, first launch:** if macOS says the app is "damaged and can't be opened", run this once after copying it to Applications, then allow JPMixer on the local network when asked:
 ```
 sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
 ```
 
-**First launch on Windows:** Click **More info → Run anyway** on the SmartScreen prompt. Allow the firewall dialog so musicians on the same network can reach the mixer page.
+**Windows, first launch:** choose **More info → Run anyway** on the SmartScreen prompt, and allow the firewall dialog so musicians on the network can reach the mixer page.
 
 ---
 
-## Console Support
+<a id="consoles"></a>
 
-| | DiGiCo (SD / Quantum / S series) | Allen & Heath dLive | KLANG (paired with dLive) | Behringer WING |
-|---|---|---|---|---|
-| Connection | OSC / DiGiCo Pad external control | MIDI over TCP/IP | OSC (direct to the KLANG processor) | OSC (direct to the console, UDP port 2223) |
-| Musician mix control (levels, mute, solo) | ✅ | ✅ | ✅ — controls KLANG's own mix, not the console | ✅ — real per-send mute, not a level trick |
-| My Mixes / Ear Scenes / Devices View | ✅ | ✅ | ✅ | ✅ My Mixes / Devices View — ❌ no Ear Scenes (WING's protocol has no scene recall at all) |
-| Per-send pan | ✅ | ❌ not exposed by dLive's protocol | ✅ — KLANG stereo-mode azimuth | ✅ real per-send pan, but the value scale is **unconfirmed on real hardware** — see [WING Setup](#wing-setup) |
-| Built-in aux EQ | ✅ | ❌ | ❌ | ❌ |
-| Console Controller | ✅ | ❌ | ❌ | ❌ |
-| Status | Stable | **New — unvalidated on real hardware** | **New — unvalidated on real hardware** | **New — unvalidated on real hardware** |
+## 🎛️ Console support
 
-dLive, KLANG, and WING each run as fully independent backends — selecting any one in Settings never touches DiGiCo's own connection or behavior. Full setup walkthroughs, including console-side steps and troubleshooting, are below: **[dLive Setup](#dlive-setup)** · **[KLANG Setup](#klang-setup)** · **[WING Setup](#wing-setup)**.
+| | DiGiCo<br/><sub>SD / Quantum / S</sub> | Allen & Heath<br/>dLive | KLANG<br/><sub>paired with dLive</sub> | Behringer<br/>WING |
+|---|:---:|:---:|:---:|:---:|
+| **Connection** | OSC (DiGiCo Pad) | MIDI over TCP/IP | OSC to the KLANG processor | OSC, UDP 2223 |
+| **Levels, mute & solo** | ✅ | ✅ | ✅ KLANG's own mix | ✅ real per-send mute |
+| **Per-send pan** | ✅ | — not in the protocol | ✅ stereo-mode azimuth | ✅ scale unconfirmed¹ |
+| **My Mixes & Devices** | ✅ | ✅ | ✅ | ✅ |
+| **Ear Scenes** | ✅ | ✅ | ✅ | — no scene recall in OSC |
+| **Built-in aux EQ** | ✅ | — | — | — |
+| **Console Controller & channel processing** | ✅ | — | — | — |
+| **Status** | Stable | Not yet validated on hardware | Not yet validated on hardware | Not yet validated on hardware |
 
----
+<sub>¹ See [WING Setup](#wing-setup).</sub>
 
-## Requirements
-
-- A DiGiCo console with OSC / DiGiCo Pad external control enabled, **or** an Allen & Heath dLive MixRack with MIDI/TCP enabled, **or** a KLANG 3D in-ear processor paired with a dLive console, **or** a Behringer WING console — see [Console Support](#console-support)
-- Mac or Windows computer running JPMixer on the same network as the console
-- Musicians connect via any web browser on the same WiFi — no app install needed
+Each console runs as its own backend; choosing one never touches another's connection. Every page works the same whichever console is active.
 
 ---
 
-## Quick Setup
+<a id="quick-start"></a>
 
-1. Open JPMixer — it appears in the menu bar / system tray
-2. Click the icon → **Settings**
-3. **Setup tab** — pick your **Console Type** and enter the connection details. DiGiCo needs OSC ports (send `8000` / listen `8001` by default); dLive/KLANG/WING need a bit more — see [dLive Setup](#dlive-setup) / [KLANG Setup](#klang-setup) / [WING Setup](#wing-setup)
-4. **Channels tab** — assign icons and labels; set channel/aux counts to match your patch
-5. **Auxes tab** — name each aux bus, assign colours, turn on EQ per aux if wanted (DiGiCo only), mark any aux **Link** to hide it from the public picker
-6. Click **Save & Apply** — the server starts automatically
-7. Share the URL shown in the Setup tab with your musicians (e.g. `http://192.168.1.10:8080`)
+## 🚀 Quick start
 
-No console handy yet? Turn on **Demo Mode** in the Setup tab to explore the full UI with simulated data first.
+1. **Open JPMixer.** It lives in the menu bar (Mac) or system tray (Windows). The dot on the icon turns green once the console is connected.
+2. **Settings → Console:** pick your console and enter its address. DiGiCo uses OSC send `8000` and listen `8001` by default. See the [setup guides](#setup-guides) for dLive, KLANG and WING.
+3. **Settings → Channels:** name channels, pick icons and make groups.
+4. **Settings → Aux mixes:** name and colour each mix, and choose what each opens to on performers' phones.
+5. **Save & Apply.** Then share the address shown on the **General** tab (for example `http://192.168.1.10`) with your musicians.
+6. **Optional:** connect Planning Center, set up the Home pages on the **Pages** tab, and add Companion buttons.
 
-For the full engineer setup guide and musician handout guide, see the [Releases page](https://github.com/JPMixing-inc/jpmixer/releases/latest).
-
----
-
-## How It Works
-
-JPMixer runs an Express web server and a WebSocket bridge inside an Electron shell.
-
-- A musician's fader move sends a WebSocket message to JPMixer, which relays it to the console (OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP to a paired KLANG processor, or OSC/UDP direct to a WING console) and broadcasts the confirmed value back to every connected screen.
-- On DiGiCo and dLive, mute/solo are emulated by driving the send to –∞ dB rather than touching a real mute flag. KLANG and WING both expose a real per-send mute the console applies directly, so nothing needs to be faked there.
-- Ear Scenes are stored as JSON, keyed by snapshot name (DiGiCo) or scene number (dLive/KLANG), and replayed automatically when a matching snapshot/scene fires. They reset fresh on every launch — My Mixes are the permanent ones. WING doesn't support Ear Scenes at all — its OSC layer never exposes scene/snapshot recall.
-- Browser clients can only touch their own aux sends/EQ — a server-side allowlist blocks everything else, so a mixer page can't fire snapshots or reach other console parameters.
-- dLive, KLANG, and WING each run as a completely separate backend, but present the exact same WebSocket interface to the browser — every screen works identically regardless of which one is active, and JPMixer only ever talks to one at a time.
+No console handy? Turn on **Demo mode** (Settings → General) to explore everything with a simulated console.
 
 ---
 
-## Built With
+<a id="setup-guides"></a>
 
-- [Electron](https://www.electronjs.org/)
-- [Express](https://expressjs.com/)
-- [ws](https://github.com/websockets/ws)
-- [osc](https://github.com/colinbdclark/osc.js/)
+## 📚 Setup guides
 
----
+<details>
+<summary><b>🏠 Production Home pages — click to expand</b></summary>
+
+### Production Home pages
+
+Each station gets its own page to open on that station's screen:
+
+| Page | Address |
+|---|---|
+| Production View Select | `http://<this computer's IP>/home.html` |
+| FOH Home | `/foh.html` |
+| ProPresenter Home | `/propresenter.html` |
+| Lighting Home | `/lighting.html` |
+| Switcher Home | `/switcher.html` |
+| Green Room | `/greenroom.html` |
+
+**Setup:**
+1. Connect Planning Center first (see [Planning Center Services](#planning-center-services)).
+2. Open **Settings → Pages**. Under each Home page, choose the **Team** and **Role** it welcomes, for example Production → Audio Engineer (FOH).
+3. Optionally set an **Access code** for FOH Home. Other devices enter it once; the JPMixer computer never needs it, and changing it signs every device out.
+
+**On the page:**
+- **Arrange page** lets you drag, resize and hide cards.
+- **Save for <name>** keeps that layout for the scheduled person, on any device. It loads automatically the next time they serve. A station they've never saved starts from their layout on another station.
+- **Team chat** connects all four stations, and the **Companion** card shows that station's buttons (see below).
+
+**Good to know:** only FOH Home can have a code. Anyone on the same network who opens another Home page can see it, chat and press its Companion buttons, so keep production Wi-Fi separate from guest Wi-Fi.
+
+</details>
+
+<details>
+<summary><b>🎛️ Companion buttons — click to expand</b></summary>
+
+### Companion buttons
+
+JPMixer connects to **Bitfocus Companion** as a Satellite client and adds one button surface per Home page: **JPMixer FOH Home**, **JPMixer ProPresenter Home**, **JPMixer Lighting Home** and **JPMixer Switcher Home**.
+
+1. In Companion, make sure Satellite connections are allowed (TCP port **16622** by default).
+2. In JPMixer, open **Settings → Pages → Companion buttons**, turn it on, enter the Companion computer's address (`127.0.0.1` if it's the same computer), and choose a grid (default 8 × 4). Click **Save & Apply**. The status line should say **Connected**.
+3. In Companion → **Surfaces**, give each JPMixer surface the page of buttons that station needs.
+
+**On the Home pages,** the Companion card shows those buttons live, with Companion's own images and colours. Tap to press, hold to hold. Works with Companion 3.0 and newer; Companion 5 sends sharper images. JPMixer reconnects on its own if Companion restarts. FOH's buttons sit behind the FOH access code.
+
+</details>
 
 <details>
 <summary><b>📖 dLive Setup — click to expand</b></summary>
@@ -158,7 +253,7 @@ Applies to both the **Allen & Heath dLive** and **KLANG (paired with dLive)** co
 3. If **Secure Mode** is on for MIDI/TCP, note its username/password — you'll need them if you enable TLS in JPMixer.
 4. Confirm firmware is **V1.91 or later** (this integration targets **V2.0**).
 
-**In JPMixer's Settings (Setup tab):**
+**In JPMixer's Settings (Console tab):**
 
 - **Console Type** → dLive, or KLANG if you're also running a KLANG processor.
 - **Console IP Address** → the dLive **MixRack's** IP, not the Surface's. (Optional in KLANG mode — see [KLANG Setup](#klang-setup).)
@@ -209,7 +304,7 @@ This is the part that actually carries musician mix control in KLANG mode — th
 
 Behringer WING is self-contained — unlike KLANG, there's no secondary console connection to configure, and unlike DiGiCo/dLive, there's no documented console-side toggle to switch on first. WING's OSC server listens on UDP port 2223 by default.
 
-**In JPMixer's Settings (Setup tab):**
+**In JPMixer's Settings (Console tab):**
 
 - **Console Type** → Behringer WING.
 - **Console IP Address** → the WING console's own IP. Same field DiGiCo/dLive use — WING needs nothing else.
@@ -223,7 +318,7 @@ Unlike dLive/KLANG, WING confirms it's actually reachable with a real round-trip
 
 **Troubleshooting:**
 - *"Not connected"* — recheck the IP address and that the console is powered on and reachable on the network JPMixer is running on.
-- *Levels work but mute doesn't* — confirm you're on Console Type "Behringer WING" and not accidentally "Custom OSC".
+- *Levels work but mute doesn't* — confirm Console Type is set to "Behringer WING".
 - *Pan seems clipped or reversed* — see the pan scale note above.
 - *No Ear Scenes tab behavior* — expected; WING has no scene recall to hook into.
 
@@ -278,6 +373,12 @@ Pulls who's scheduled on the current or next service and renames the matching au
 
 **Green Room display** — open `http://<this Mac's IP>:<server port>/greenroom.html` on an iPad, TV, or any browser on the network (e.g. a computer set up in front of the green room mics) for a full-screen, read-only grid of everyone scheduled for the next service — photo, name, and role. No token needed, unlike the Control API — it's informational, not a control surface. Auto-refreshes every 2 minutes, so it can just be left open. Uses the same Service Type and "Include unconfirmed" setting configured above; if a **Team** is selected and saved (e.g. "Worship"), only that team shows here — leave it on "— All Teams —" to keep showing everyone scheduled, the default. Each row in the Position → Aux Mapping table also has a **Hide from Green Room** checkbox for excluding individual positions regardless of team.
 
+**Displays only:** turn off **Rename aux channels when syncing** (Sync aux names) to use Planning Center just for the Green Room and Home pages, without ever renaming an aux.
+
+**Phones by performer** (optional): turn on **Assign phones by Planning Center performer**. Performers pick their name once; their phone opens their mapped mix, and their My Mixes follow their Planning Center identity to a new device.
+
+**Who each Home page welcomes** is set per page on the **Pages** tab — see [Production Home pages](#production-home-pages).
+
 **Multiple same-day services (e.g. Saturday 5pm/7pm, Sunday 9am/11am):** handled automatically. JPMixer always picks whichever plan is closest to right now — currently running or next up — rather than just the soonest future one, so it doesn't jump ahead to the 7pm plan the moment 5pm starts. The switch happens right at the midpoint between two services, not at either one's start time.
 
 **Multiple teams (Worship, Production, etc.):** fully supported. Refresh Positions and Sync Now both follow Planning Center's pagination, so every team's positions and everyone scheduled show up regardless of how many teams a Service Type has — earlier versions only read the first page and could silently cut off a team. The **Team** dropdown lets you narrow the Position → Aux Mapping table to just one team (e.g. Worship only, hiding Production/Host positions) instead of scrolling through everyone at once — applied instantly against the already-fetched list, no new fetch needed when switching teams. Once saved, it also narrows the Green Room display to that same team.
@@ -286,6 +387,51 @@ Pulls who's scheduled on the current or next service and renames the matching au
 
 </details>
 
+
+<details>
+<summary><b>🎨 Branding — click to expand</b></summary>
+
+### Branding
+
+**Settings → Branding:**
+- **Upload logo…** (PNG, JPG, WebP, GIF or SVG, up to 5 MB). It replaces the JPMixer logo on every page JPMixer serves: performer mixer, monitor, console, devices, Home pages and Green Room. A transparent background, tightly cropped, looks best.
+- **Accent colour:** type a hex value, or click your logo to sample one. A preview and a readability warning help you choose.
+- **Save & Apply.** Open pages pick it up within about 30 seconds.
+
+Settings, the launch screen, the browser tab icon and the app icon always stay JPMixer.
+
+</details>
+
+<details>
+<summary><b>💾 Backups, restore & updates — click to expand</b></summary>
+
+### Backups, restore & updates
+
+- **Automatic backups** (Settings → Backup & restore) save settings, saved mixes, Ear Scenes and Home page layouts on a schedule, always keeping the newest five.
+- **Export Backup** saves everything to a file. Leave **Include passwords and keys** off for a copy you'll share; restoring it keeps the credentials already on that computer.
+- **Load Backup** reads full backups, My Mixes backups, and extracted JSON or ZIP files. It shows what's inside, lets you pick what to restore, makes a safety backup first, and rolls everything back if anything fails.
+- **Updates:** **Check for Updates** (menu bar) downloads the new version from GitHub, checks it against GitHub's published SHA-256 checksum and the app's identity, installs it and reopens JPMixer. If anything fails, nothing changes.
+
+</details>
+
 ---
 
-*JPMixer is not affiliated with DiGiCo, Allen & Heath, KLANG:technologies, Behringer/MUSIC Tribe, or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen & Heath Limited. KLANG is a trademark of KLANG:technologies GmbH. WING is a trademark of MUSIC Tribe Global Brands Ltd. Planning Center is a trademark of Ministry Centered Technologies.*
+## ⚙️ How it works
+
+JPMixer runs a web server and a WebSocket bridge inside an Electron app.
+
+- **A musician's fader move** goes to JPMixer over WebSocket, which sends it to the console and shows it on every other screen. The console link is OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP to a KLANG processor, or OSC/UDP for WING.
+- **Mute and solo** on DiGiCo and dLive work by driving the send to −∞ and restoring it afterwards. KLANG and WING have a real per-send mute.
+- **Kind to the console:** background queries to a DiGiCo are paced at one every 100 ms. A performer's own moves, mutes and solos go out immediately.
+- **Locked down:** a phone can only touch its own mix's sends and EQ. A server-side allowlist blocks everything else.
+- **Ear Scenes** are keyed by snapshot name (DiGiCo) or scene number (dLive, KLANG). **My Mixes** are permanent and backed up per device.
+
+---
+
+## 🧱 Built with
+
+[Electron](https://www.electronjs.org/) · [Express](https://expressjs.com/) · [ws](https://github.com/websockets/ws) · [osc.js](https://github.com/colinbdclark/osc.js/) · [yauzl](https://github.com/thejoshwolfe/yauzl)
+
+---
+
+<p align="center"><sub>JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer/MUSIC Tribe, Bitfocus or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen &amp; Heath Limited. KLANG is a trademark of KLANG:technologies GmbH. WING is a trademark of MUSIC Tribe Global Brands Ltd. Planning Center is a trademark of Ministry Centered Technologies.</sub></p>

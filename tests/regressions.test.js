@@ -402,6 +402,23 @@ test('every mute/solo change re-asserts -150 on channels already silenced', () =
   assert.deepEqual(sent.sort(), [[level(1), -150], [level(2), -150]].sort());
 });
 
+test('a solo silences every other channel at once, not one per 100 ms', () => {
+  const h = serverHarness();
+  // The harness console has 2 channels; give it a full band's worth of sends
+  h.run(`cache.set('/Console/Input_Channels', { address: '/Console/Input_Channels', args: [24] })`);
+  for (let ch = 1; ch <= 24; ch++) h.echo({ address: `/Input_Channels/${ch}/Aux_Send/1/send_level`, args: [-10] });
+  const mark = h.ports[0].sent.length;
+  h.send({ type: 'set-solo', aux: 1, ch: 5, soloed: true });
+  // No clock advance: everything must already be on its way to the desk
+  const silenced = h.ports[0].sent.slice(mark).filter(m => m.args[0] === -150).map(m => m.address);
+  assert.equal(silenced.length, 23, 'all 23 other channels silenced in the same moment');
+  assert(!silenced.includes('/Input_Channels/5/Aux_Send/1/send_level'), 'the soloed channel stays audible');
+  // Un-solo: the 23 come back at once too
+  const mark2 = h.ports[0].sent.length;
+  h.send({ type: 'set-solo', aux: 1, ch: 5, soloed: false });
+  assert.equal(h.ports[0].sent.slice(mark2).filter(m => m.args[0] === -10).length, 23);
+});
+
 test('a performer query goes ahead of background polling', () => {
   const h = serverHarness();
   h.run(`queueDeskQueries(['/background/1/?', '/background/2/?', '/background/3/?'])`);

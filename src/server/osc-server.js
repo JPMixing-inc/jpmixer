@@ -206,7 +206,7 @@ function watchDesk() {
 // writes silenced channels and anything coming out of silence)
 function reassertMuteSolo() {
   const auxes = new Set([...Object.keys(muteState), ...Object.keys(soloState)]);
-  for (const aux of auxes) applyMuteSolo(aux);
+  for (const aux of auxes) applyMuteSolo(aux, { paced: true }); // every mix at once: keep it paced
 }
 
 // Callback fired when console connected/disconnected
@@ -344,7 +344,13 @@ function generateColour(total, index) {
 
 // ── Mute / Solo ───────────────────────────────────────────────────────────
 
-function applyMuteSolo(aux) {
+// A performer's mute or solo goes to the desk at once, as in 1.7.x: queued at
+// the paced 1-per-100ms rate, a solo on a 48-channel mix took ~5 s to silence
+// the other channels one by one. That's at most one write per channel, the
+// same burst 1.7.x always sent. `paced` is for re-applying every mix's
+// mutes at once (a desk that came back), which can be hundreds of writes.
+function applyMuteSolo(aux, { paced = false } = {}) {
+  const write = paced ? (key, args) => sendToDeskPaced(key, args, true) : sendToDesk;
   const anySolo = Object.values(soloState[aux] || {}).some(v => v);
   const chCount = cache.has('/Console/Input_Channels')
     ? cache.get('/Console/Input_Channels').args[0]
@@ -365,13 +371,13 @@ function applyMuteSolo(aux) {
     // -150 lost on a busy network is corrected by the next change rather than
     // leaving a channel audible that every phone shows muted. Audible channels
     // are only written when they come back from silence — a mute is not a
-    // rewrite of the whole mix. All of it takes the paced queue's urgent lane.
+    // rewrite of the whole mix.
     if (silenced) {
       if (premuteState[aux][ch] === undefined) premuteState[aux][ch] = cache.get(key).args[0];
-      sendToDeskPaced(key, [-150], true);
+      write(key, [-150]);
     } else if (premuteState[aux][ch] !== undefined) {
       const restore = premuteState[aux][ch];
-      sendToDeskPaced(key, [restore], true);
+      write(key, [restore]);
       cache.set(key, { address: key, args: [restore] });
       restoredLevels[ch] = restore;
       delete premuteState[aux][ch];
@@ -1542,8 +1548,10 @@ function startWebSocketServer() {
     });
 
     ws.on('close', (code, reason) => {
-      logEvent('client-disconnect', `code:${code} reason:${reason || 'none'} remaining:${connections.length - 1}`);
+      // Counted after removing it: broadcast() may already have dropped this
+      // closed socket, so length - 1 logged "remaining:-1"
       connections = connections.filter(c => c !== ws);
+      logEvent('client-disconnect', `code:${code} reason:${reason || 'none'} remaining:${connections.length}`);
       if (onConnectionCountChange) onConnectionCountChange(connections.length);
       broadcastToClients({ type: 'connection-count', count: connections.length });
       if (ws._activeAux != null) broadcastToClients({ type: 'active-mixers', counts: getActiveMixerCounts() });
