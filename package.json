@@ -25,6 +25,7 @@
       "!assets/DMG background.png",
       "!assets/DMG Icon and App Icon.png",
       "!assets/ScreenShots/**",
+      "!assets/brand/*.gif",
       "!assets/design/**",
       "!assets/Icons For instruments/*.zip",
       "!assets/Icons For instruments/120-PNG-Images-MusicalInstrumentsBundle/**",

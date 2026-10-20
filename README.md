@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/brand/jpmixer-wordmark.svg" alt="JPMixer" width="420" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/jpmixer-logo-dark.gif" />
+    <img src="assets/brand/jpmixer-logo-light.gif" alt="JPMixer" width="480" />
+  </picture>
 </p>
 
 <h3 align="center">Personal monitor mixes for every musician, and a home page for every production station.</h3>
