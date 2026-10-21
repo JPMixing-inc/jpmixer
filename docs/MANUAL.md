@@ -49,7 +49,7 @@ Setting up and running JPMixer: personal monitor mixes on every musician’s pho
 
 ## About this manual
 
-This manual covers the whole of JPMixer, from installing it to running a Sunday with Planning Center, the production Home pages and the Green Room. A separate guide covers what performers do on their phones in detail.
+This manual covers the whole of JPMixer, from installing it to running a Sunday with Planning Center, the production Home pages and the Green Room. The [Musician Guide](MUSICIAN-GUIDE.md) covers what performers do on their phones in detail.
 
 Chapters 1 to 3 get JPMixer running. Chapters 4 to 6 connect your console and set up the channels and mixes performers see. Chapters 7 to 13 cover the pages people use during a service, and Chapters 14 to 17 the system settings. Troubleshooting, a table of addresses and ports, console feature support and a glossary are at the end.
 
@@ -298,7 +298,7 @@ Below the list, **Direct links** shows the link for every Link only mix. Send it
 
 ## 7. The performer’s phone
 
-Performers join the network, open the address from the Get started tab in their browser, and pick their mix. That is all they need. This chapter is an overview for engineers; the performer guide covers every control.
+Performers join the network, open the address from the Get started tab in their browser, and pick their mix. That is all they need. This chapter is an overview for engineers; the [Musician Guide](MUSICIAN-GUIDE.md) covers every control, and is the one to send to your band.
 
 <table><tr><td align="center" width="25%"><img src="manual/img/phone-picker.png" alt="Find your mix: a grid of mix buttons"><br><sub>Fig. 7.1 · The mix picker</sub></td><td align="center" width="25%"><img src="manual/img/phone-mixer.png" alt="The mixer for one mix, with faders, mute and solo"><br><sub>Fig. 7.2 · Their mix</sub></td><td align="center" width="25%"><img src="manual/img/phone-groups.png" alt="The Vocals group chip selected, showing three channels"><br><sub>Fig. 7.3 · One group</sub></td><td align="center" width="25%"><img src="manual/img/phone-menu.png" alt="The mix options menu with My Mixes, Ear Scenes and fader layout"><br><sub>Fig. 7.4 · Mix options</sub></td></tr></table>
 

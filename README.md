@@ -10,6 +10,7 @@
 <p align="center">
   <a href="https://github.com/JPMixing-inc/jpmixer/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/JPMixing-inc/jpmixer?label=release&color=e8003c&style=for-the-badge" /></a>
   <a href="docs/MANUAL.md"><img alt="User Manual" src="https://img.shields.io/badge/User%20Manual-read%20it-1f2128?style=for-the-badge" /></a>
+  <a href="docs/MUSICIAN-GUIDE.md"><img alt="Musician Guide" src="https://img.shields.io/badge/Musician%20Guide-for%20the%20band-1f2128?style=for-the-badge" /></a>
   <img alt="macOS and Windows" src="https://img.shields.io/badge/macOS%20%7C%20Windows-1f2128?style=for-the-badge" />
   <img alt="DiGiCo, dLive, KLANG, WING, LV1" src="https://img.shields.io/badge/DiGiCo%20%C2%B7%20dLive%20%C2%B7%20KLANG%20%C2%B7%20WING%20%C2%B7%20LV1-1f2128?style=for-the-badge" />
 </p>
@@ -17,6 +18,7 @@
 <p align="center">
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
+  <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
   <a href="#new-in-2-0-7">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
@@ -42,6 +44,8 @@
 
 > [!TIP]
 > **New to JPMixer?** The **[User Manual](docs/MANUAL.md)** walks through everything with screenshots: [installing](docs/MANUAL.md#2-install-and-first-launch), [connecting your console](docs/MANUAL.md#4-connecting-your-console), [Planning Center](docs/MANUAL.md#10-planning-center), the [Home pages](docs/MANUAL.md#11-production-home-pages) and [troubleshooting](docs/MANUAL.md#18-troubleshooting).
+>
+> **Musicians and singers:** the **[Musician Guide](docs/MUSICIAN-GUIDE.md)** is a short, phone-friendly walkthrough of the mix screen. Send it to your band.
 
 ---
 
@@ -52,6 +56,8 @@
 | Guide | What’s in it |
 |---|---|
 | **[User Manual](docs/MANUAL.md)** | The whole app, chapter by chapter, with screenshots. Start here. |
+| **[Musician Guide](docs/MUSICIAN-GUIDE.md)** | For the band: the phone screen, part by part, and how to mix, save and recall your own mix. Short and phone-friendly. |
+| [Musician Guide, designed copy](docs/musician/index.html) | The same guide as a web page made for phones. |
 | [User Manual, designed copy](docs/manual/index.html) | The same manual as a web page to read offline or print. Download the repository and open `docs/manual/index.html`. |
 | [Release notes](https://github.com/JPMixing-inc/jpmixer/releases) | What changed in each version. |
 
