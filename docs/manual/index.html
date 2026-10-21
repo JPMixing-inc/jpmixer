@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JPMixer User Manual</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a technical manual. Sticky chapter index on the left, one reading column on the right;
+   screenshots sit in dark "device" frames because every JPMixer screen is dark. */
+:root {
+  --paper: #f5f6f8;
+  --sheet: #ffffff;
+  --ink: #16181d;
+  --ink-2: #4d5360;
+  --ink-3: #737a88;
+  --rule: #e1e4ea;
+  --rule-2: #cfd3db;
+  --accent: #c8003a;       /* JPMixer red, deepened for text on white */
+  --accent-wash: #fbe9ee;
+  --frame: #0d0f13;        /* behind screenshots, both themes */
+  --note: #2563a8; --note-wash: #eaf2fb;
+  --tip: #1f7a4d;  --tip-wash: #e8f5ee;
+  --warn: #9a5b00; --warn-wash: #fdf3e2;
+  --code-bg: #eef0f4;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1014; --sheet: #15181e; --ink: #e8eaef; --ink-2: #b4bac6; --ink-3: #8a91a0;
+    --rule: #262a33; --rule-2: #343944; --accent: #ff4d73; --accent-wash: #2a1219; --frame: #07080a;
+    --note: #7db3f0; --note-wash: #122033; --tip: #6fd3a0; --tip-wash: #10241a; --warn: #f0b860; --warn-wash: #2a1f0c;
+    --code-bg: #1d2128; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1014; --sheet: #15181e; --ink: #e8eaef; --ink-2: #b4bac6; --ink-3: #8a91a0;
+  --rule: #262a33; --rule-2: #343944; --accent: #ff4d73; --accent-wash: #2a1219; --frame: #07080a;
+  --note: #7db3f0; --note-wash: #122033; --tip: #6fd3a0; --tip-wash: #10241a; --warn: #f0b860; --warn-wash: #2a1f0c;
+  --code-bg: #1d2128; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { background: var(--paper); color: var(--ink); font: 400 16px/1.68 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* ── Cover ── */
+.cover { background: var(--sheet); border-bottom: 1px solid var(--rule); }
+.cover .wrap { padding-block: 56px 0; display: grid; gap: 40px; }
+.cover-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand { font: 800 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.edition { font: 500 12px/1.4 var(--mono); color: var(--ink-3); letter-spacing: .04em; }
+.cover h1 { font: 800 clamp(40px, 6.4vw, 76px)/1.02 var(--display); letter-spacing: -.025em; margin: 0; text-wrap: balance; max-width: 14ch; }
+.cover .lede { font-size: clamp(17px, 1.6vw, 19px); color: var(--ink-2); max-width: 60ch; margin: 18px 0 0; }
+.cover-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); margin-top: 28px; }
+.cover-facts div { padding: 14px 18px 14px 0; min-width: 0; }
+.cover-facts dt { font: 600 11px/1.3 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.cover-facts dd { margin: 4px 0 0; font-size: 14.5px; color: var(--ink); }
+.cover-art { position: relative; margin-top: 4px; padding-bottom: 56px; }
+.cover-art .wide { display: block; width: 100%; border-radius: 14px 14px 0 0; border: 1px solid var(--rule-2); border-bottom: 0; background: var(--frame); }
+.cover-art .phone { position: absolute; right: 4%; bottom: 0; width: min(23%, 240px); border-radius: 26px; border: 6px solid #1b1e24; box-shadow: 0 24px 60px rgba(0,0,0,.35); background: var(--frame); }
+.cover-art .wide-clip { overflow: hidden; max-height: 470px; border-radius: 14px 14px 0 0; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+
+/* ── Body layout ── */
+.layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 56px; padding-block: 48px 96px; }
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; padding-right: 6px; }
+.toc h2 { font: 600 11px/1.3 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 12px; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.toc li a { display: grid; grid-template-columns: 26px 1fr; gap: 6px; padding: 6px 8px; border-radius: 6px; color: var(--ink-2); text-decoration: none; font-size: 13.5px; line-height: 1.35; }
+.toc li a span:first-child { font: 500 12px/1.5 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.toc li a:hover { background: var(--sheet); color: var(--ink); }
+.toc .group { margin-top: 14px; padding: 0 8px 4px; font: 600 10.5px/1.3 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+.toc-mobile { display: none; }
+
+main { min-width: 0; }
+.doc { max-width: 780px; }
+section.chapter { padding-top: 12px; margin-bottom: 72px; scroll-margin-top: 24px; }
+.eyebrow { font: 600 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+h2.ch { font: 800 clamp(28px, 3.4vw, 38px)/1.1 var(--display); letter-spacing: -.02em; margin: 0 0 14px; text-wrap: balance; }
+.ch-intro { font-size: 18px; color: var(--ink-2); margin: 0 0 28px; max-width: 64ch; }
+h3 { font: 700 21px/1.25 var(--display); letter-spacing: -.01em; margin: 40px 0 10px; text-wrap: balance; scroll-margin-top: 24px; }
+h4 { font: 600 15px/1.35 var(--body); margin: 26px 0 6px; }
+p { margin: 0 0 14px; max-width: 68ch; }
+ul, ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch; }
+li { margin: 4px 0; }
+li::marker { color: var(--ink-3); }
+strong { font-weight: 600; }
+.ui { font-weight: 600; color: var(--ink); white-space: nowrap; }
+code, .mono { font: 500 .88em/1.4 var(--mono); background: var(--code-bg); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+
+/* Numbered procedures (real sequences only) */
+ol.steps { list-style: none; padding: 0; counter-reset: step; display: grid; gap: 12px; margin: 16px 0 22px; }
+ol.steps > li { counter-increment: step; position: relative; padding-left: 42px; margin: 0; min-height: 26px; }
+ol.steps > li::before { content: counter(step); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--sheet); font: 600 12.5px/1 var(--mono); }
+
+/* Callouts */
+.callout { display: grid; gap: 4px; padding: 14px 18px 15px; border-radius: 10px; margin: 18px 0 22px; max-width: 70ch; }
+.callout b { font: 600 11px/1.6 var(--body); letter-spacing: .12em; text-transform: uppercase; }
+.callout p { margin: 0; font-size: 15px; }
+.callout p + p { margin-top: 6px; }
+code.block { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 9px 12px; border-radius: 7px; background: var(--sheet); font-size: 13.5px; }
+.callout.note { background: var(--note-wash); } .callout.note b { color: var(--note); }
+.callout.tip { background: var(--tip-wash); } .callout.tip b { color: var(--tip); }
+.callout.warn { background: var(--warn-wash); } .callout.warn b { color: var(--warn); }
+
+/* Figures */
+figure { margin: 24px 0 30px; }
+figure.shot img { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--rule-2); background: var(--frame); box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 12px 32px -12px rgba(16,20,30,.22); }
+figure.bleed { margin-right: min(0px, calc((780px - 100%) * -1)); }
+figcaption { margin-top: 10px; font-size: 13.5px; color: var(--ink-3); max-width: 68ch; }
+figcaption b { font: 600 12px/1 var(--mono); color: var(--ink-2); margin-right: 6px; letter-spacing: .02em; }
+.phones { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px; margin: 24px 0 10px; max-width: 760px; }
+.phones img { display: block; width: 100%; border-radius: 22px; border: 5px solid #1b1e24; background: var(--frame); box-shadow: 0 14px 34px -14px rgba(16,20,30,.4); }
+.phones span { display: block; margin-top: 8px; font-size: 13px; color: var(--ink-3); text-align: center; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; margin: 18px 0 26px; border: 1px solid var(--rule); border-radius: 10px; background: var(--sheet); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.5; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 11.5px/1.35 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); background: var(--paper); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+.matrix td, .matrix th { text-align: center; }
+.matrix td:first-child, .matrix th:first-child { text-align: left; white-space: nowrap; }
+.yes { color: var(--tip); font-weight: 600; }
+.no { color: var(--ink-3); }
+
+/* Diagram */
+.flow { display: grid; grid-template-columns: 1fr auto 1.15fr auto 1fr; align-items: stretch; gap: 10px; margin: 22px 0 28px; }
+.node { background: var(--sheet); border: 1px solid var(--rule-2); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.node.core { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.node h5 { font: 700 15px/1.2 var(--display); margin: 0 0 6px; }
+.node p { font-size: 13px; color: var(--ink-2); margin: 0; }
+.link { display: grid; place-items: center; text-align: center; font: 500 11px/1.35 var(--mono); color: var(--ink-3); }
+.link::before { content: "⇄"; display: block; font-size: 22px; color: var(--accent); line-height: 1; margin-bottom: 4px; }
+
+/* Menu bar mock */
+.menu-mock { width: min(100%, 330px); background: var(--sheet); border: 1px solid var(--rule-2); border-radius: 12px; padding: 6px; box-shadow: 0 16px 40px -18px rgba(16,20,30,.35); font-size: 14px; margin: 18px 0 8px; }
+.menu-mock div { padding: 5px 12px; border-radius: 6px; display: flex; justify-content: space-between; gap: 10px; }
+.menu-mock .dim { color: var(--ink-3); }
+.menu-mock .sep { height: 1px; background: var(--rule); padding: 0; margin: 5px 8px; }
+.menu-mock .sub { color: var(--ink-3); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #2fb36b; margin-right: 6px; vertical-align: 1px; }
+
+/* Definition list for settings */
+dl.settings { display: grid; grid-template-columns: minmax(150px, 230px) minmax(0, 1fr); gap: 0; margin: 14px 0 24px; border-top: 1px solid var(--rule); max-width: 760px; }
+dl.settings dt, dl.settings dd { padding: 11px 0; border-bottom: 1px solid var(--rule); margin: 0; }
+dl.settings dt { font-weight: 600; padding-right: 16px; }
+dl.settings dd { color: var(--ink-2); font-size: 15px; }
+
+.part { font: 600 12px/1.3 var(--body); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); padding: 18px 0 10px; border-top: 2px solid var(--ink); margin: 0 0 36px; display: flex; justify-content: space-between; gap: 12px; }
+
+figure.shot img, .phones img { cursor: zoom-in; }
+.viewer { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: rgba(6, 7, 10, .88); cursor: zoom-out; overflow: auto; }
+.viewer img { max-width: min(100%, 1600px); max-height: calc(100vh - 80px); width: auto; height: auto; border-radius: 10px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+.viewer p { margin: 12px 0 0; color: #c9ced8; font-size: 13.5px; text-align: center; max-width: 80ch; }
+.viewer button { position: absolute; top: max(14px, env(safe-area-inset-top, 0px)); right: max(14px, env(safe-area-inset-right, 0px)); width: 40px; height: 40px; border-radius: 50%; border: 1px solid #3a3f4a; background: #1b1e24; color: #e8eaef; font-size: 20px; line-height: 1; cursor: pointer; }
+footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--ink-3); font-size: 13px; max-width: 780px; }
+
+@media (max-width: 980px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 28px 72px; }
+  .toc { display: none; }
+  .toc-mobile { display: block; background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 16px; }
+  .toc-mobile summary { cursor: pointer; font-weight: 600; }
+  .toc-mobile ol { margin: 10px 0 4px; columns: 2; column-gap: 24px; font-size: 14px; }
+  figure.bleed { margin-right: 0; }
+}
+@media (max-width: 640px) {
+  body { font-size: 15.5px; }
+  .cover .wrap { padding-block: 32px 0; }
+  .cover-art .phone { width: 34%; right: 2%; border-width: 4px; border-radius: 18px; }
+  .flow { grid-template-columns: minmax(0, 1fr); }
+  .link::before { content: "⇅"; }
+  .pair { grid-template-columns: minmax(0, 1fr); }
+  dl.settings { grid-template-columns: minmax(0, 1fr); }
+  dl.settings dt { border-bottom: 0; padding-bottom: 0; }
+  .toc-mobile ol { columns: 1; }
+  .phones { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+<style>img{max-width:100%}[hidden]{display:none!important}body{margin:0}</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="wrap">
+    <div>
+      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.7 · OCTOBER 2026</span></div>
+      <h1 style="margin-top:34px">JPMixer User Manual</h1>
+      <p class="lede">Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.</p>
+      <dl class="cover-facts">
+        <div><dt>Runs on</dt><dd>macOS (Apple silicon and Intel), Windows 10 and 11</dd></div>
+        <div><dt>Consoles</dt><dd>DiGiCo, Allen &amp; Heath dLive, KLANG, Behringer WING, Waves eMotion LV1</dd></div>
+        <div><dt>Opens on</dt><dd>Any phone, tablet or computer browser on the same network</dd></div>
+        <div><dt>Written for</dt><dd>Tech directors, FOH and monitor engineers, production volunteers</dd></div>
+      </dl>
+    </div>
+    <div class="cover-art" aria-hidden="true">
+      <div class="wide-clip"><img class="wide" src="img/foh-home.png" alt=""></div>
+      <img class="phone" src="img/phone-mixer.png" alt="">
+    </div>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="toc" aria-label="Chapters">
+    <h2>Contents</h2>
+    <ol>
+      <li class="group">Getting going</li>
+      <li><a href="#about"><span>00</span><span>About this manual</span></a></li>
+      <li><a href="#intro"><span>01</span><span>What JPMixer does</span></a></li>
+      <li><a href="#install"><span>02</span><span>Install and first launch</span></a></li>
+      <li><a href="#start"><span>03</span><span>Get started checklist</span></a></li>
+      <li class="group">Setup</li>
+      <li><a href="#console"><span>04</span><span>Connecting your console</span></a></li>
+      <li><a href="#channels"><span>05</span><span>Channels and groups</span></a></li>
+      <li><a href="#auxes"><span>06</span><span>Aux mixes</span></a></li>
+      <li class="group">People &amp; pages</li>
+      <li><a href="#phones"><span>07</span><span>The performer’s phone</span></a></li>
+      <li><a href="#performers"><span>08</span><span>Ear Scenes and saved mixes</span></a></li>
+      <li><a href="#engineer"><span>09</span><span>Engineer tools</span></a></li>
+      <li><a href="#pco"><span>10</span><span>Planning Center</span></a></li>
+      <li><a href="#home"><span>11</span><span>Production Home pages</span></a></li>
+      <li><a href="#greenroom"><span>12</span><span>Green Room display</span></a></li>
+      <li><a href="#branding"><span>13</span><span>Branding</span></a></li>
+      <li class="group">System</li>
+      <li><a href="#general"><span>14</span><span>General and Port 80</span></a></li>
+      <li><a href="#backup"><span>15</span><span>Backup and restore</span></a></li>
+      <li><a href="#api"><span>16</span><span>Control API</span></a></li>
+      <li><a href="#osclog"><span>17</span><span>OSC Log</span></a></li>
+      <li class="group">Reference</li>
+      <li><a href="#trouble"><span>18</span><span>Troubleshooting</span></a></li>
+      <li><a href="#reference"><span>A</span><span>Addresses and ports</span></a></li>
+      <li><a href="#support"><span>B</span><span>Console feature support</span></a></li>
+      <li><a href="#glossary"><span>C</span><span>Glossary</span></a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <details class="toc-mobile">
+      <summary>Contents</summary>
+      <ol>
+        <li><a href="#about">About this manual</a></li><li><a href="#intro">What JPMixer does</a></li><li><a href="#install">Install and first launch</a></li><li><a href="#start">Get started checklist</a></li>
+        <li><a href="#console">Connecting your console</a></li><li><a href="#channels">Channels and groups</a></li><li><a href="#auxes">Aux mixes</a></li><li><a href="#phones">The performer’s phone</a></li>
+        <li><a href="#performers">Ear Scenes and saved mixes</a></li><li><a href="#engineer">Engineer tools</a></li><li><a href="#pco">Planning Center</a></li><li><a href="#home">Production Home pages</a></li>
+        <li><a href="#greenroom">Green Room display</a></li><li><a href="#branding">Branding</a></li><li><a href="#general">General and Port 80</a></li><li><a href="#backup">Backup and restore</a></li>
+        <li><a href="#api">Control API</a></li><li><a href="#osclog">OSC Log</a></li><li><a href="#trouble">Troubleshooting</a></li><li><a href="#reference">Addresses and ports</a></li>
+        <li><a href="#support">Console feature support</a></li><li><a href="#glossary">Glossary</a></li>
+      </ol>
+    </details>
+
+    <div class="doc">
+
+<!-- ═════════ 00 ═════════ -->
+<section class="chapter" id="about">
+  <p class="eyebrow">Chapter 00</p>
+  <h2 class="ch">About this manual</h2>
+  <p class="ch-intro">This manual covers the whole of JPMixer, from installing it to running a Sunday with Planning Center, the production Home pages and the Green Room. A separate guide covers what performers do on their phones in detail.</p>
+  <p>Chapters 1 to 3 get JPMixer running. Chapters 4 to 6 connect your console and set up the channels and mixes performers see. Chapters 7 to 13 cover the pages people use during a service, and Chapters 14 to 17 the system settings. Troubleshooting, a table of addresses and ports, console feature support and a glossary are at the end.</p>
+  <h4>Conventions</h4>
+  <ul>
+    <li>Names of buttons, tabs and settings are in bold, for example <span class="ui">Save &amp; Apply</span>.</li>
+    <li>A path like <span class="ui">Settings → Console</span> means: open Settings, then the Console tab in the sidebar.</li>
+    <li>Addresses and numbers you type are shown like <code>http://192.168.1.20</code>.</li>
+  </ul>
+  <p>Click any screenshot to see it full size.</p>
+  <div class="callout note"><b>Note</b><p>The screenshots were taken with JPMixer’s demo console and a sample Planning Center schedule. Every person shown is fictional and every avatar is an illustration. Your screens will show your own console, mixes and team.</p></div>
+</section>
+
+<!-- ═════════ 01 ═════════ -->
+<section class="chapter" id="intro">
+  <p class="eyebrow">Chapter 01</p>
+  <h2 class="ch">What JPMixer does</h2>
+  <p class="ch-intro">JPMixer runs on a Mac or Windows computer next to your console. It talks to the console over the network and serves web pages that anyone on the same network can open in a browser. Nobody installs an app on their phone.</p>
+
+  <div class="flow" role="img" aria-label="The console connects to the JPMixer computer, which serves pages to phones, iPads and screens">
+    <div class="node"><h5>Your console</h5><p>DiGiCo, dLive, KLANG, WING or LV1. Its aux sends, names and snapshots.</p></div>
+    <div class="link">console<br>protocol</div>
+    <div class="node core"><h5>JPMixer computer</h5><p>Mac or PC in the menu bar or system tray. Runs the web server and remembers everyone’s mixes.</p></div>
+    <div class="link">Wi-Fi or<br>wired LAN</div>
+    <div class="node"><h5>Phones, iPads, screens</h5><p>Performer mixes, engineer tools, Home pages and the Green Room, in any browser.</p></div>
+  </div>
+
+  <h3>Who uses what</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Who</th><th>What they open</th><th>What it gives them</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Musicians and singers</strong></td><td>The mix page on their phone</td><td>Their own in-ear or wedge mix: level, mute, solo and pan for each channel, saved mixes, and Ear Scenes that follow the console’s snapshots.</td></tr>
+      <tr><td><strong>Monitor engineer</strong></td><td>Monitor Engineer, Devices</td><td>Every mix side by side, who is connected to which mix, and a map of the devices on stage.</td></tr>
+      <tr><td><strong>FOH engineer</strong></td><td>FOH Home, Console Controller</td><td>A personal Home page with the live service item and team, and the console’s main faders, mutes and solos from a browser.</td></tr>
+      <tr><td><strong>Production team</strong></td><td>ProPresenter, Lighting and Switcher Home</td><td>A page per station welcoming whoever is scheduled, with the order of service, team chat and Companion buttons.</td></tr>
+      <tr><td><strong>Green room</strong></td><td>Green Room display</td><td>Who is serving today, with photos and roles, on a TV or iPad.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>What JPMixer never does</h3>
+  <ul>
+    <li>It never carries audio. It only sends control messages to the console, the way the console makers’ own remote apps do.</li>
+    <li>A performer’s phone can only change the sends into that performer’s own mix. JPMixer blocks everything else on the server.</li>
+    <li>Names you type in JPMixer, and performer names from Planning Center, show only in JPMixer. The console’s own channel and mix names are never changed.</li>
+    <li>Planning Center is only read, never written to.</li>
+  </ul>
+</section>
+
+<!-- ═════════ 02 ═════════ -->
+<section class="chapter" id="install">
+  <p class="eyebrow">Chapter 02</p>
+  <h2 class="ch">Install and first launch</h2>
+  <p class="ch-intro">Install JPMixer on the computer that will stay with the console for the service. It needs to be on the same network as the console and as the performers’ phones.</p>
+
+  <h3>Before you start</h3>
+  <ul>
+    <li><strong>A computer:</strong> a Mac (Apple silicon or Intel) or a Windows 10 or 11 PC.</li>
+    <li><strong>One network for everything:</strong> the console, the JPMixer computer and the phones on the same network, usually your stage Wi-Fi or production LAN. Keep it separate from guest Wi-Fi.</li>
+    <li><strong>A fixed address:</strong> give the JPMixer computer a static IP or a DHCP reservation, so the address performers use stays the same every week.</li>
+  </ul>
+
+  <h3>Installing on a Mac</h3>
+  <ol class="steps">
+    <li>Download <code>JPMixer-&lt;version&gt;.dmg</code> from the JPMixer releases page.</li>
+    <li>Open the DMG and drag <span class="ui">JPMixer</span> into <span class="ui">Applications</span>.</li>
+    <li>Open JPMixer. When macOS asks whether JPMixer can find devices on your local network, choose <span class="ui">Allow</span>. Without it, JPMixer can’t reach the console.</li>
+  </ol>
+  <div class="callout warn"><b>If macOS refuses</b><p>If macOS says the app is damaged and can’t be opened, open Terminal and run the command below once, then open JPMixer again.</p><p><code class="block">sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app</code></p></div>
+
+  <h3>Installing on Windows</h3>
+  <ol class="steps">
+    <li>Download and run <code>JPMixer.Setup.&lt;version&gt;.exe</code>.</li>
+    <li>If SmartScreen appears, choose <span class="ui">More info</span>, then <span class="ui">Run anyway</span>.</li>
+    <li>When the Windows Firewall asks, allow JPMixer on private networks so phones can reach it.</li>
+  </ol>
+
+  <h3>The menu bar icon</h3>
+  <p>JPMixer has no main window. It lives in the Mac menu bar (or the Windows system tray). The dot on the icon shows the console connection: <strong>green</strong> when the console is connected, <strong>red</strong> when it isn’t. Click the icon for the menu:</p>
+  <div class="menu-mock" role="img" aria-label="The JPMixer menu">
+    <div class="dim"><span><span class="dot"></span>Running on port 80</span></div>
+    <div class="dim"><span><span class="dot"></span>DiGiCo connected</span></div>
+    <div class="sep"></div>
+    <div><span>Open</span><span class="sub">›</span></div>
+    <div><span>Settings…</span></div>
+    <div class="sep"></div>
+    <div><span>Stop Server</span></div>
+    <div><span>Check for Updates…</span></div>
+    <div><span>Quit JPMixer</span></div>
+  </div>
+  <p><span class="ui">Open</span> lists every page: Monitor Engineer, Console Controller, Devices, the Production View Select page, each Home page, and the phone mixer in your browser. Each page opens in its own window, and choosing it again brings that window forward.</p>
+  <p><span class="ui">Quit JPMixer</span> puts back anything JPMixer is holding on the console, such as sends muted from a phone, before it closes.</p>
+
+  <h3>The Settings window</h3>
+  <p>Choose <span class="ui">Settings…</span> to set everything up. The sidebar is in four groups: <strong>Get started</strong>; <strong>Setup</strong> (Console, Channels, Aux mixes); <strong>People &amp; pages</strong> (Performers, Planning Center, Pages, Branding); and <strong>System</strong> (General, Backup &amp; restore, Control API, OSC Log).</p>
+  <p>Changes take effect when you click <span class="ui">Save &amp; Apply</span> at the bottom right. Most changes apply live. A few, such as switching console type, restart the server, and the button then says <span class="ui">Saved — server restarted</span>. Phones reconnect by themselves a moment later.</p>
+
+  <h3>Updates</h3>
+  <p>Choose <span class="ui">Check for Updates…</span> in the menu. JPMixer downloads the new version, checks it against its published checksum and the app’s signature, installs it and reopens. If any step fails, nothing changes. The update window shows what’s new in the release.</p>
+</section>
+
+<!-- ═════════ 03 ═════════ -->
+<section class="chapter" id="start">
+  <p class="eyebrow">Chapter 03</p>
+  <h2 class="ch">Get started checklist</h2>
+  <p class="ch-intro">The first tab in Settings shows the address performers use and a checklist of every part of setting JPMixer up, in order. Each step has a button that opens the right place.</p>
+  <figure class="shot"><img src="img/settings-checklist.png" alt="The Setting up JPMixer checklist with six steps, all done"><figcaption><b>Fig. 3.1</b>Settings → Get started. A tick means the step is done; steps marked Optional only matter if you use that feature.</figcaption></figure>
+  <p>At the top of the tab, <strong>Web server</strong> shows the address to give performers and a <span class="ui">Stop</span> / <span class="ui">Start</span> button. <strong>This Mac’s IP</strong> is the computer’s address on the network. See <a href="#general">Chapter 14</a> for <span class="ui">Use Port 80</span>, which lets performers type the address without a port number.</p>
+  <h3>Names fill themselves in</h3>
+  <p>Once your console is connected, JPMixer reads its channel names, mix names and control groups (DCAs on dLive and LV1) straight from the console, so there is nothing to type in. When someone renames a channel on the console, JPMixer follows.</p>
+  <ul>
+    <li>To use a different name, type your own on the <a href="#channels">Channels</a> or <a href="#auxes">Aux mixes</a> tab. It overrides the console’s name in JPMixer only; the console isn’t changed.</li>
+    <li>Clear the name to go back to the console’s.</li>
+    <li>Control group and DCA names always come from the console.</li>
+    <li>KLANG and WING send channel names only, so name their mixes on the Aux mixes tab.</li>
+  </ul>
+</section>
+
+<!-- ═════════ 04 ═════════ -->
+<section class="chapter" id="console">
+  <p class="eyebrow">Chapter 04</p>
+  <h2 class="ch">Connecting your console</h2>
+  <p class="ch-intro">Settings → Console is three numbered steps: choose the console, tell JPMixer where to find it, and check the channel and mix counts.</p>
+  <figure class="shot"><img src="img/settings-console.png" alt="The Console tab with DiGiCo selected, demo mode on, connection and counts"><figcaption><b>Fig. 4.1</b>Settings → Console. The status pill at the top right of step 1 turns green when the console answers.</figcaption></figure>
+
+  <ol class="steps">
+    <li><strong>Console.</strong> Choose your <span class="ui">Console Type</span>. The fields below change to match it.</li>
+    <li><strong>Connection.</strong> Enter the console’s address and any ports, as described for your console below.</li>
+    <li><strong>Channels &amp; mixes.</strong> Check the counts. DiGiCo and LV1 fill in both themselves once connected, and dLive fills in the mix count; the fields lock while the console reports them.</li>
+    <li>Click <span class="ui">Save &amp; Apply</span> and watch the status pill turn green.</li>
+  </ol>
+
+  <h3>DiGiCo (SD, Quantum and S series)</h3>
+  <p>JPMixer talks to a DiGiCo console over OSC, the same way the DiGiCo Pad iPad app does.</p>
+  <ol class="steps">
+    <li>On the console, turn on external control for DiGiCo Pad, and add the JPMixer computer’s IP address as the device, with the console sending to port <code>8001</code> and receiving on <code>8000</code>.</li>
+    <li>In JPMixer, enter the <span class="ui">Console IP Address</span>. Leave <span class="ui">Send Port (to desk)</span> at <code>8000</code> and <span class="ui">Listen Port (from desk)</span> at <code>8001</code> unless you changed them on the console.</li>
+  </ol>
+  <p>DiGiCo gives JPMixer the most: live names and counts, per-send pan, the built-in aux EQ, Ear Scenes by snapshot name, and the full Console Controller with the channel processing panel.</p>
+
+  <h3>Allen &amp; Heath dLive</h3>
+  <ol class="steps">
+    <li>On the surface, open <span class="ui">Utility → Control → MIDI</span> and turn <strong>MIDI/TCP</strong> on. Nothing can connect until it is.</li>
+    <li>Note the <strong>Main MIDI Channels</strong> shown there. JPMixer’s <span class="ui">Base MIDI Channel</span> (0 to 11) must match: channel 1 is <code>0</code>, channel 12 is <code>11</code>.</li>
+    <li>In JPMixer, enter the <strong>MixRack’s</strong> IP address (not the surface’s) and the Base MIDI Channel.</li>
+    <li>Turn on <span class="ui">Use TLS/SSL</span> and enter the username and password only if MIDI/TCP is in Secure Mode on the console.</li>
+    <li>Leave <span class="ui">MIDI/TCP Port Override</span> at <code>0</code>. If the console doesn’t answer, try <code>51328</code>.</li>
+  </ol>
+  <p>The dLive MixRack accepts many connections at once, so JPMixer runs alongside Director, MixPad and other remotes. JPMixer reads channel and mix names, finds which mono and stereo aux mixes the show has, and runs the Console Controller for inputs, aux masters and DCAs. Leave <span class="ui">Listen for live send-level updates</span> and <span class="ui">Poll send levels as a backup</span> on.</p>
+  <div class="callout tip"><b>Tip</b><p>No dLive to practise on? dLive Director running offline answers JPMixer like a real MixRack. In Director, turn on System → Offline → Enable Director Connections to MixRack IP Controllers, and point JPMixer at the Director computer.</p></div>
+
+  <h3>KLANG (with a dLive)</h3>
+  <p>In KLANG mode, mixes are made on the KLANG processor. The dLive connection is optional and only used for channel names and Ear Scenes.</p>
+  <ol class="steps">
+    <li>Patch the console’s multitrack feed (MADI, Dante or analog) to the KLANG processor. JPMixer only sends control; it can’t route audio.</li>
+    <li>Enter the <span class="ui">KLANG Processor IP Address</span> (from KLANG:app → CONFIG → CONNECT). Leave <span class="ui">KLANG Port Override</span> at <code>0</code>.</li>
+    <li>Make JPMixer’s channel numbers match KLANG’s inputs, and its aux numbers match KLANG’s MIX numbers.</li>
+    <li>Set each mix to <strong>Stereo</strong> mode in KLANG:app if performers will pan.</li>
+  </ol>
+  <p>KLANG can’t report back what it applied, so JPMixer shows its own last-sent values. If someone changes the same mix in KLANG:app, JPMixer won’t see it.</p>
+
+  <h3>Behringer WING</h3>
+  <p>Enter the WING’s <span class="ui">Console IP Address</span> and leave <span class="ui">WING Port Override</span> at <code>0</code> (OSC port 2223). WING confirms it is reachable when it connects, so the status pill is reliable. WING has no scene recall over OSC, so Ear Scenes don’t apply. Check per-send pan the first time you connect: if it doesn’t reach full left and right, tell your JPMixer contact.</p>
+
+  <h3>Waves eMotion LV1</h3>
+  <ol class="steps">
+    <li>In LV1, switch on the <strong>MyMon / MyFOH</strong> remote.</li>
+    <li>In JPMixer, leave <span class="ui">LV1 Computer IP Address</span> blank. JPMixer finds LV1 on the network the way the MyMon app does.</li>
+    <li>Leave <span class="ui">LV1 Remote Port</span> at <code>0</code>. LV1 picks a new port each time it starts and announces it.</li>
+  </ol>
+  <p>Enter an address only when LV1 is on a different network from this computer, or when there is more than one LV1. Across networks, JPMixer checks the LV1 computer’s ports directly, which can take up to half a minute after LV1 starts. JPMixer joins as one more remote, so MyMon and MyFOH keep working alongside it.</p>
+
+  <h3>Demo mode</h3>
+  <p>Turn on <span class="ui">Demo mode</span> in step 1 to explore every page with a simulated console. Fader moves stay in JPMixer and nothing is sent to hardware. Demo mode builds its console from the Channels and Auxes counts in step 3.</p>
+
+  <h3>iPad OSC relay (DiGiCo)</h3>
+  <p>DiGiCo accepts one Pad connection at a time. To run the DiGiCo iPad app alongside JPMixer, point the iPad app at JPMixer instead of the console, and add it under <span class="ui">iPad OSC relay → + Add iPad</span>. JPMixer relays all console OSC to it. In the iPad app, send to JPMixer’s IP on the Listen Port; in JPMixer, set the iPad’s Send Port to the port the iPad app receives on. If an iPad’s address changes, JPMixer follows it.</p>
+</section>
+
+<!-- ═════════ 05 ═════════ -->
+<section class="chapter" id="channels">
+  <p class="eyebrow">Chapter 05</p>
+  <h2 class="ch">Channels and groups</h2>
+  <p class="ch-intro">Settings → Channels controls how channels appear on performers’ phones: their names, icons, groups, order, and whether performers see them at all.</p>
+  <figure class="shot"><img src="img/settings-channels.png" alt="The Channels tab with five group chips and a list of named channels"><figcaption><b>Fig. 5.1</b>Settings → Channels. Groups first, then each channel with its icon, name, group and Show switch.</figcaption></figure>
+
+  <h3>1 · Groups</h3>
+  <p>Groups such as Drums, Vocals or Band let performers show one part of the band at a time. Each chip shows how many channels are in it.</p>
+  <ul>
+    <li>Click <span class="ui">+ Add group</span>, then type its name in the new chip.</li>
+    <li>Or, in any channel’s group menu, choose <span class="ui">+ New group…</span> to make a group and put that channel in it.</li>
+    <li>Click a chip’s <span class="ui">×</span> to remove the group. Its channels stay, ungrouped.</li>
+  </ul>
+
+  <h3>2 · Channels</h3>
+  <dl class="settings">
+    <dt>Icon</dt><dd>Click to pick an instrument icon: drums, guitars, keys, vocals, brass, strings and more.</dd>
+    <dt>Name</dt><dd>The console’s name is used until you type your own. Clear it to go back to the console’s name.</dd>
+    <dt>Group</dt><dd>Which group the channel belongs to. Channels appear on phones group by group, in the order of the chips.</dd>
+    <dt>Show</dt><dd>Turn off to hide a channel from performers, for example talkback or an unused input.</dd>
+    <dt>Order</dt><dd>Drag a row by its handle to change where it appears.</dd>
+  </dl>
+  <p>The button at the bottom of the tab resets the Channels tab: it clears every group, icon and name override. Console settings, mix settings and saved mixes are not affected.</p>
+</section>
+
+<!-- ═════════ 06 ═════════ -->
+<section class="chapter" id="auxes">
+  <p class="eyebrow">Chapter 06</p>
+  <h2 class="ch">Aux mixes</h2>
+  <p class="ch-intro">Settings → Aux mixes lists every monitor mix on the console. For each one you choose its button color, an optional name of your own, which channels it opens to, and what performers can do with it.</p>
+  <figure class="shot"><img src="img/settings-auxes.png" alt="The Aux mixes tab with name boxes, color swatches, Opens to group pills and switches"><figcaption><b>Fig. 6.1</b>Settings → Aux mixes. Here, Planning Center has put each performer’s name on their mix.</figcaption></figure>
+  <dl class="settings">
+    <dt>Color</dt><dd>The color of the mix’s button in the performer mix picker and its stripe on the engineer pages.</dd>
+    <dt>Name</dt><dd>The console’s name shows faded in the box. Type a name to use your own instead (in JPMixer only); leave it empty for the console’s.</dd>
+    <dt>Opens to</dt><dd>The channel groups a phone starts on when it opens this mix, for example Drums and Playback for the drummer. Performers can still tap All. Pick <span class="ui">All channels</span> to show everything.</dd>
+    <dt>Show</dt><dd>Lists the mix in the performer mix picker. Turn off mixes that aren’t monitor mixes, such as a recording feed.</dd>
+    <dt>EQ</dt><dd>Lets performers adjust this mix’s built-in 8-band EQ from their phone (DiGiCo only).</dd>
+    <dt>Link only</dt><dd>Hides the mix from the picker; it opens only from its direct link. Useful for a pastor’s wedge or a mix one person should have.</dd>
+  </dl>
+  <h3>Direct links</h3>
+  <p>Below the list, <strong>Direct links</strong> shows the link for every Link only mix. Send it to the performer who needs it. A direct link has the form <code>http://192.168.1.20/?aux=8</code>.</p>
+</section>
+
+<!-- ═════════ 07 ═════════ -->
+<section class="chapter" id="phones">
+  <p class="eyebrow">Chapter 07</p>
+  <h2 class="ch">The performer’s phone</h2>
+  <p class="ch-intro">Performers join the network, open the address from the Get started tab in their browser, and pick their mix. That is all they need. This chapter is an overview for engineers; the performer guide covers every control.</p>
+  <div class="phones">
+    <figure style="margin:0"><img src="img/phone-picker.png" alt="Find your mix: a grid of mix buttons"><span>Fig. 7.1 · The mix picker</span></figure>
+    <figure style="margin:0"><img src="img/phone-mixer.png" alt="The mixer for one mix, with faders, mute and solo"><span>Fig. 7.2 · Their mix</span></figure>
+    <figure style="margin:0"><img src="img/phone-groups.png" alt="The Vocals group chip selected, showing three channels"><span>Fig. 7.3 · One group</span></figure>
+    <figure style="margin:0"><img src="img/phone-menu.png" alt="The mix options menu with My Mixes, Ear Scenes and fader layout"><span>Fig. 7.4 · Mix options</span></figure>
+  </div>
+  <h3>What performers can do</h3>
+  <ul>
+    <li><strong>Change levels</strong> with each channel’s fader, and <strong>mute</strong> (M) or <strong>solo</strong> (S) a channel in their own mix only. Unmuting brings back the exact level.</li>
+    <li><strong>Pan</strong> each channel in a stereo mix with the <span class="ui">PAN</span> button.</li>
+    <li><strong>Show one group</strong> with the chips (All, Favorites, Drums, Vocals…), <strong>star favorites</strong>, and <strong>search</strong> for a channel.</li>
+    <li><strong>Save My Mixes</strong>: named mixes they can load any time, on any mix. JPMixer keeps a copy, and <span class="ui">Find My Mixes…</span> recovers them on a new phone.</li>
+    <li><strong>Save Ear Scenes</strong>: a mix for the current console snapshot that comes back when that snapshot is recalled (<a href="#performers">Chapter 8</a>). The bar under the mix name shows the snapshot and whether its Ear Scene is saved.</li>
+    <li><strong>Adjust the mix EQ</strong>, when you allow it on the Aux mixes tab.</li>
+    <li><strong>Choose a fader size</strong>: Compact, Normal or Large.</li>
+  </ul>
+  <div class="callout tip"><b>Tip</b><p>On an iPhone or iPad, open the address in Safari, tap Share, then Add to Home Screen. JPMixer then opens full screen like an app, and stays connected when the screen locks.</p></div>
+  <p>The dot at the top right shows the connection. If Wi-Fi drops, the page reconnects by itself and keeps the same mix.</p>
+</section>
+
+<!-- ═════════ 08 ═════════ -->
+<section class="chapter" id="performers">
+  <p class="eyebrow">Chapter 08</p>
+  <h2 class="ch">Ear Scenes and saved mixes</h2>
+  <p class="ch-intro">Settings → Performers controls Ear Scenes and lets you look after every performer’s saved mixes.</p>
+  <figure class="shot"><img src="img/settings-performers.png" alt="The Performers tab with Ear Scenes switches and a performer’s saved mixes"><figcaption><b>Fig. 8.1</b>Settings → Performers.</figcaption></figure>
+
+  <h3>Ear Scenes</h3>
+  <p>An Ear Scene is a performer’s mix saved for one console snapshot or scene. When the console recalls that snapshot, each performer’s saved mix for it is sent to the console straight away, so every song can have its own monitor mix with nobody touching a phone.</p>
+  <dl class="settings">
+    <dt>Show Ear Scenes on performer phones</dt><dd>Turn off to hide Ear Scenes and the Saved / Not Saved button from performers. Saved Ear Scenes are kept.</dd>
+    <dt>Recall Ear Scenes when the console changes snapshot</dt><dd>Sends each performer’s saved mix for the new snapshot or scene to the console.</dd>
+  </dl>
+  <p>Ear Scenes follow snapshot names on DiGiCo, scene numbers on dLive and KLANG, and scene names on LV1. If you rename a snapshot on the console, Ear Scenes saved under the old name stop recalling. WING has no scene recall, so Ear Scenes aren’t available there.</p>
+
+  <h3>Saved mixes</h3>
+  <p>Saved Mixes lists every device that has saved a My Mix, with the performer’s name, the mix it’s on, when it last saved and whether it is connected now.</p>
+  <ul>
+    <li><span class="ui">Set Name</span> labels a device with the performer’s name, so it is easy to find later.</li>
+    <li><span class="ui">Copy</span> or <span class="ui">Copy all mixes</span>, then <span class="ui">Paste</span> on another device, copies mixes across. Connected performers receive them straight away; others when they next connect.</li>
+    <li><span class="ui">Merge into…</span> combines two devices that belong to the same person, for example an old phone and a new one.</li>
+    <li><span class="ui">Delete</span> removes one saved mix.</li>
+  </ul>
+  <p><strong>Back up &amp; recover My Mixes</strong> keeps a separate copy of every performer’s saved mixes. To recover them, load the backup on the Backup &amp; restore tab and choose only My Mixes (<a href="#backup">Chapter 15</a>).</p>
+</section>
+
+<!-- ═════════ 09 ═════════ -->
+<section class="chapter" id="engineer">
+  <p class="eyebrow">Chapter 09</p>
+  <h2 class="ch">Engineer tools</h2>
+  <p class="ch-intro">Three pages for the engineers, opened from the menu bar’s Open menu or the Pages tab: Monitor Engineer, Console Controller and Devices. They work in any browser on the network, so they can run on an iPad at the monitor position.</p>
+
+  <h3>Monitor Engineer</h3>
+  <figure class="shot bleed"><img src="img/monitor.png" alt="Monitor Engineer showing four mixes side by side and a list of mixes on the left"><figcaption><b>Fig. 9.1</b>Monitor Engineer. The list on the left shows each mix and how many devices are mixing on it.</figcaption></figure>
+  <ul>
+    <li><strong>Every mix at once</strong>, channel by channel, grouped the same way as performers’ phones. Switch to <span class="ui">Selected mix</span> to focus on one.</li>
+    <li><strong>Mix trim</strong>: <span class="ui">−0.5</span> and <span class="ui">+0.5</span> raise or lower a whole mix in half-dB steps, keeping its balance.</li>
+    <li><strong>Mute and solo</strong> any channel in any mix. Performers see the change on their phone, and the other way round.</li>
+    <li><strong>Find channels</strong> filters every mix to the channels you type.</li>
+    <li><strong>Snapshot</strong> at the top shows the console’s current snapshot, with ‹ › to step through them.</li>
+  </ul>
+
+  <h3>Console Controller</h3>
+  <figure class="shot bleed"><img src="img/console.png" alt="Console Controller with sixteen input channel strips"><figcaption><b>Fig. 9.2</b>Console Controller, Inputs. Channel 14 is muted.</figcaption></figure>
+  <p>The console’s main faders, mutes and solos for <span class="ui">Inputs</span>, <span class="ui">Control groups</span> (DCAs) and <span class="ui">Aux outputs</span>, from a browser. <span class="ui">Overview</span> fits more strips on screen; <span class="ui">Roomy</span> gives each strip more space. It works on DiGiCo, dLive and LV1.</p>
+  <p>On DiGiCo, each strip’s <span class="ui">EQ</span> button opens the <strong>channel processing panel</strong>: input gain, 48V, phase, delay and pan; a 4-band EQ graph you can drag, with high-pass and low-pass filters; and compressor and gate.</p>
+  <figure class="shot bleed"><img src="img/console-eq.png" alt="The channel processing panel open on the Kick channel, showing the EQ graph"><figcaption><b>Fig. 9.3</b>The channel processing panel (DiGiCo): Input, EQ and Dynamics.</figcaption></figure>
+  <div class="callout warn"><b>Important</b><p>The Console Controller changes the main mix. Anyone on the network who opens it can move the console’s faders, so keep production Wi-Fi private.</p></div>
+
+  <h3>Devices on stage</h3>
+  <figure class="shot bleed"><img src="img/devices.png" alt="Devices on stage: seven device cards on a stage plan"><figcaption><b>Fig. 9.4</b>Devices on stage. Each card is a connected phone or iPad and the mix it’s on.</figcaption></figure>
+  <p>Every connected phone and iPad, the mix it is on, and its latest activity. Click <span class="ui">Arrange stage</span> and drag the cards to match where people stand, from upstage to downstage. <span class="ui">Grid</span> shows the same cards in a plain grid. Positions save in that browser.</p>
+</section>
+
+<!-- ═════════ 10 ═════════ -->
+<section class="chapter" id="pco">
+  <p class="eyebrow">Chapter 10</p>
+  <h2 class="ch">Planning Center</h2>
+  <p class="ch-intro">Connect Planning Center Services and JPMixer follows your schedule: each mix is named after who is on it, performers’ phones can open their own mix, and the Green Room and Home pages welcome whoever is serving.</p>
+  <figure class="shot"><img src="img/settings-pco.png" alt="The Planning Center tab: connection, service and team, and the start of the mapping"><figcaption><b>Fig. 10.1</b>Settings → Planning Center. The buttons along the top jump to each section.</figcaption></figure>
+
+  <h3>Connect</h3>
+  <ol class="steps">
+    <li>Sign in at <code>api.planningcenteronline.com/personal_access_tokens</code> and create a personal access token.</li>
+    <li>Enter its <span class="ui">Application ID</span> and <span class="ui">Secret</span> under <strong>Connection</strong>.</li>
+    <li>Under <strong>Service &amp; team</strong>, click <span class="ui">Refresh service types</span> and choose the Service Type you plan your services under.</li>
+    <li>Choose a <span class="ui">Team</span>, such as Worship, to narrow the position list and the Green Room to that team, or leave it on All Teams.</li>
+    <li>Leave <span class="ui">Service day</span> on <span class="ui">Automatic — closest service time</span> unless you need one day.</li>
+  </ol>
+  <div class="callout note"><b>Credentials</b><p>The Application ID and Secret are saved on this computer, like the console password. Anyone with them can read your Planning Center account, so treat them like a password. Backups leave them out unless you choose otherwise.</p></div>
+  <p><strong>Include unconfirmed team members</strong> also uses people who haven’t accepted yet. People who declined are never used.</p>
+
+  <h3>Position → aux mapping</h3>
+  <figure class="shot"><img src="img/settings-pco-mapping.png" alt="The mapping table: each worship team position mapped to a mix"><figcaption><b>Fig. 10.2</b>Each team position mapped to a mix. Hide from Green Room keeps a position off the Green Room display.</figcaption></figure>
+  <p>Click <span class="ui">Refresh positions</span> and choose a mix for each position the band plays from. Positions without a mix are skipped and listed after a sync. <span class="ui">Hide from Green Room</span> keeps a position off the Green Room display only.</p>
+
+  <h3>Syncing names</h3>
+  <figure class="shot"><img src="img/settings-pco-sync.png" alt="Sync aux names: the two switches, the schedule note and Sync Now"><figcaption><b>Fig. 10.3</b>Sync aux names.</figcaption></figure>
+  <p>With <span class="ui">Show performer names on aux mixes</span> on, each mix is named after who is scheduled on it, such as “Keys - Priya Nair”, on the mix picker, the engineer pages and in Settings. JPMixer syncs by itself:</p>
+  <ul>
+    <li>10 seconds after JPMixer opens,</li>
+    <li>after a Save &amp; Apply that changes Planning Center settings,</li>
+    <li>and every 5 minutes while it runs.</li>
+  </ul>
+  <p>A mix nobody is scheduled on goes back to its own name. <span class="ui">Sync Now</span> syncs straight away and lists what it updated. Turn the switch off to use Planning Center only for the Green Room and Home pages; saving with it off takes every performer name back off. A name you typed yourself is always left alone.</p>
+  <p><strong>Assign phones by Planning Center performer</strong>: performers choose their name once, and their phone opens their mapped mix. Their My Mixes follow their Planning Center identity, so they come back on a new phone.</p>
+  <div class="callout note"><b>Several services a weekend</b><p>JPMixer uses the plan closest to now, whether it is running or next. With Saturday and Sunday services in one plan, the Automatic service day follows whichever service time is nearest.</p></div>
+
+  <h3>Second service (optional)</h3>
+  <p>For a Wednesday night, a youth night or another event planned under its own Service Type with its own teams. Only the switch shows until you turn on <span class="ui">Use a second service</span>.</p>
+  <figure class="shot"><img src="img/settings-pco-alt.png" alt="Second service settings: service type, team, mapping and Home page roles"><figcaption><b>Fig. 10.4</b>A second service with its own team, one extra mapping and its own FOH and ProPresenter roles.</figcaption></figure>
+  <p><strong>How it decides:</strong> the main service always comes first. On a day when the second service has a plan and the main one doesn’t, the second service runs everything: mix names, phones, the Green Room and the Home pages. The switch covers the whole day, midnight to midnight, and the first sync of the next day puts the main service back. If both have a plan the same day, the main one wins.</p>
+  <dl class="settings">
+    <dt>Service type</dt><dd>The Service Type the event is planned under.</dd>
+    <dt>Team</dt><dd>Whose people the Green Room and the Home pages’ team card show on that day.</dd>
+    <dt>Position → aux mapping</dt><dd>Positions start on <span class="ui">Same as main service (Aux N)</span>, so a position named the same as Sunday’s uses the same mix. Pick a different mix, or <span class="ui">Not on a mix</span>.</dd>
+    <dt>Home pages</dt><dd>A team and role for each Home page that day. <span class="ui">Same as main service</span> looks for the main service’s role name in that plan.</dd>
+  </dl>
+  <p>Include unconfirmed and Hide from Green Room are shared with the main service.</p>
+
+  <h3>Production team Home pages</h3>
+  <p>Under <strong>Production team Home pages</strong>, choose the Team and Role each Home page welcomes, for example Production → Audio Engineer FOH for FOH Home. See <a href="#home">Chapter 11</a>.</p>
+</section>
+
+<!-- ═════════ 11 ═════════ -->
+<section class="chapter" id="home">
+  <p class="eyebrow">Chapter 11</p>
+  <h2 class="ch">Production Home pages</h2>
+  <p class="ch-intro">FOH, ProPresenter, Lighting and Switcher each get a Home page for that station’s screen. It welcomes whoever Planning Center has scheduled in that role and shows the live service item, the team, the order of service, team chat and Companion buttons.</p>
+
+  <h3>Production View Select</h3>
+  <figure class="shot"><img src="img/home-select.png" alt="Find your station: four Home page cards with who is on today"><figcaption><b>Fig. 11.1</b>Production View Select at <code>/home.html</code>: one link for the whole team.</figcaption></figure>
+  <p>Give the whole production team one link, <code>http://192.168.1.20/home.html</code>. It lists each station with who is on today, and each card opens that station’s Home page.</p>
+
+  <h3>FOH Home</h3>
+  <figure class="shot bleed"><img src="img/foh-home.png" alt="FOH Home welcoming the scheduled engineer, with Live, Worship, Order of Service, Planning Center, Team chat and quick links"><figcaption><b>Fig. 11.2</b>FOH Home. The Live card shows the previous, current and next item as Planning Center Live moves through the service.</figcaption></figure>
+  <ul>
+    <li><strong>Live</strong>: the previous, current and next item, with keys, lengths and notes, from Planning Center Live.</li>
+    <li><strong>Team</strong>: everyone on the roster team, with photos and positions.</li>
+    <li><strong>Order of Service</strong>: the whole plan, with the live item marked.</li>
+    <li><strong>Planning Center</strong>: this service and the next few, each opening in Planning Center.</li>
+    <li><strong>Team chat</strong> and <strong>Companion</strong> buttons (below), and on FOH Home, quick links to the engineer tools.</li>
+    <li>The header shows the console connection and how many devices are connected.</li>
+  </ul>
+
+  <h3>ProPresenter, Lighting and Switcher Home</h3>
+  <figure class="shot bleed"><img src="img/role-propresenter.png" alt="ProPresenter Home with team chat messages between stations"><figcaption><b>Fig. 11.3</b>ProPresenter Home, with team chat between the stations.</figcaption></figure>
+  <p>The same page for each station, welcoming whoever is in that station’s role, without FOH’s console status and engineer links.</p>
+
+  <h3>Arrange the page for each person</h3>
+  <ol class="steps">
+    <li>Click <span class="ui">Arrange page</span>. Drag a card to move it, drag its corner to resize it, and drop it onto another card to swap the two. <span class="ui">Show / hide cards</span> brings back hidden cards.</li>
+    <li>Click <span class="ui">Save for &lt;name&gt;</span>. The layout is saved for the scheduled person, not the device, and loads by itself next time they serve, on any device.</li>
+  </ol>
+  <p>A station they have never saved starts from their layout on another station. Until you save, the layout stays in that browser only.</p>
+
+  <h3>Team chat</h3>
+  <p>Messages go to all four stations live. Each shows who sent it and from which station.</p>
+
+  <h3>Companion buttons</h3>
+  <p>JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds one button surface per Home page.</p>
+  <ol class="steps">
+    <li>In Companion, allow Satellite connections (TCP port <code>16622</code> by default).</li>
+    <li>In JPMixer, open <span class="ui">Settings → Pages → Companion buttons</span>, turn it on, enter the Companion computer’s address (<code>127.0.0.1</code> if it is this computer) and choose the grid (8 × 4 by default). Click <span class="ui">Save &amp; Apply</span>; the status should say Connected.</li>
+    <li>In Companion → Surfaces, give each JPMixer surface (JPMixer FOH Home, JPMixer ProPresenter Home, and so on) the page of buttons that station needs.</li>
+  </ol>
+  <p>The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. JPMixer reconnects by itself if Companion restarts.</p>
+
+  <h3>The Pages tab and FOH access code</h3>
+  <figure class="shot"><img src="img/settings-pages.png" alt="The Pages tab: Home page picker, FOH Home with access code, and the other Home pages"><figcaption><b>Fig. 11.4</b>Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</figcaption></figure>
+  <p>Settings → Pages lists every page JPMixer serves with its direct link. FOH Home can have an <strong>Access code</strong>: other devices enter it once, the JPMixer computer never needs it, and changing it signs every device out. Leave it empty to turn it off.</p>
+  <div class="callout warn"><b>Important</b><p>Only FOH Home can have a code. Anyone on the same network can open the other Home pages, chat and press their Companion buttons, so keep production Wi-Fi separate from guest Wi-Fi.</p></div>
+</section>
+
+<!-- ═════════ 12 ═════════ -->
+<section class="chapter" id="greenroom">
+  <p class="eyebrow">Chapter 12</p>
+  <h2 class="ch">Green Room display</h2>
+  <p class="ch-intro">A full-screen, read-only display of who is serving, with photos and roles, for a TV or iPad in the green room.</p>
+  <figure class="shot bleed"><img src="img/green-room.png" alt="Green Room display with the worship team’s photos, names and roles"><figcaption><b>Fig. 12.1</b>The Green Room at <code>/greenroom.html</code>.</figcaption></figure>
+  <ul>
+    <li>Open <code>http://192.168.1.20/greenroom.html</code> on the screen and click <span class="ui">Fullscreen</span>. It refreshes every 2 minutes, so it can be left open.</li>
+    <li>It shows the team chosen under Planning Center → Service &amp; team (or everyone), minus any position marked Hide from Green Room.</li>
+    <li>No code is needed. It is information only, not a control surface.</li>
+  </ul>
+</section>
+
+<!-- ═════════ 13 ═════════ -->
+<section class="chapter" id="branding">
+  <p class="eyebrow">Chapter 13</p>
+  <h2 class="ch">Branding</h2>
+  <p class="ch-intro">Put your church’s logo and color on every page JPMixer serves to phones, iPads and screens.</p>
+  <figure class="shot"><img src="img/settings-branding.png" alt="The Branding tab with logo area and accent color with preview"><figcaption><b>Fig. 13.1</b>Settings → Branding.</figcaption></figure>
+  <ol class="steps">
+    <li>Click <span class="ui">Upload logo…</span>. A PNG or SVG with a transparent background, tightly cropped, works best (up to 5 MB).</li>
+    <li>Choose an <span class="ui">Accent color</span>: type a hex value, or click anywhere on your logo to use that color. The preview shows how buttons will look.</li>
+    <li>Click <span class="ui">Save &amp; Apply</span>. Open pages pick up the change within about 30 seconds.</li>
+  </ol>
+  <p>Settings, the launch screen, the browser tab icon and the app icon always stay JPMixer.</p>
+</section>
+
+<!-- ═════════ 14 ═════════ -->
+<section class="chapter" id="general">
+  <p class="eyebrow">Chapter 14</p>
+  <h2 class="ch">General and Port 80</h2>
+  <p class="ch-intro">Settings → General holds the web server port and what JPMixer does when the computer starts.</p>
+  <figure class="shot"><img src="img/settings-general.png" alt="The General tab with web server port and startup switches"><figcaption><b>Fig. 14.1</b>Settings → General.</figcaption></figure>
+  <dl class="settings">
+    <dt>Web server port</dt><dd>The port phones and pages use, <code>8080</code> by default. Leave it unless something else on the computer needs it; phones would need the new address.</dd>
+    <dt>Open JPMixer when this computer starts</dt><dd>Opens JPMixer in the menu bar when you log in.</dd>
+    <dt>Start server automatically on launch</dt><dd>Starts serving pages and connects to the console as soon as JPMixer opens. With both of these on, phones can connect as soon as the computer is up.</dd>
+    <dt>Keep this computer awake while the server is running</dt><dd>Sleep would disconnect every phone. The display can still turn off.</dd>
+  </dl>
+  <h3>Use Port 80</h3>
+  <p>On the Get started tab, <span class="ui">Use Port 80</span> lets performers type just the computer’s address, <code>http://192.168.1.20</code>, without <code>:8080</code>. It installs a small helper that forwards port 80 to JPMixer, and asks for your administrator password once.</p>
+  <div class="callout note"><b>Note</b><p>Pick one address for performers and stick to it. The <code>:8080</code> address still works, but a phone keeps a separate My Mixes list for each address. If Get started says the Port 80 helper is outdated, click Use Port 80 again to update it.</p></div>
+</section>
+
+<!-- ═════════ 15 ═════════ -->
+<section class="chapter" id="backup">
+  <p class="eyebrow">Chapter 15</p>
+  <h2 class="ch">Backup and restore</h2>
+  <p class="ch-intro">Protect your setup and everyone’s saved mixes on a schedule, keep copies, and bring back exactly what you need.</p>
+  <figure class="shot"><img src="img/settings-backup.png" alt="Backup and restore: automatic backups, export and load"><figcaption><b>Fig. 15.1</b>Settings → Backup &amp; restore.</figcaption></figure>
+  <h3>Automatic backups</h3>
+  <p>Turn on <span class="ui">Automatically back up</span> and choose how often: every day, 3 days, week, 2 weeks or month. Backups include console settings, channel and mix setup, My Mixes, Ear Scenes and Home page layouts. Backups older than a month are deleted by themselves. <span class="ui">Show in Finder</span> opens the folder.</p>
+  <h3>Export a backup</h3>
+  <p><span class="ui">Export Backup…</span> saves everything to a file, for example before an update or to move JPMixer to a new computer. Leave <span class="ui">Include passwords and keys</span> off for a copy you will share. Restoring a backup without them keeps the ones already on that computer.</p>
+  <h3>Load and restore</h3>
+  <ol class="steps">
+    <li>Click <span class="ui">Load Backup…</span> and choose a JPMixer backup, a My Mixes backup, or an extracted JSON or ZIP file.</li>
+    <li>Review what the file contains and tick the sections to restore. Unticked sections stay as they are. Credentials are never ticked for you.</li>
+    <li>For My Mixes, choose <strong>Merge</strong> (keep existing mixes and add the backup’s) or <strong>Replace</strong>.</li>
+    <li>Click <span class="ui">Restore Selected</span>.</li>
+  </ol>
+  <p>JPMixer makes a safety backup first and puts everything back if any part fails. Restoring saved mixes never sends their levels to the console.</p>
+</section>
+
+<!-- ═════════ 16 ═════════ -->
+<section class="chapter" id="api">
+  <p class="eyebrow">Chapter 16</p>
+  <h2 class="ch">Control API</h2>
+  <p class="ch-intro">A token-protected HTTP API for Bitfocus Companion, Stream Deck and other tools that can send a web request. It runs separately from the console connection, so turning it on or off never interrupts the console.</p>
+  <figure class="shot"><img src="img/settings-api-on.png" alt="The Control API tab with port and token fields"><figcaption><b>Fig. 16.1</b>Settings → Control API, turned on.</figcaption></figure>
+  <ol class="steps">
+    <li>Turn on <span class="ui">Enable Control API</span>.</li>
+    <li>Click <span class="ui">Regenerate</span> to create a token, then <span class="ui">Copy Token</span>. Anyone with the token can use the API, so treat it like a password.</li>
+    <li>Send the token with each request as <code>Authorization: Bearer &lt;token&gt;</code>, or add <code>?token=&lt;token&gt;</code> if your tool can’t set headers.</li>
+  </ol>
+  <p>Every address starts with <code>http://192.168.1.20:9096/api/v1/</code> (port <code>9096</code> by default).</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Request</th><th>Body</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /status</code></td><td>—</td><td>Console connection, console type, channel and mix counts</td></tr>
+      <tr><td><code>GET /channels</code>, <code>GET /auxes</code></td><td>—</td><td>Current name overrides</td></tr>
+      <tr><td><code>POST /channels/:n/label</code></td><td><code>{"label": "…"}</code></td><td>Rename channel <em>n</em> in JPMixer, live</td></tr>
+      <tr><td><code>POST /auxes/:n/label</code></td><td><code>{"label": "…"}</code></td><td>Rename mix <em>n</em> in JPMixer, live</td></tr>
+      <tr><td><code>POST /auxes/:n/mute</code></td><td><code>{"channel": 3, "muted": true}</code></td><td>Mute or unmute one channel in mix <em>n</em></td></tr>
+      <tr><td><code>POST /auxes/:n/solo</code></td><td><code>{"channel": 3, "soloed": true}</code></td><td>Solo or release one channel in mix <em>n</em></td></tr>
+      <tr><td><code>POST /scenes/fire</code></td><td><code>{"action": "next"}</code> or <code>"prev"</code></td><td>Step to the next or previous snapshot</td></tr>
+    </tbody>
+  </table></div>
+  <p>When the console connection isn’t running, every request except <code>/status</code> answers <code>503</code>. The tab’s <strong>HTTP request reference</strong> repeats this list.</p>
+</section>
+
+<!-- ═════════ 17 ═════════ -->
+<section class="chapter" id="osclog">
+  <p class="eyebrow">Chapter 17</p>
+  <h2 class="ch">OSC Log</h2>
+  <p class="ch-intro">Settings → OSC Log shows the messages passing between JPMixer and the console, live. It is for diagnosing a connection, not for everyday use.</p>
+  <figure class="shot"><img src="img/settings-osclog.png" alt="The OSC Log tab with a filter box and recording controls"><figcaption><b>Fig. 17.1</b>Settings → OSC Log.</figcaption></figure>
+  <ul>
+    <li><strong>←</strong> marks a message in from the console, <strong>→</strong> one out to the console.</li>
+    <li>Type part of an address in <span class="ui">Filter by OSC address</span> to see only those messages, such as <code>Aux_Send</code>.</li>
+    <li><span class="ui">Pause</span> freezes the list and <span class="ui">Clear</span> empties it.</li>
+    <li>The live list is kept in memory only while the window is open. Further down the tab, record the traffic to a file to keep a copy to send to support.</li>
+  </ul>
+</section>
+
+<div class="part"><span>Reference</span><span>18 · A · B · C</span></div>
+
+<!-- ═════════ 18 ═════════ -->
+<section class="chapter" id="trouble">
+  <p class="eyebrow">Chapter 18</p>
+  <h2 class="ch">Troubleshooting</h2>
+  <p class="ch-intro">The most common problems and what to check first.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th style="width:34%">What you see</th><th>What to check</th></tr></thead>
+    <tbody>
+      <tr><td>The menu bar dot is red; Console says Not connected</td><td>Check the console’s IP address, that it is on the same network as this computer, and its remote setting: DiGiCo Pad external control, dLive MIDI/TCP on, or LV1’s MyMon / MyFOH remote. On a Mac, check JPMixer is allowed Local Network access in System Settings → Privacy &amp; Security.</td></tr>
+      <tr><td>Phones can’t open the address</td><td>Confirm the phone is on the production network, not guest Wi-Fi or mobile data. Check the address on the Get started tab, and that the server is running (the menu says Running on port …). On Windows, allow JPMixer through the firewall.</td></tr>
+      <tr><td>dLive connects but nothing responds</td><td>Check the Base MIDI Channel matches the console’s Main MIDI Channels. Then try <code>51328</code> as the MIDI/TCP Port Override.</td></tr>
+      <tr><td>LV1 stays Offline</td><td>Switch on LV1’s MyMon / MyFOH remote. If LV1 is on a different network, enter its computer’s IP address and allow up to half a minute.</td></tr>
+      <tr><td>KLANG levels move but nothing is heard</td><td>Check the audio patch from the console to the KLANG processor. For pan, set the mix to Stereo mode in KLANG:app.</td></tr>
+      <tr><td>A channel or mix is missing</td><td>Check its Show switch on the Channels or Aux mixes tab, and the counts under Console → Channels &amp; mixes. A Link only mix opens only from its direct link.</td></tr>
+      <tr><td>Performer names don’t appear on mixes</td><td>Check Show performer names on aux mixes is on, positions are mapped, and the people are confirmed (or Include unconfirmed is on). Click Sync Now to see what was applied and which positions are unmapped.</td></tr>
+      <tr><td>A Home page says nobody is scheduled</td><td>Check the page’s Team and Role under Planning Center → Production team Home pages, and that the person has accepted. With a second service, check its Home page roles too.</td></tr>
+      <tr><td>Ear Scenes don’t recall</td><td>Check Recall Ear Scenes when the console changes snapshot is on (Performers tab). On DiGiCo, the snapshot name must match exactly; a renamed snapshot needs its Ear Scenes saved again.</td></tr>
+      <tr><td>A performer’s saved mixes are gone</td><td>Make sure they use the same address as before (with or without <code>:8080</code>). On the phone, use Find My Mixes…, or on the Performers tab, copy or merge from their old device.</td></tr>
+      <tr><td>Faders feel slow through Port 80</td><td>If Get started says the Port 80 helper is outdated, click Use Port 80 to update it.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ═════════ A ═════════ -->
+<section class="chapter" id="reference">
+  <p class="eyebrow">Appendix A</p>
+  <h2 class="ch">Addresses and ports</h2>
+  <p class="ch-intro">Replace <code>192.168.1.20</code> with your JPMixer computer’s address from the Get started tab. Without Use Port 80, add <code>:8080</code> after it.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Page</th><th>Address</th><th>For</th></tr></thead>
+    <tbody>
+      <tr><td>Performer mix picker</td><td><code>/</code></td><td>Musicians and singers</td></tr>
+      <tr><td>One mix, direct</td><td><code>/?aux=8</code></td><td>A Link only mix</td></tr>
+      <tr><td>Production View Select</td><td><code>/home.html</code></td><td>The whole production team</td></tr>
+      <tr><td>FOH Home</td><td><code>/foh.html</code></td><td>FOH engineer</td></tr>
+      <tr><td>ProPresenter Home</td><td><code>/propresenter.html</code></td><td>Lyrics and slides</td></tr>
+      <tr><td>Lighting Home</td><td><code>/lighting.html</code></td><td>Lighting operator</td></tr>
+      <tr><td>Switcher Home</td><td><code>/switcher.html</code></td><td>Video director</td></tr>
+      <tr><td>Green Room</td><td><code>/greenroom.html</code></td><td>Green room screen</td></tr>
+      <tr><td>Monitor Engineer</td><td><code>/monitor.html</code></td><td>Monitor engineer</td></tr>
+      <tr><td>Console Controller</td><td><code>/console.html</code></td><td>FOH engineer</td></tr>
+      <tr><td>Devices on stage</td><td><code>/devices.html</code></td><td>Monitor engineer</td></tr>
+    </tbody>
+  </table></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Port</th><th>Used for</th></tr></thead>
+    <tbody>
+      <tr><td><code>8080</code> TCP</td><td>JPMixer’s web pages (or <code>80</code> with Use Port 80)</td></tr>
+      <tr><td><code>8000</code> / <code>8001</code> UDP</td><td>DiGiCo OSC: JPMixer sends on 8000, listens on 8001</td></tr>
+      <tr><td><code>51325</code> TCP</td><td>dLive MIDI/TCP (try <code>51328</code> if it doesn’t answer)</td></tr>
+      <tr><td><code>9110</code> UDP</td><td>KLANG processor</td></tr>
+      <tr><td><code>2223</code> UDP</td><td>Behringer WING OSC</td></tr>
+      <tr><td>Announced by LV1</td><td>Waves LV1 MyMon remote (found by itself)</td></tr>
+      <tr><td><code>16622</code> TCP</td><td>Bitfocus Companion Satellite</td></tr>
+      <tr><td><code>9096</code> TCP</td><td>Control API</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ═════════ B ═════════ -->
+<section class="chapter" id="support">
+  <p class="eyebrow">Appendix B</p>
+  <h2 class="ch">Console feature support</h2>
+  <p class="ch-intro">Every page works the same whichever console you use. What changes is what each console lets JPMixer do.</p>
+  <div class="table-wrap"><table class="matrix">
+    <thead><tr><th>Feature</th><th>DiGiCo</th><th>dLive</th><th>KLANG</th><th>WING</th><th>LV1</th></tr></thead>
+    <tbody>
+      <tr><td>Levels, mute and solo</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      <tr><td>Per-send pan</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Stereo mode</td><td class="yes">Yes</td><td class="yes">Stereo mixes</td></tr>
+      <tr><td>Names from the console</td><td class="yes">Channels, mixes</td><td class="yes">Channels, mixes</td><td class="yes">Channels*</td><td class="yes">Channels</td><td class="yes">Channels, mixes</td></tr>
+      <tr><td>Counts from the console</td><td class="yes">Yes</td><td class="yes">Mixes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+      <tr><td>My Mixes and Devices</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+      <tr><td>Ear Scenes</td><td class="yes">By snapshot name</td><td class="yes">By scene number</td><td class="yes">By scene number</td><td class="no">No</td><td class="yes">By scene name</td></tr>
+      <tr><td>Built-in aux EQ</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>Console Controller</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+      <tr><td>Channel processing panel</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+    </tbody>
+  </table></div>
+  <p style="font-size:14px;color:var(--ink-3)">* KLANG mode reads channel names from the paired dLive, when its address is entered. DiGiCo is in regular use. dLive has been tested against dLive Director, LV1 against an LV1 show, and KLANG and WING against their published protocols; try each on your own console before a service.</p>
+</section>
+
+<!-- ═════════ C ═════════ -->
+<section class="chapter" id="glossary">
+  <p class="eyebrow">Appendix C</p>
+  <h2 class="ch">Glossary</h2>
+  <dl class="settings">
+    <dt>Aux mix</dt><dd>A console output built from sends, used for one performer’s in-ears or wedge. JPMixer calls them mixes; consoles call them auxes, buses or mixes.</dd>
+    <dt>Send</dt><dd>How much of one channel goes into one mix. Each fader on a performer’s phone is a send.</dd>
+    <dt>Snapshot / scene</dt><dd>A stored console state the engineer recalls, often one per song. DiGiCo calls them snapshots; dLive and LV1 call them scenes.</dd>
+    <dt>Ear Scene</dt><dd>A performer’s mix saved for one snapshot, sent to the console when that snapshot is recalled.</dd>
+    <dt>My Mixes</dt><dd>A performer’s own named saved mixes, loaded by hand, kept by JPMixer and recoverable on a new phone.</dd>
+    <dt>Control group / DCA</dt><dd>A fader that controls the level of a set of channels. DiGiCo calls them control groups; dLive and LV1 call them DCAs.</dd>
+    <dt>Service Type</dt><dd>In Planning Center, the kind of service a plan belongs to, such as Sunday Worship or Wednesday Night.</dd>
+    <dt>Position</dt><dd>In Planning Center, a role on a team, such as Keys or Audio Engineer FOH. JPMixer maps positions to mixes and Home pages.</dd>
+    <dt>Satellite</dt><dd>Bitfocus Companion’s way of adding remote button surfaces. JPMixer adds one per Home page.</dd>
+    <dt>OSC</dt><dd>Open Sound Control, the network protocol DiGiCo, KLANG, WING and LV1 use for remote control.</dd>
+  </dl>
+</section>
+
+      <footer class="end">
+        <p style="max-width:none">JPMixer User Manual · Version 2.0.7 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
+        <p style="max-width:none;font-size:12px">JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer / MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. All trademarks belong to their owners.</p>
+      </footer>
+    </div>
+  </main>
+</div>
+
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="Screenshot, full size">
+  <button type="button" id="viewerClose" aria-label="Close">×</button>
+  <div><img id="viewerImg" alt=""><p id="viewerCaption"></p></div>
+</div>
+<script>
+(() => {
+  const viewer = document.getElementById('viewer'), img = document.getElementById('viewerImg'), cap = document.getElementById('viewerCaption');
+  let opener = null;
+  const close = () => { viewer.hidden = true; img.removeAttribute('src'); if (opener) opener.focus(); };
+  document.querySelectorAll('figure.shot img, .phones img').forEach((el) => {
+    el.tabIndex = 0;
+    const open = () => {
+      opener = el; img.src = el.currentSrc || el.src; img.alt = el.alt;
+      const fc = el.closest('figure')?.querySelector('figcaption, span');
+      cap.textContent = fc ? fc.textContent : el.alt;
+      viewer.hidden = false; document.getElementById('viewerClose').focus();
+    };
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  });
+  viewer.addEventListener('click', close);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !viewer.hidden) close(); });
+})();
+</script>
+
+</body>
+</html>
