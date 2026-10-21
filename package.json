@@ -1,6 +1,6 @@
 {
   "name": "jpmixer",
-  "version": "2.0.0",
+  "version": "2.0.5",
   "description": "JPMixer — browser-based monitor mixes and production Home pages for DiGiCo, dLive, KLANG and WING consoles",
   "main": "main.js",
   "scripts": {
@@ -55,7 +55,13 @@
     "win": {
       "icon": "assets/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64", "ia32"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
       ]
     },
     "nsis": {

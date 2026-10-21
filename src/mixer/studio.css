@@ -106,10 +106,16 @@ body.auxPicker .mix-workspace { display: none; }
 .aux-picker-title { padding: 0; margin: 0; font-size: 43px; font-weight: 650; letter-spacing: -1.8px; text-align: left; color: var(--text); }
 .aux-picker-description { color: var(--sub); font-size: 14px; margin: 10px 0 26px; line-height: 1.5; }
 .aux-buttons { gap: 12px; }
-.aux-btn { position: relative; align-items: flex-start; justify-content: flex-end; gap: 18px; min-height: 135px; padding: 19px; text-align: left; background: linear-gradient(130deg, var(--jp-raised), var(--jp-surface)); border: 1px solid var(--jp-line); border-radius: 12px; color: var(--jp-text); font-size: 20px; font-weight: 550; text-shadow: none; transition: border-color .15s, transform .15s, background .15s; overflow-wrap: anywhere; }
+/* Each card reads from the top: the aux number and the arrow share the first
+   line, the name sits right under them (up to two lines). Every card in a row
+   lines up the same however long its name is. */
+.aux-btn { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-auto-rows: auto; align-content: start; align-items: center; column-gap: 12px; row-gap: 12px; min-height: 116px; padding: 18px 19px 19px; text-align: left; background: linear-gradient(130deg, var(--jp-raised), var(--jp-surface)); border: 1px solid var(--jp-line); border-radius: 12px; color: var(--jp-text); font-size: 20px; font-weight: 550; text-shadow: none; transition: border-color .15s, transform .15s, background .15s; }
+.aux-btn-meta { grid-column: 1; grid-row: 1; line-height: 18px; }
+.aux-btn img { grid-column: 1; }
+.aux-btn-name { grid-column: 1 / -1; align-self: start; line-height: 1.2; letter-spacing: -.2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .aux-btn:hover { border-color: var(--aux-color, var(--jp-label)); background: var(--jp-border); transform: translateY(-2px); }
 .aux-btn:active { transform: translateY(0); }
-.aux-btn::after { content: '↗'; position: absolute; right: 18px; top: 15px; color: var(--jp-secondary); font-size: 18px; }
+.aux-btn::after { content: '↗'; grid-column: 2; grid-row: 1; line-height: 18px; color: var(--jp-secondary); font-size: 18px; }
 .aux-btn-meta { font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--aux-color, var(--jp-label)); font-weight: 650; }
 .aux-btn.aux-btn-last { outline: 1px solid var(--aux-color, var(--jp-label)); outline-offset: -1px; }
 .aux-btn.aux-btn-last .aux-btn-meta::after { content: ' / LAST USED'; color: var(--jp-secondary); letter-spacing: .6px; }
@@ -179,7 +185,7 @@ body.auxPicker .mix-workspace { display: none; }
   .picker-brand { margin-bottom: 24px; }
   .aux-picker-title { font-size: 34px; }
   .aux-picker-description { font-size: 12px; margin-bottom: 20px; }
-  .aux-btn { min-height: 110px; font-size: 17px; padding: 17px; }
+  .aux-btn { min-height: 100px; font-size: 17px; padding: 16px 17px 17px; row-gap: 10px; }
 }
 @media (max-width: 360px) {
   .channel-row { column-gap: 8px; }

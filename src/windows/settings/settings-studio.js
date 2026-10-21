@@ -7,7 +7,7 @@
     general: ['General', 'The web server, and what JPMixer does when this computer starts.'],
     console: ['Console', 'Choose your console, connect to it, and set snapshot behavior.'],
     channels: ['Channels', 'Rename, group, show or hide channels. Drag rows to change their order.'],
-    auxes: ['Aux mixes', 'Set mix names, colors, visibility, and EQ access.'],
+    auxes: ['Aux mixes', 'Set mix names, colors, and what performers can do with each.'],
     performers: ['Performers', 'What performers see on their phones, and their saved My Mixes.'],
     views: ['Pages', 'Every page JPMixer serves, with each Home page’s own setup.'],
     branding: ['Branding', 'Your logo and accent color on the pages JPMixer serves.'],

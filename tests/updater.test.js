@@ -101,3 +101,36 @@ test('reads the signing developer from codesign, and treats unsigned or ad-hoc a
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });
+
+test('the update dialog shows release notes as plain text, not the HTML and Markdown written for GitHub', () => {
+  const body = [
+    '<p align="center">',
+    '  <img src="https://raw.githubusercontent.com/x/logo.svg" alt="JPMixer" width="360" />',
+    '</p>',
+    '',
+    '<h3 align="center">Version 2.0</h3>',
+    '<p align="center"><b>One app, every station.</b></p>',
+    '',
+    '---',
+    '',
+    '> [!TIP]',
+    '> **Upgrading from 1.7.x?** Your mixes carry over &amp; stay put. See [the guide](https://example.com/guide).',
+    '',
+    '## ✨ Highlights',
+    '',
+    '- 🏠 **Home pages** for every station.',
+    '- 💬 `Team chat`.',
+    '',
+    '<table><tr><td align="center"><img src="https://x/1.png" alt="Mix picker" /><br/><sub><b>Find your mix</b></sub></td></tr></table>',
+    '![screenshot](https://x/2.png)',
+  ].join('\n');
+  const text = updater.releaseSummary(body, 2000);
+  assert.doesNotMatch(text, /<|>|\[!|\*\*|`|https?:|---/, text);
+  assert.equal(text.split('\n')[0], 'Version 2.0', 'starts with the notes themselves, not a logo');
+  assert.match(text, /Upgrading from 1\.7\.x\? Your mixes carry over & stay put\. See the guide\./);
+  assert.match(text, /^• 🏠 Home pages for every station\.$/m);
+  assert.match(text, /^• 💬 Team chat\.$/m);
+  assert.match(text, /Find your mix/);
+  assert.equal(updater.releaseSummary('## What’s new\n\nFaster mutes.'), 'Faster mutes.', 'the dialog says "What\'s new" already');
+  assert.ok(updater.releaseSummary('word '.repeat(300)).length <= 601, 'long notes are cut short');
+});

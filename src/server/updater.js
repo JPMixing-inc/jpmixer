@@ -110,6 +110,42 @@ async function download(asset, dest, { onProgress, allowLoopback = false } = {})
   return dest;
 }
 
+// The start of a release's notes as plain text, for the update dialog. The
+// notes are written for GitHub's page: HTML for the centered logo and the
+// screenshot tables, GitHub alert boxes ("> [!TIP]") and Markdown. The
+// dialog shows text only, so all of that used to appear as raw code.
+// Pictures go entirely; links keep their words; list items keep a bullet.
+function releaseSummary(body, maxChars = 600) {
+  let text = String(body || '').replace(/\r/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/```[\s\S]*?```/g, '')                       // code blocks
+    .replace(/<img\b[^>]*>/gi, '')                        // pictures
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h\d|tr|li|table|blockquote)>/gi, '\n')
+    .replace(/<\/td>/gi, '  ')
+    .replace(/<[^>]+>/g, '')                              // every other tag
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')                 // Markdown pictures
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');             // Markdown links: just the words
+  const lines = [];
+  for (let line of text.split('\n')) {
+    line = line.replace(/^\s*>\s?/, '')                   // quotes and alert boxes
+      .replace(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i, '')
+      .replace(/^#+\s*/, '')
+      .replace(/^\s*[-*+]\s+/, '• ')
+      .replace(/\*\*|__|`|~~/g, '')
+      .replace(/[ \t]+/g, ' ').trim();
+    if (/^([-*_]\s*){3,}$/.test(line)) line = '';         // horizontal rules
+    if (/^\|.*\|$/.test(line)) continue;                  // Markdown tables
+    lines.push(line);
+  }
+  // The dialog already says "What's new"; drop a heading of its own for it
+  while (lines.length && !lines[0]) lines.shift();
+  if (/^what.?s new:?$/i.test(lines[0] || '')) lines.shift();
+  const out = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return out.length > maxChars ? out.slice(0, maxChars).replace(/\s+\S*$/, '') + '…' : out;
+}
+
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => err ? reject(new Error((stderr || err.message).trim())) : resolve(stdout.trim()));
@@ -216,6 +252,6 @@ function makeWorkDir() {
 }
 
 module.exports = {
-  BUNDLE_ID, isLoopbackUrl, hostAllowed, getJson, pickAsset, expectedSha256, download,
+  BUNDLE_ID, isLoopbackUrl, hostAllowed, getJson, pickAsset, expectedSha256, download, releaseSummary,
   readBundleInfo, parseSigningTeam, macSigningTeam, currentMacBundle, stageMacApp, launchMacSwap, launchWindowsInstaller, makeWorkDir, MAC_SWAP_SCRIPT,
 };

@@ -117,16 +117,7 @@ function updateCheckFailed(silent) {
   if (!silent) showPrompt({ type: 'error', title: 'Update Check Failed', message: 'Could not reach GitHub. Check your internet connection.', buttons: ['OK'] });
 }
 
-// The first part of the release write-up, as plain text for the dialog
-function releaseSummary(body) {
-  const text = String(body || '').replace(/\r/g, '').replace(/^#+\s*/gm, '').replace(/\*\*|__|`/g, '').replace(/\n{3,}/g, '\n\n').trim();
-  // The dialog already says "What's new"; drop the release's own heading for it
-  const lines = text.split('\n');
-  if (/^what.?s new:?$/i.test((lines[0] || '').trim())) lines.shift();
-  const textOut = lines.join('\n').trim();
-  return textOut.length > 600 ? textOut.slice(0, 600).replace(/\s+\S*$/, '') + '…' : textOut;
-}
-
+const { releaseSummary } = updater; // the release notes as plain text for the dialog
 async function checkForUpdates(silent = false) {
   if (updateInProgress) return;
   let release;
@@ -269,7 +260,7 @@ let config, server, presets, scenes, autoBackup;
 // started — `server` is just a reference picked by console type in
 // startServer(). Each is a fully separate module from the others; picking
 // between them here is the only place any of them meet.
-let oscServer, dliveServer, klangServer, wingServer;
+let oscServer, dliveServer, klangServer, wingServer, lv1Server;
 // External Control API (Companion/Stream Deck/Planning Center) — a
 // separate, always-on server independent of the console backend above.
 // See api-server.js's file header for why it's kept entirely decoupled.
@@ -335,12 +326,13 @@ app.whenReady().then(async () => {
   dliveServer = require('./src/server/dlive-server');
   klangServer = require('./src/server/klang-server');
   wingServer  = require('./src/server/wing-server');
+  lv1Server   = require('./src/server/lv1-server');
   server     = oscServer;
   presets    = require('./src/server/presets');
   scenes     = require('./src/server/scenes');
   autoBackup = require('./src/server/auto-backup');
   autoBackup.start();
-  for (const s of [oscServer, dliveServer, klangServer, wingServer]) {
+  for (const s of [oscServer, dliveServer, klangServer, wingServer, lv1Server]) {
     s.setConsoleStatusCallback(broadcastConsoleStatus);
     s.setConnectionCountCallback(broadcastConnectionCount);
     s.setServerErrorCallback(handleServerError);
@@ -431,7 +423,7 @@ function openView(page, title, width, height) {
   win.loadURL(`http://localhost:${config.get('serverPort')}/${page}`);
 }
 
-const CONSOLE_NAMES = { digico: 'DiGiCo', dlive: 'dLive', klang: 'KLANG', wing: 'WING' };
+const CONSOLE_NAMES = { digico: 'DiGiCo', dlive: 'dLive', klang: 'KLANG', wing: 'WING', lv1: 'LV1' };
 
 function rebuildTrayMenu() {
   const port = config.get('serverPort');
@@ -473,8 +465,13 @@ function rebuildTrayMenu() {
 
 // ─── Server lifecycle ─────────────────────────────────────────────────────────
 
-// DiGiCo keys Ear Scenes by snapshot name; dLive, KLANG and WING by number.
+// DiGiCo keys Ear Scenes by snapshot name; dLive, KLANG and WING by number;
+// LV1 by its own scene names. LV1 is a scheme of its own although it also
+// uses names: a DiGiCo snapshot and an LV1 scene can share a name ("SONG 1")
+// and mean different channel layouts, so switching between the two clears
+// Ear Scenes (after a backup) like any other scheme change.
 function sceneKeySchemeFor(consoleType) {
+  if (consoleType === 'lv1') return 'lv1-name';
   return ['dlive', 'klang', 'wing'].includes(consoleType) ? 'number' : 'name';
 }
 
@@ -484,7 +481,7 @@ function startServer({ pcoSync = true } = {}) {
   // the second bind's error then stopped the first server too.
   if (serverRunning || serverStopping) return;
   const consoleType = config.get('consoleType');
-  const family = consoleType === 'dlive' ? 'dlive' : consoleType === 'klang' ? 'klang' : consoleType === 'wing' ? 'wing' : 'digico';
+  const family = ['dlive', 'klang', 'wing', 'lv1'].includes(consoleType) ? consoleType : 'digico';
   // Ear Scenes are keyed by snapshot *name* for DiGiCo and scene *number*
   // for dLive/KLANG (KLANG's backend reuses the paired dLive console's scene
   // number for the same reason the plain dLive backend does) — two
@@ -516,7 +513,7 @@ function startServer({ pcoSync = true } = {}) {
   }
   lastSceneKeyScheme = keyScheme;
 
-  server = family === 'dlive' ? dliveServer : family === 'klang' ? klangServer : family === 'wing' ? wingServer : oscServer;
+  server = { dlive: dliveServer, klang: klangServer, wing: wingServer, lv1: lv1Server }[family] || oscServer;
   try {
     server.start(config.getAll());
     serverRunning = true;
@@ -949,7 +946,7 @@ const RESTART_KEYS = [
   'serverPort', 'deskIp', 'deskSendPort', 'deskListenPort', 'consoleType', 'demoMode',
   // dLive / KLANG / WING connection settings
   'dliveBaseChannel', 'dliveTlsEnabled', 'dliveUsername', 'dlivePassword', 'dliveMidiPort',
-  'dliveListenSendLevels', 'dlivePollSendLevels', 'klangIp', 'klangPort', 'wingPort'
+  'dliveListenSendLevels', 'dlivePollSendLevels', 'klangIp', 'klangPort', 'wingPort', 'lv1Port'
 ];
 // What the aux-name sync reads. The Team filter and the Green Room's hidden
 // positions only shape the Green Room display, which reads Planning Center
@@ -961,8 +958,8 @@ function needsRestart(prev, next) {
   const countsChanged = prev.channels !== next.channels || prev.auxes !== next.auxes;
   // Demo mode builds its fake console from these counts at start. dLive,
   // KLANG and WING fetch names and levels for that many channels and auxes
-  // when they connect; DiGiCo reads the counts from the desk itself.
-  return countsChanged && (!!next.demoMode || next.consoleType !== 'digico');
+  // when they connect; DiGiCo and LV1 read the counts from the desk itself.
+  return countsChanged && (!!next.demoMode || !['digico', 'lv1'].includes(next.consoleType));
 }
 
 // Applies a just-saved config to the running server; returns whether it restarted
@@ -992,6 +989,11 @@ ipcMain.handle('save-config', async (_, incoming) => {
     // actually changed, so there's nothing to restart/reconcile either.
     return { ok: false, restarted: false, error: 'Could not save settings to disk — check available disk space and file permissions. Nothing was changed.' };
   }
+  // Performer names off: take the ones a sync already put on the mixes back
+  // off, so the aux picker stops showing them (they're pushed to phones with
+  // the rest of this save). On every save with names off, not only the one
+  // that turns them off: a build that didn't clear them left them behind.
+  const auxNamesCleared = config.get('pcoUpdateAuxNames') === false ? pcoAuxNames.clear().length : 0;
   const restarted = await applySavedConfig(prev);
   // Reconciled separately from the console-backend restart above — the
   // Control API's own enable/port state should never force a console
@@ -1003,7 +1005,7 @@ ipcMain.handle('save-config', async (_, incoming) => {
   if (prev.brandLogo !== config.get('brandLogo')) require('./src/server/branding').pruneLogos();
   const loginItem = prev.openAtLogin !== config.get('openAtLogin') ? applyOpenAtLogin(config.get('openAtLogin')) : null;
   if (loginItem && !loginItem.ok && !loginItem.needsApproval) config.save({ ...config.getAll(), openAtLogin: !!app.getLoginItemSettings().openAtLogin });
-  return { ok: true, restarted, loginItem };
+  return { ok: true, restarted, loginItem, auxNamesCleared };
 });
 
 // Companion buttons' connection, for Settings → Pages
@@ -1083,7 +1085,8 @@ ipcMain.handle('pco-list-positions', async (_, serviceTypeId, creds) => {
 // Shared by the manual "Sync Now" IPC handler and autoSyncPlanningCenter()
 // (fired automatically when the console backend starts, see startServer())
 // — one implementation either way applies to.
-async function runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, creds }) {
+const pcoAuxNames = require('./src/server/pco-aux-names');
+async function runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, creds, automatic = false }) {
   try {
     const plan = await pcoClient.nextPlan(serviceTypeId, creds);
     if (!plan) return { ok: false, error: 'No upcoming plan found for this Service Type.' };
@@ -1103,7 +1106,17 @@ async function runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, cre
       !m.declined && (includeUnconfirmed || m.confirmed) && !(resolvedDay && m.days.length > 0 && !m.days.includes(resolvedDay))
     );
 
-    const applied = [], unmapped = [], errors = [];
+    // An automatic sync (started by a save) whose Planning Center answer
+    // came back after performer names were switched off: write nothing,
+    // they've been cleared. Sync Now is the person asking, so it goes ahead.
+    if (automatic && config.get('pcoUpdateAuxNames') === false) return { ok: false, error: 'Performer names on aux mixes are turned off.' };
+
+    const applied = [], unmapped = [], errors = [], records = [];
+    // The name each mix had before this sync, read once per mix: with two
+    // positions on one mix, the second used to see the first's new label and
+    // record nothing to go back to. Judged against the mapping this sync
+    // uses, which Sync Now can pass before it's saved.
+    const beforeByAux = new Map();
     for (const m of relevant) {
       if (!m.positionName) continue;
       const auxNum = lookupAux(mapping, m.positionName);
@@ -1113,9 +1126,12 @@ async function runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, cre
       }
       if (!serverRunning || !server) { errors.push(`${m.positionName}: no console backend is running`); continue; }
       const label = `${m.positionName} - ${m.personName}`;
-      if (server.setAuxLabel(auxNum, label)) applied.push({ aux: auxNum, label });
+      if (!beforeByAux.has(String(auxNum))) beforeByAux.set(String(auxNum), pcoAuxNames.beforeSync(auxNum, mapping));
+      const before = beforeByAux.get(String(auxNum));
+      if (server.setAuxLabel(auxNum, label)) { records.push({ aux: auxNum, label, before }); applied.push({ aux: auxNum, label }); }
       else errors.push(`Aux ${auxNum}: rejected (out of range?)`);
     }
+    pcoAuxNames.recordSync(records);
 
     return { ok: true, plan: { id: plan.id, title: plan.title, date: plan.date }, resolvedDay, applied, unmapped, errors };
   } catch (err) {
@@ -1148,6 +1164,7 @@ async function autoSyncPlanningCenter() {
     includeUnconfirmed: !!config.get('pcoIncludeUnconfirmed'),
     day: config.get('pcoDay') || '',
     creds: pcoCreds(),
+    automatic: true,
   });
   if (result.ok) {
     const dayNote = result.resolvedDay ? ` (${result.resolvedDay})` : '';

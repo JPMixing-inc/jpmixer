@@ -40,11 +40,14 @@ t('snapshot "__proto__" cannot pollute Object.prototype', () => {
   assert.deepEqual(scenes.getScene('__proto__', 1), { '1': 0.4 });
 });
 
-t('aux "__proto__" cannot hijack a snapshot bucket\'s own prototype', () => {
-  scenes.saveScene('Another Scene', '__proto__', { '1': 0.4 });
-  const bucket = scenes.getAll()['Another Scene'];
-  assert.equal(Object.getPrototypeOf(bucket), null, 'the bucket must still have no prototype of its own');
-  assert.deepEqual(bucket['__proto__'], { '1': 0.4 });
+t('an aux that isn\'t a mix number is refused, so "__proto__" never reaches a bucket and backups stay restorable', () => {
+  assert.equal(scenes.saveScene('Another Scene', '__proto__', { '1': 0.4 }), false);
+  assert.equal(scenes.saveScene('Another Scene', 'undefined', { '1': 0.4 }), false, 'an aux that was undefined used to be stored as "undefined"');
+  assert.equal(scenes.saveScene('Another Scene', 0, { '1': 0.4 }), false);
+  assert.equal(scenes.getAll()['Another Scene'], undefined, 'nothing is stored for a bad aux');
+  assert.equal(scenes.saveScene('Another Scene', 3, { '1': 0.4 }), true);
+  assert.equal(Object.getPrototypeOf(scenes.getAll()['Another Scene']), null, 'the bucket has no prototype of its own');
+  assert.deepEqual(scenes.getScene('Another Scene', 3), { '1': 0.4 });
 });
 
 t('saveScene keeps only channel → 0..1 values, and ignores a missing or non-object payload', () => {

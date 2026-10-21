@@ -441,13 +441,31 @@ function setSolo(auxRaw, chRaw, soloed) {
 // via config.js's targeted updateOverride() (not the full save-config path,
 // which would restart this backend), and broadcasts to already-connected
 // browser clients so labels update live with no reconnect.
-// Live relabeling (Control API / Planning Center) — see shared-handlers.js
+// Live relabeling (Control API / Planning Center) — see shared-handlers.js.
+// The desk's own counts bound the number once they're known.
+function liveChannelCount() {
+  return cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : (serverCfg.channels || 48);
+}
+function liveAuxCount() {
+  return cache.has('/Console/Aux_Outputs/modes') ? cache.get('/Console/Aux_Outputs/modes').args.length : (serverCfg.auxes || 16);
+}
 function setChannelLabel(n, label) {
-  return shared.relabel(serverCfg, 'channel', n, label, 48, broadcastToClients);
+  return shared.relabel(serverCfg, 'channel', n, label, liveChannelCount(), broadcastToClients);
 }
 
 function setAuxLabel(n, label) {
-  return shared.relabel(serverCfg, 'aux', n, label, 16, broadcastToClients);
+  return shared.relabel(serverCfg, 'aux', n, label, liveAuxCount(), broadcastToClients);
+}
+
+// Names last announced to phones from the desk. The desk re-sends every
+// name on connect and on snapshot recall; only a change is worth rebuilding
+// every phone's list for (a Settings or Planning Center label still wins).
+const deskLabelSent = new Map(); // "ch:N" / "aux:N" -> label
+function announceDeskLabel(kind, n, label) {
+  const key = `${kind}:${n}`;
+  if (deskLabelSent.get(key) === label) return;
+  deskLabelSent.set(key, label);
+  broadcastToClients(kind === 'aux' ? { type: 'aux-relabeled', aux: n, label } : { type: 'channel-relabeled', channel: n, label });
 }
 
 // The desk reports the physical -150 dB used to implement mute/solo. Keep
@@ -1151,8 +1169,8 @@ function startWebSocketServer() {
         if (msg.type === 'save-scene') {
           const snapshot = (typeof msg.snapshot === 'string' && msg.snapshot) ? msg.snapshot : currentSnapshotName;
           if (!snapshot) return;
+          if (!scenes.saveScene(snapshot, msg.aux, msg.values)) return; // not a mix number, or no fader values
           logEvent('scene-save', `snapshot:"${snapshot}" aux:${msg.aux}`);
-          scenes.saveScene(snapshot, msg.aux, msg.values);
           broadcastToClients({ type: 'scene-saved', snapshot, aux: msg.aux });
           ws._lastActivityAt = Date.now();
           broadcastActivity({ type: 'device-activity', deviceId: ws._deviceId || null, aux: msg.aux, kind: 'save-scene', snapshot }, ws);
@@ -1219,9 +1237,10 @@ function startWebSocketServer() {
           // from a client-controlled msg.pans object, not the allowlisted
           // OSC-address path below, so nothing else validates them.
           const chMax = serverCfg.channels || 48;
-          for (const [chStr, val] of Object.entries(msg.pans || {})) {
+          for (const [chStr, rawPan] of Object.entries(msg.pans || {})) {
             const ch = parseInt(chStr);
-            if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(val)) continue;
+            if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(rawPan)) continue;
+            const val = Math.max(0, Math.min(1, rawPan)); // a pan is 0..1, as the other backends enforce
             const addr = `/Input_Channels/${ch}/Aux_Send/${auxNum}/send_pan`;
             sendToDeskPaced(addr, [val]);
             cache.set(addr, { address: addr, args: [val] });
@@ -1233,12 +1252,14 @@ function startWebSocketServer() {
         if (msg.type === 'request-aux-eq') {
           const auxNum = parseInt(msg.aux);
           if (isNaN(auxNum) || auxNum < 1 || auxNum > (serverCfg.auxes || 16)) return;
-          const prefix = `/Aux_Outputs/${msg.aux}/EQ/`;
+          // The parsed number, not msg.aux as sent: "3abc" passed the check
+          // above and went to the desk as /Aux_Outputs/3abc/EQ/…
+          const prefix = `/Aux_Outputs/${auxNum}/EQ/`;
           const eq = {};
           for (const [address, cached] of cache.entries()) {
             if (address.startsWith(prefix)) eq[address.slice(prefix.length)] = cached.args[0];
           }
-          ws.send(JSON.stringify({ type: 'aux-eq', aux: msg.aux, eq }));
+          ws.send(JSON.stringify({ type: 'aux-eq', aux: auxNum, eq }));
           // Query any missing params from the desk one at a time, paced — not
           // bursted in a single tick (see the note on primeCache for why).
           const missingEq = [];
@@ -1469,6 +1490,16 @@ function startWebSocketServer() {
           }
           return false; // shouldn't happen — ALLOWED_OSC_RE already matched one of the two shapes above
         }
+        // The ranges the mixer page itself keeps to (its fader law and EQ panel)
+        function clampBrowserValue(address, v) {
+          if (address.endsWith('/send_level')) return Math.max(-150, Math.min(10, v));
+          if (address.endsWith('/send_pan')) return Math.max(0, Math.min(1, v));
+          if (/\/EQ\/eq_gain_\d+$/.test(address)) return Math.max(-18, Math.min(18, v));
+          if (/\/EQ\/eq_freq_\d+$/.test(address)) return Math.max(20, Math.min(20000, v));
+          if (/\/EQ\/eq_Q_\d+$/.test(address)) return Math.max(0.1, Math.min(10, v));
+          if (address.endsWith('/EQ/eq_in')) return v >= 0.5 ? 1 : 0;
+          return v;
+        }
 
         // /? request — respond from cache if available, else relay to desk
         if (oscMsg.address.endsWith('/?')) {
@@ -1488,6 +1519,9 @@ function startWebSocketServer() {
         // this path both feed the console a raw OSC float; NaN/Infinity
         // would otherwise go out over the wire as a real, malformed value.
         if (!Array.isArray(oscMsg.args) || oscMsg.args.length !== 1 || !Number.isFinite(oscMsg.args[0])) return;
+        // And within the desk's range, as the other backends enforce: a
+        // crafted +1000 dB send or a pan of 5 used to go out as sent
+        oscMsg.args = [clampBrowserValue(oscMsg.address, oscMsg.args[0])];
 
         // Grab the pre-update value so we can tell the Devices view whether
         // this move raised or lowered the level/pan, before it's overwritten.
@@ -1565,25 +1599,22 @@ function startWebSocketServer() {
 function startDemoMode() {
   const chCount  = serverCfg.channels || 16;
   const auxCount = serverCfg.auxes    || 6;
-  const chOv     = serverCfg.channelOverrides || {};
-  const auxOv    = serverCfg.auxOverrides     || {};
 
   cache.set('/Console/Input_Channels', { address: '/Console/Input_Channels', args: [chCount] });
   cache.set('/Console/Aux_Outputs/modes', { address: '/Console/Aux_Outputs/modes', args: new Array(auxCount).fill(2) });
 
-  // Channel names: seed the cache with the label override if set, else "CH N".
-  // buildConfig() will prefer ov.label anyway, so this just covers the no-override case.
+  // The fake desk's own names are plain "CH N" / "AUX N", like a desk
+  // nobody has named; buildConfig() puts JPMixer's labels on top. They used
+  // to be seeded from those labels, so a label taken off again (performer
+  // names turned off in Settings → Planning Center) fell back to itself and
+  // the name never went away in demo mode.
   for (let i = 1; i <= chCount; i++) {
     const addr = `/Input_Channels/${i}/Channel_Input/name`;
-    const label = (chOv[String(i)] || {}).label || `CH ${i}`;
-    cache.set(addr, { address: addr, args: [label] });
+    cache.set(addr, { address: addr, args: [`CH ${i}`] });
   }
-
-  // Aux names: same logic — override label if set, else "AUX N"
   for (let i = 1; i <= auxCount; i++) {
     const addr = `/Aux_Outputs/${i}/Buss_Trim/name`;
-    const label = (auxOv[String(i)] || {}).label || `AUX ${i}`;
-    cache.set(addr, { address: addr, args: [label] });
+    cache.set(addr, { address: addr, args: [`AUX ${i}`] });
   }
 
   // Pre-fill plausible random levels for every ch × aux combination
@@ -1645,6 +1676,7 @@ let lastBadPacketLogAt = 0;
 
 function start(cfg) {
   cancelSceneRecall();
+  deskLabelSent.clear(); // a new session announces every name afresh
   clearTimeout(metadataFetchTimer);
   metadataFetchTimer = null;
   currentSnapshot = -1;
@@ -1817,6 +1849,7 @@ function start(cfg) {
         sessionReloadTimer = null;
         logEvent('session-reload', 'clearing cache and reloading');
         cache.clear();
+        deskLabelSent.clear(); // the new session's names are all announced afresh
         clearMuteSolo();
         clearConsoleState();
         clearDeskQueries();
@@ -1888,7 +1921,16 @@ function start(cfg) {
     if (deskChName) {
       const n = parseInt(deskChName[1], 10);
       const ov = (serverCfg.channelOverrides || {})[String(n)] || {};
-      broadcastToClients({ type: 'channel-relabeled', channel: n, label: ov.label || String(oscMsg.args[0] ?? '') });
+      announceDeskLabel('ch', n, ov.label || String(oscMsg.args[0] ?? ''));
+    }
+    // The same for an aux renamed (or re-sent) by the desk: a Settings or
+    // Planning Center label wins. Phones used to apply the raw name and
+    // showed "AUX 3" over the label until they reloaded.
+    const deskAuxName = oscMsg.address.match(/^\/Aux_Outputs\/(\d+)\/Buss_Trim\/name$/);
+    if (deskAuxName) {
+      const n = parseInt(deskAuxName[1], 10);
+      const ov = (serverCfg.auxOverrides || {})[String(n)] || {};
+      announceDeskLabel('aux', n, ov.label || String(oscMsg.args[0] ?? '') || `AUX ${n}`);
     }
 
     // Browser clients only. iPads were already sent the desk's real value

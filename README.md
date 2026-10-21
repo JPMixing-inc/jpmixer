@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/JPMixing-inc/jpmixer/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/JPMixing-inc/jpmixer?label=release&color=e8003c&style=for-the-badge" /></a>
   <img alt="macOS and Windows" src="https://img.shields.io/badge/macOS%20%7C%20Windows-1f2128?style=for-the-badge" />
-  <img alt="DiGiCo, dLive, KLANG, WING" src="https://img.shields.io/badge/DiGiCo%20%C2%B7%20dLive%20%C2%B7%20KLANG%20%C2%B7%20WING-1f2128?style=for-the-badge" />
+  <img alt="DiGiCo, dLive, KLANG, WING, LV1" src="https://img.shields.io/badge/DiGiCo%20%C2%B7%20dLive%20%C2%B7%20KLANG%20%C2%B7%20WING%20%C2%B7%20LV1-1f2128?style=for-the-badge" />
   <a href="https://github.com/JPMixing-inc/jpmixer/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/JPMixing-inc/jpmixer/total?color=1f2128&style=for-the-badge" /></a>
 </p>
 
@@ -40,6 +40,21 @@
 <p align="center"><sub>Screens shown with JPMixer's demo console and a sample schedule. Every name is fictional and every avatar is an illustration.</sub></p>
 
 ---
+
+<a id="new-in-2-0-5"></a>
+
+## 🆕 New in 2.0.5
+
+| | |
+|---|---|
+| 🌊 **Waves eMotion LV1** | A fifth console. Levels, mute, solo, pan, live names, Ear Scenes and the Console Controller, through LV1's MyMon remote. See [LV1 Setup](#lv1-setup). |
+| 📅 **Planning Center card** | Every Home page shows this service's plan and the next few, each one tap from Planning Center. |
+| 🧩 **Free-form Home page layouts** | Place and size cards anywhere. Drop a card onto another to swap them. |
+| 🏷️ **Performer names that come off cleanly** | Turning off **Show performer names on aux mixes** puts every mix back to the name it had. The names only ever show in JPMixer, never on the console. |
+| 🎚️ **Steadier Monitor Engineer faders** | A fader you're dragging no longer jumps back to an older position from the console. |
+| 🔄 **Readable update notes** | The update window shows release notes as plain text. |
+
+See the [2.0.5 release notes](https://github.com/JPMixing-inc/jpmixer/releases/tag/v2.0.5) for every fix.
 
 <a id="new-in-2"></a>
 
@@ -81,7 +96,8 @@ See the [2.0 release notes](https://github.com/JPMixing-inc/jpmixer/releases/tag
 ### For the production team
 - **Home pages for FOH, ProPresenter, Lighting and Switcher:** the scheduled person with their photo, the live service item (previous, now, next), the team and the order of service.
 - **Production View Select:** one link for the whole team, showing who's on at each station.
-- **Arrange and save:** drag and resize cards, and **save a layout per person**. It follows them to any device and any station.
+- **Arrange and save:** place and size cards anywhere on the page, and **save a layout per person**. It follows them to any device and any station.
+- **Planning Center card:** this service's plan and the next few, each opening in Planning Center.
 - **Team chat and Companion buttons** on every station. FOH Home can sit behind an **access code**.
 - **Green Room display:** the upcoming team with photos and roles, for a TV or iPad.
 
@@ -161,18 +177,20 @@ sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
 
 ## 🎛️ Console support
 
-| | DiGiCo<br/><sub>SD / Quantum / S</sub> | Allen & Heath<br/>dLive | KLANG<br/><sub>paired with dLive</sub> | Behringer<br/>WING |
-|---|:---:|:---:|:---:|:---:|
-| **Connection** | OSC (DiGiCo Pad) | MIDI over TCP/IP | OSC to the KLANG processor | OSC, UDP 2223 |
-| **Levels, mute & solo** | ✅ | ✅ | ✅ KLANG's own mix | ✅ real per-send mute |
-| **Per-send pan** | ✅ | — not in the protocol | ✅ stereo-mode azimuth | ✅ scale unconfirmed¹ |
-| **My Mixes & Devices** | ✅ | ✅ | ✅ | ✅ |
-| **Ear Scenes** | ✅ | ✅ | ✅ | — no scene recall in OSC |
-| **Built-in aux EQ** | ✅ | — | — | — |
-| **Console Controller & channel processing** | ✅ | — | — | — |
-| **Status** | Stable | Not yet validated on hardware | Not yet validated on hardware | Not yet validated on hardware |
+| | DiGiCo<br/><sub>SD / Quantum / S</sub> | Allen & Heath<br/>dLive | KLANG<br/><sub>paired with dLive</sub> | Behringer<br/>WING | Waves<br/>eMotion LV1 |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Connection** | OSC (DiGiCo Pad) | MIDI over TCP/IP | OSC to the KLANG processor | OSC, UDP 2223 | MyMon remote, TCP |
+| **Levels, mute & solo** | ✅ | ✅ | ✅ KLANG's own mix | ✅ real per-send mute | ✅ real per-send on/off |
+| **Per-send pan** | ✅ | — not in the protocol | ✅ stereo-mode azimuth | ✅ scale unconfirmed¹ | ✅ stereo mixes |
+| **Live names & counts from the console** | ✅ | names | — | names | ✅ |
+| **My Mixes & Devices** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Ear Scenes** | ✅ | ✅ | ✅ | — no scene recall in OSC | ✅ by scene name |
+| **Built-in aux EQ** | ✅ | — | — | — | — |
+| **Console Controller** | ✅ | — | — | — | ✅ faders, mutes, solos² |
+| **Channel processing panel** | ✅ | — | — | — | — |
+| **Status** | Stable | Not yet validated on hardware | Not yet validated on hardware | Not yet validated on hardware | Tested on an LV1 show, not yet in a live service |
 
-<sub>¹ See [WING Setup](#wing-setup).</sub>
+<sub>¹ See [WING Setup](#wing-setup). ² The ‹ › scene buttons haven't been confirmed on a real LV1 yet; see [LV1 Setup](#lv1-setup).</sub>
 
 Each console runs as its own backend; choosing one never touches another's connection. Every page works the same whichever console is active.
 
@@ -183,7 +201,7 @@ Each console runs as its own backend; choosing one never touches another's conne
 ## 🚀 Quick start
 
 1. **Open JPMixer.** It lives in the menu bar (Mac) or system tray (Windows). The dot on the icon turns green once the console is connected.
-2. **Settings → Console:** pick your console and enter its address. DiGiCo uses OSC send `8000` and listen `8001` by default. See the [setup guides](#setup-guides) for dLive, KLANG and WING.
+2. **Settings → Console:** pick your console and enter its address. DiGiCo uses OSC send `8000` and listen `8001` by default. See the [setup guides](#setup-guides) for dLive, KLANG, WING and LV1.
 3. **Settings → Channels:** name channels, pick icons and make groups.
 4. **Settings → Aux mixes:** name and colour each mix, and choose what each opens to on performers' phones.
 5. **Save & Apply.** Then share the address shown on the **General** tab (for example `http://192.168.1.10`) with your musicians.
@@ -219,7 +237,8 @@ Each station gets its own page to open on that station's screen:
 3. Optionally set an **Access code** for FOH Home. Other devices enter it once; the JPMixer computer never needs it, and changing it signs every device out.
 
 **On the page:**
-- **Arrange page** lets you drag, resize and hide cards.
+- **Arrange page** lets you place a card anywhere and resize it from its corner. Drop a card onto another to swap the two. Hidden cards come back from **Show / hide cards**.
+- **Planning Center** card: this service's plan and the next few, each opening the plan in Planning Center.
 - **Save for <name>** keeps that layout for the scheduled person, on any device. It loads automatically the next time they serve. A station they've never saved starts from their layout on another station.
 - **Team chat** connects all four stations, and the **Companion** card shows that station's buttons (see below).
 
@@ -328,6 +347,33 @@ Unlike dLive/KLANG, WING confirms it's actually reachable with a real round-trip
 </details>
 
 <details>
+<summary><b>🌊 LV1 Setup — click to expand</b></summary>
+
+### LV1 Setup
+
+JPMixer connects to **Waves eMotion LV1** the same way Waves' own MyMon and MyFOH apps do, through LV1's MyMon remote service. It joins as one more remote device, so MyMon and MyFOH keep working alongside it.
+
+**In LV1:**
+1. Switch on the **MyMon / MyFOH** remote.
+2. Make sure the JPMixer computer and the LV1 computer are on the same network (or JPMixer runs on the LV1 computer itself).
+
+**In JPMixer Settings → Console:**
+- **Console Type** → Waves eMotion LV1.
+- **LV1 Computer IP Address** → leave **blank** to use the LV1 JPMixer finds on the network (this computer's first). Enter an address when LV1 is on a different network from this one, or when more than one LV1 is on the network.
+- **LV1 Remote Port** → leave at `0`. LV1 picks a new port each time it starts and announces it; JPMixer finds it. Only set a number to pin one.
+
+**What JPMixer reads from LV1:** channel and mix names, the real channel and mix counts, every send level, on/off and pan (including changes made on LV1 itself), and the current scene. Settings labels still win over LV1's names.
+
+**What works today:** aux send levels, mute and solo (using LV1's own per-send on/off, so a level is never lost, and a send the engineer switched off stays off), per-send pan on stereo mixes, My Mixes, Ear Scenes keyed by LV1 scene name, Devices View, and the Console Controller's input, aux and DCA faders, mutes and solos. **Not implemented:** built-in aux EQ and the channel processing panel. **Not yet confirmed on a real LV1:** the Console Controller's ‹ › scene buttons.
+
+**Troubleshooting:**
+- *Stays "Offline"* — check that LV1's MyMon / MyFOH remote is switched on, then look at the event log for "not found".
+- *LV1 on another network* — announcements don't cross routers. Enter the LV1 computer's address; JPMixer then checks its ports directly, which can take up to half a minute after LV1 starts.
+- *Wrong LV1 picked* — with more than one LV1 on the network, enter the address of the one you want.
+
+</details>
+
+<details>
 <summary><b>🔌 External Control API — click to expand</b></summary>
 
 ### External Control API
@@ -376,7 +422,9 @@ Pulls who's scheduled on the current or next service and renames the matching au
 
 **Green Room display** — open `http://<this Mac's IP>:<server port>/greenroom.html` on an iPad, TV, or any browser on the network (e.g. a computer set up in front of the green room mics) for a full-screen, read-only grid of everyone scheduled for the next service — photo, name, and role. No token needed, unlike the Control API — it's informational, not a control surface. Auto-refreshes every 2 minutes, so it can just be left open. Uses the same Service Type and "Include unconfirmed" setting configured above; if a **Team** is selected and saved (e.g. "Worship"), only that team shows here — leave it on "— All Teams —" to keep showing everyone scheduled, the default. Each row in the Position → Aux Mapping table also has a **Hide from Green Room** checkbox for excluding individual positions regardless of team.
 
-**Displays only:** turn off **Rename aux channels when syncing** (Sync aux names) to use Planning Center just for the Green Room and Home pages, without ever renaming an aux.
+**Names stay in JPMixer:** performer names are JPMixer's own aux labels, shown on performers' phones, the Monitor Engineer page and the Home pages. Nothing is ever written to the console's own mix names.
+
+**Displays only:** turn off **Show performer names on aux mixes** to use Planning Center just for the Green Room and Home pages. Saving with it off puts every mix back to the name it had before Planning Center named it. A name you typed yourself is left alone.
 
 **Phones by performer** (optional): turn on **Assign phones by Planning Center performer**. Performers pick their name once; their phone opens their mapped mix, and their My Mixes follow their Planning Center identity to a new device.
 
@@ -423,11 +471,11 @@ Settings, the launch screen, the browser tab icon and the app icon always stay J
 
 JPMixer runs a web server and a WebSocket bridge inside an Electron app.
 
-- **A musician's fader move** goes to JPMixer over WebSocket, which sends it to the console and shows it on every other screen. The console link is OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP to a KLANG processor, or OSC/UDP for WING.
-- **Mute and solo** on DiGiCo and dLive work by driving the send to −∞ and restoring it afterwards. KLANG and WING have a real per-send mute.
+- **A musician's fader move** goes to JPMixer over WebSocket, which sends it to the console and shows it on every other screen. The console link is OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP to a KLANG processor, OSC/UDP for WING, or LV1's MyMon remote (OSC over TCP).
+- **Mute and solo** on DiGiCo and dLive work by driving the send to −∞ and restoring it afterwards. KLANG, WING and LV1 have a real per-send mute.
 - **Kind to the console:** background queries to a DiGiCo are paced at one every 100 ms. A performer's own moves, mutes and solos go out immediately.
 - **Locked down:** a phone can only touch its own mix's sends and EQ. A server-side allowlist blocks everything else.
-- **Ear Scenes** are keyed by snapshot name (DiGiCo) or scene number (dLive, KLANG). **My Mixes** are permanent and backed up per device.
+- **Ear Scenes** are keyed by snapshot name (DiGiCo), scene number (dLive, KLANG) or scene name (LV1). **My Mixes** are permanent and backed up per device.
 
 ---
 
@@ -437,4 +485,4 @@ JPMixer runs a web server and a WebSocket bridge inside an Electron app.
 
 ---
 
-<p align="center"><sub>JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer/MUSIC Tribe, Bitfocus or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen &amp; Heath Limited. KLANG is a trademark of KLANG:technologies GmbH. WING is a trademark of MUSIC Tribe Global Brands Ltd. Planning Center is a trademark of Ministry Centered Technologies.</sub></p>
+<p align="center"><sub>JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer/MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen &amp; Heath Limited. KLANG is a trademark of KLANG:technologies GmbH. WING is a trademark of MUSIC Tribe Global Brands Ltd. Waves and eMotion LV1 are trademarks of Waves Audio Ltd. Planning Center is a trademark of Ministry Centered Technologies.</sub></p>

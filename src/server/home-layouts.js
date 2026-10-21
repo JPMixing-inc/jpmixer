@@ -34,9 +34,23 @@ function load() {
   if (data) store = toNullProto(data);
 }
 
-// A clean copy of a layout, or null if it isn't one
+const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+
+// A clean copy of a layout, or null if it isn't one. Version 2 (the free
+// grid) places each card itself: x/w in 24 columns, y/h in 10 px rows. The
+// older version (an order plus size presets) is still accepted.
 function clean(layout) {
   if (!layout || typeof layout !== 'object' || Array.isArray(layout)) return null;
+  if (layout.v === 2) {
+    const cards = {};
+    const source = layout.cards && typeof layout.cards === 'object' && !Array.isArray(layout.cards) ? layout.cards : {};
+    for (const [id, c] of Object.entries(source).slice(0, MAX_CARDS)) {
+      if (!CARD_ID.test(id) || !c || typeof c !== 'object') continue;
+      if (!int(c.w, 4, 24) || !int(c.x, 0, 24 - c.w) || !int(c.y, 0, 5000) || !int(c.h, 12, 160)) continue;
+      cards[id] = { hidden: c.hidden === true, x: c.x, y: c.y, w: c.w, h: c.h };
+    }
+    return Object.keys(cards).length ? { v: 2, cards } : null;
+  }
   const order = Array.isArray(layout.order) ? [...new Set(layout.order.filter(id => typeof id === 'string' && CARD_ID.test(id)))].slice(0, MAX_CARDS) : [];
   const cards = {};
   const source = layout.cards && typeof layout.cards === 'object' && !Array.isArray(layout.cards) ? layout.cards : {};

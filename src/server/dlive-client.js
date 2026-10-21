@@ -79,6 +79,13 @@ class DliveClient extends EventEmitter {
   }
 
   _openSocket() {
+    // A fresh parser per connection: one left mid-SysEx by a dropped
+    // connection kept swallowing the next connection's bytes until a stray
+    // end marker, and a pending scene bank would have paired with the wrong
+    // program change
+    this._decoder = new P.Decoder();
+    this._nrpn = new P.NrpnReassembler();
+    this._sceneBankPending = null;
     const onConnect = () => {
       this.connected = true;
       this._reconnectDelay = 1000;

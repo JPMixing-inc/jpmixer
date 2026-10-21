@@ -352,6 +352,16 @@ async function main() {
     assert.deepEqual(elsewhere.layout.order, ['chat', 'live', 'team', 'order']);
     t('on a page they have no layout for, the person gets the one they saved on another Home page');
 
+    const free = { v: 2, cards: {
+      chat: { x: 16, y: 40, w: 8, h: 30 }, live: { x: 0, y: 0, w: 24, h: 20, hidden: false },
+      evil: { x: 20, y: 0, w: 10, h: 30 },    // runs off the right edge
+      tiny: { x: 0, y: 0, w: 1, h: 2 },       // smaller than a card can be
+    } };
+    assert.equal((await post({ role: 'lighting', personId: '777', layout: free })).body.ok, true);
+    const freeBack = await get(port, '/home-layout?role=lighting&person=777');
+    assert.deepEqual(freeBack.layout, { v: 2, cards: { chat: { hidden: false, x: 16, y: 40, w: 8, h: 30 }, live: { hidden: false, x: 0, y: 0, w: 24, h: 20 } } });
+    t('a free-grid layout (any position and size) saves and loads back exactly; impossible cards are dropped');
+
     assert.equal((await post({ role: 'lighting', personId: '555', layout })).status, 409, 'only for the person scheduled right now');
     scheduled = { id: '888', name: 'Sam Spot' };
     require('./pco-client').shared.clear();
@@ -361,6 +371,33 @@ async function main() {
     config.save({ ...config.getAll(), pcoLightingPositionName: '' });
     assert.equal((await post({ role: 'lighting', personId: '888', layout })).status, 409, 'nobody scheduled: nothing to save for');
     t('a layout can only be saved for whoever is scheduled on that page right now');
+  }
+
+  {
+    // Planning Center card: this plan's link, the next few plans, and no link
+    // that isn't Planning Center's own
+    global.fetch = async (url) => {
+      const plan = (id, date, title, href) => ({ id, type: 'Plan', attributes: { sort_date: date, title, series_title: 'Rooted', planning_center_url: href } });
+      if (url.includes('filter=future')) return { ok: true, text: async () => JSON.stringify({ data: [
+        plan('100', '2999-01-01T10:00:00Z', 'Sunday Service', 'https://services.planningcenteronline.com/plans/100'),
+        plan('101', '2999-01-08T10:00:00Z', 'Next Week', 'https://services.planningcenteronline.com/plans/101'),
+        plan('102', '2999-01-15T10:00:00Z', 'Sneaky', 'javascript:alert(1)'),
+      ] }) };
+      if (url.includes('/plans?')) return { ok: true, text: async () => JSON.stringify({ data: [plan('100', '2999-01-01T10:00:00Z', 'Sunday Service', 'https://services.planningcenteronline.com/plans/100')] }) };
+      if (url.includes('/plan_times') || url.includes('/team_members') || url.includes('/items')) return { ok: true, text: async () => JSON.stringify({ data: [] }) };
+      if (url.includes('/live')) return { ok: true, text: async () => JSON.stringify({ data: { links: {} } }) };
+      throw new Error('not in this test: ' + url);
+    };
+    require('./pco-client').shared.clear();
+    config.save({ ...config.getAll(), fohAccessCode: '', pcoLightingPositionName: 'Lighting', pcoLightingTeamId: '' });
+    const d = await get(port, '/role-data?role=lighting');
+    assert.equal(d.plan.url, 'https://services.planningcenteronline.com/plans/100');
+    assert.equal(d.plan.seriesTitle, 'Rooted');
+    assert.deepEqual(d.upcoming.map(p => p.title), ['Next Week', 'Sneaky'], 'the current plan isn\'t repeated under Coming up');
+    assert.equal(d.upcoming[0].url, 'https://services.planningcenteronline.com/plans/101');
+    assert.equal(d.upcoming[1].url, null, 'a link that isn\'t Planning Center\'s is dropped');
+    assert.equal(d.pcoHome, 'https://services.planningcenteronline.com');
+    t('the Planning Center card gets this plan\'s link and the next plans, and only Planning Center links');
   }
 
   global.fetch = origFetch;

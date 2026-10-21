@@ -65,18 +65,22 @@ function cleanValues(values) {
   return out;
 }
 
+// Returns true when the scene was stored. The aux must be a mix number:
+// any other key (a crafted message, or an aux that was undefined) went into
+// scenes.json, and from there into every auto-backup, which Restore then
+// refused as a whole — settings and My Mixes included.
 function saveScene(snapshot, aux, values) {
-  if (!snapshot) return;
+  if (!snapshot) return false;
+  const auxKey = String(aux);
+  if (!/^[1-9]\d*$/.test(auxKey)) return false;
   values = cleanValues(values);
-  if (!values) return;
+  if (!values) return false;
   if (!_scenes[snapshot]) _scenes[snapshot] = Object.create(null);
-  // aux is client-controlled too (save-scene's msg.aux, unvalidated) — a
-  // normal {} here would let aux: "__proto__" silently reassign this one
-  // scene entry's own prototype to attacker data via the __proto__ setter
-  // (distinct from, and in addition to, the snapshot-level pollution fixed
-  // by _scenes itself being null-prototype above).
-  _scenes[snapshot][String(aux)] = values;
+  // The bucket is null-prototype too (see _scenes above): the aux key is a
+  // plain number now, but a normal {} is one unchecked path from "__proto__"
+  _scenes[snapshot][auxKey] = values;
   persist();
+  return true;
 }
 
 function deleteScene(snapshot, aux) {

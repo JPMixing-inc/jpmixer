@@ -7,7 +7,7 @@ const own = (value, key) => Object.hasOwn(value, key);
 const copy = value => JSON.parse(JSON.stringify(value));
 const homeLayoutsModule = () => require('./home-layouts'); // loaded when used
 const definitions = [
-  ['console', 'Console & network', 'Console type, addresses, ports, and channel/bus counts. Connection changes may restart the server.', ['consoleType','serverPort','deskIp','deskSendPort','deskListenPort','channels','auxes','groups','dliveBaseChannel','dliveTlsEnabled','dliveUsername','dlivePassword','dliveMidiPort','dliveListenSendLevels','dlivePollSendLevels','klangIp','klangPort','wingPort']],
+  ['console', 'Console & network', 'Console type, addresses, ports, and channel/bus counts. Connection changes may restart the server.', ['consoleType','serverPort','deskIp','deskSendPort','deskListenPort','channels','auxes','groups','dliveBaseChannel','dliveTlsEnabled','dliveUsername','dlivePassword','dliveMidiPort','dliveListenSendLevels','dlivePollSendLevels','klangIp','klangPort','wingPort','lv1Port']],
   ['channels', 'Channel layout', 'Channel names, icons, order, visibility, and groups.', ['channelGroups','channelOverrides']],
   ['auxes', 'Aux layout & access', 'Mix names, colors, visibility, private links, and EQ access.', ['auxOverrides']],
   ['ipads', 'iPad relay connections', 'Configured OSC relay devices and ports.', ['ipadConnections']],
@@ -23,7 +23,7 @@ const types = {
   channelGroups:'array', ipadConnections:'array', pcoGreenRoomHidden:'array', channelOverrides:'object', auxOverrides:'object', pcoPositionMapping:'object'
 };
 const booleans = new Set(['autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled']);
-const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,64],groups:[0,64],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],klangPort:[0,65535],wingPort:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],autoBackupIntervalDays:[1,365] };
+const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,64],groups:[0,64],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],autoBackupIntervalDays:[1,365] };
 function validateConfig(config) {
   if (!object(config)) throw new Error('Invalid configuration in this backup.');
   for (const key of definitions.flatMap(d => d[3])) {

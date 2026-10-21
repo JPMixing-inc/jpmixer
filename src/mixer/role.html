@@ -53,7 +53,7 @@
         <details id="fhCardVisibility" hidden><summary>Show / hide cards</summary><div id="fhCardVisibilityList"></div></details>
       </div>
     </section>
-    <p class="fh-layout-hint" id="fhLayoutHint" hidden>Drag a handle or use the move buttons. Drag a card’s lower-right corner to resize, or use its size menus. <span class="fh-layout-phone-hint">On phones, cards fit the screen width.</span></p>
+    <p class="fh-layout-hint" id="fhLayoutHint" hidden>Drag any card anywhere; drop it onto another card to swap the two. Drag a card’s lower-right corner to resize it, or use its size menus. Hide cards here and show them again from Show / hide cards. <span class="fh-layout-phone-hint">On phones, cards stack in one column, top to bottom; arrange on a computer or iPad.</span></p>
     <div class="fh-dashboard" id="fhDashboard">
 
       <section class="fh-card fh-layout-card" data-fh-card="live" aria-label="Live">
@@ -68,6 +68,10 @@
         <h2>Order of Service</h2>
         <div class="fh-card-body" id="fhOrder" aria-busy="true"></div>
       </section>
+      <section class="fh-card fh-layout-card" data-fh-card="plans" aria-label="Planning Center">
+        <h2>Planning Center</h2>
+        <div class="fh-card-body fh-plans" id="fhPlans" aria-busy="true"></div>
+      </section>
       <section class="fh-card fh-layout-card" data-fh-card="chat" aria-label="Team chat">
         <h2>Team chat</h2>
         <div class="fh-card-body fh-chat-log" id="fhChatLog" role="log" aria-live="polite" aria-label="Team chat messages" data-empty="No messages yet. Say hi to the team."></div>
@@ -77,7 +81,7 @@
         </form>
         <p class="fh-chat-error" id="fhChatError" role="alert"></p>
       </section>
-      <section class="fh-card fh-layout-card fh-companion-off" data-fh-card="companion" data-fh-default-size="wide" aria-label="Companion">
+      <section class="fh-card fh-layout-card fh-companion-off" data-fh-card="companion" aria-label="Companion">
         <h2>Companion</h2>
         <div class="fh-card-body fh-companion">
           <p class="fh-companion-status" id="fhCompanionStatus" role="status"></p>

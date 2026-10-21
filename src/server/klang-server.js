@@ -216,11 +216,11 @@ function fireSnapshot(action) {
 // dLive console; this is a separate, JPMixer-side override on top of that.
 // Live relabeling (Control API / Planning Center) — see shared-handlers.js
 function setChannelLabel(n, label) {
-  return shared.relabel(serverCfg, 'channel', n, label, 48, broadcastToClients);
+  return shared.relabel(serverCfg, 'channel', n, label, serverCfg.channels || 48, broadcastToClients);
 }
 
 function setAuxLabel(n, label) {
-  return shared.relabel(serverCfg, 'aux', n, label, 16, broadcastToClients);
+  return shared.relabel(serverCfg, 'aux', n, label, serverCfg.auxes || 16, broadcastToClients);
 }
 
 // ── Scene (Ear Scene) recall — keyed by dLive scene NUMBER, same as the
@@ -359,8 +359,8 @@ function start(cfg) {
       if (msg.type === 'save-scene') {
         const key = (typeof msg.snapshot === 'string' && msg.snapshot) ? msg.snapshot : (currentSceneNumber != null ? String(currentSceneNumber) : null);
         if (!key) return;
+        if (!scenes.saveScene(key, msg.aux, msg.values)) return; // not a mix number, or no fader values
         logEvent('scene-save', `scene:"${key}" aux:${msg.aux}`);
-        scenes.saveScene(key, msg.aux, msg.values);
         broadcastToClients({ type: 'scene-saved', snapshot: key, aux: msg.aux });
         ws._lastActivityAt = Date.now();
         shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux: msg.aux, kind: 'save-scene', snapshot: key }, ws);

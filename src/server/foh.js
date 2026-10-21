@@ -205,10 +205,13 @@ async function roleData(roleId, status) {
     const rawDay = config.get('pcoDay');
     const day = rawDay === 'auto' ? await pco.resolveAutoDay(serviceTypeId, plan.id, creds) : rawDay;
 
-    const [members, items, liveItemId] = await Promise.all([
+    // The Planning Center card's next few plans are fetched alongside the
+    // rest, not after; a failure there only empties that list
+    const [members, items, liveItemId, upcomingPlans] = await Promise.all([
       pco.planTeamMembers(serviceTypeId, plan.id, creds),
       pco.listPlanItems(serviceTypeId, plan.id, creds),
       pco.getLiveItemId(serviceTypeId, plan.id, creds),
+      pco.upcomingPlans(serviceTypeId, creds, 4).catch(() => []),
     ]);
     const includeUnconfirmed = !!config.get('pcoIncludeUnconfirmed');
     const fohTeamId = config.get(role.teamKey); // this role's team (named for FOH, which came first)
@@ -275,10 +278,16 @@ async function roleData(roleId, status) {
     };
     const previousItem = nearestContentItem(-1);
     const nextItem = nearestContentItem(1);
+    // The Planning Center card: the next few plans after this one
+    const upcoming = upcomingPlans
+      .filter((p) => p.id !== plan.id).slice(0, 3)
+      .map((p) => ({ title: p.title, seriesTitle: p.seriesTitle, date: p.date, url: p.url }));
 
     return reply({
       ok: true,
-      plan: { title: plan.title, date: plan.date },
+      plan: { title: plan.title, seriesTitle: plan.seriesTitle || null, date: plan.date, url: plan.url || null },
+      upcoming,
+      pcoHome: require('./pco-client').PCO_WEB,
       engineer: match ? { name: match.personName, photoUrl: match.photoUrl, personId: match.personId || null } : null,
       roster,
       rosterTeamName,

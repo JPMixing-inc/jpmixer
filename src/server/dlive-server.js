@@ -421,11 +421,11 @@ function fireSnapshot(action) {
 // consistent with how channelOverrides/auxOverrides already work here.
 // Live relabeling (Control API / Planning Center) — see shared-handlers.js
 function setChannelLabel(n, label) {
-  return shared.relabel(serverCfg, 'channel', n, label, 48, broadcastToClients);
+  return shared.relabel(serverCfg, 'channel', n, label, serverCfg.channels || 48, broadcastToClients);
 }
 
 function setAuxLabel(n, label) {
-  return shared.relabel(serverCfg, 'aux', n, label, 16, broadcastToClients);
+  return shared.relabel(serverCfg, 'aux', n, label, serverCfg.auxes || 16, broadcastToClients);
 }
 
 // ── Scene (Ear Scene) recall — keyed by scene NUMBER, not name ───────────
@@ -532,7 +532,9 @@ function start(cfg) {
   };
   appExpress.get('/api/events', diagOnly, (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    const rows = eventLog.slice().reverse().map(e => `<tr><td>${e.t}</td><td><b>${e.type}</b></td><td>${e.detail}</td></tr>`).join('');
+    // e.detail can carry a phone's own text (a scene name): escaped, as in osc-server.js
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const rows = eventLog.slice().reverse().map(e => `<tr><td>${esc(e.t)}</td><td><b>${esc(e.type)}</b></td><td>${esc(e.detail)}</td></tr>`).join('');
     res.send(`<html><head><meta http-equiv="refresh" content="3"><style>body{font-family:monospace;font-size:12px;background:#111;color:#eee;padding:12px}table{border-collapse:collapse;width:100%}td{padding:4px 8px;border-bottom:1px solid #333}</style></head><body><h3>JPMixer (dLive) Event Log</h3><p>Connections: ${connections.length} | Console connected: ${consoleConnected}</p><table><tr><th>Time</th><th>Type</th><th>Detail</th></tr>${rows}</table></body></html>`);
   });
 
@@ -605,8 +607,8 @@ function start(cfg) {
       if (msg.type === 'save-scene') {
         const key = (typeof msg.snapshot === 'string' && msg.snapshot) ? msg.snapshot : (currentSceneNumber != null ? String(currentSceneNumber) : null);
         if (!key) return;
+        if (!scenes.saveScene(key, msg.aux, msg.values)) return; // not a mix number, or no fader values
         logEvent('scene-save', `scene:"${key}" aux:${msg.aux}`);
-        scenes.saveScene(key, msg.aux, msg.values);
         broadcastToClients({ type: 'scene-saved', snapshot: key, aux: msg.aux });
         ws._lastActivityAt = Date.now();
         shared.broadcastActivity(connections, { type: 'device-activity', deviceId: ws._deviceId || null, aux: msg.aux, kind: 'save-scene', snapshot: key }, ws);

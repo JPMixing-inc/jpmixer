@@ -57,6 +57,10 @@ const DEFAULTS = {
   // above for the console's address, same as the DiGiCo/dLive paths do —
   // WING is self-contained, no secondary connection needed.
   wingPort: 0, // 0 = use the documented default (2223)
+  // Waves eMotion LV1 — only read when consoleType is 'lv1'. deskIp is the
+  // LV1 computer (blank = this computer). LV1 picks its MyMon port at launch,
+  // so 0 finds it; a number pins it. See lv1-server.js.
+  lv1Port: 0,
   // External Control API (Companion/Stream Deck/Planning Center) — a
   // separate always-on server, independent of the console backend. See
   // api-server.js. Off by default; apiToken is generated on first enable.
@@ -111,7 +115,7 @@ const DEFAULTS = {
 // Custom OSC too, which quietly ran the DiGiCo backend — a config (or
 // restored backup) still naming one of those is read as DiGiCo, which is
 // what it was actually running.
-const CONSOLE_TYPES = ['digico', 'dlive', 'klang', 'wing'];
+const CONSOLE_TYPES = ['digico', 'dlive', 'klang', 'wing', 'lv1'];
 
 function normalize(cfg) {
   if (!CONSOLE_TYPES.includes(cfg.consoleType)) cfg.consoleType = 'digico';
@@ -174,10 +178,19 @@ function getAll() {
 // never need to go through the main.js save-config IPC path that restarts
 // the active console backend.
 function updateOverride(kind, n, patch) {
+  return updateOverrides(kind, { [n]: patch });
+}
+// Several entries in one write: { n: patch }. A patch value of undefined
+// removes that field.
+function updateOverrides(kind, patches) {
   const key = kind === 'aux' ? 'auxOverrides' : 'channelOverrides';
   const previous = _config;
   const bucket = { ..._config[key] };
-  bucket[String(n)] = { ...(bucket[String(n)] || {}), ...patch };
+  for (const [n, patch] of Object.entries(patches)) {
+    const entry = { ...(bucket[String(n)] || {}), ...patch };
+    for (const [field, value] of Object.entries(patch)) if (value === undefined) delete entry[field];
+    bucket[String(n)] = entry;
+  }
   _config = { ..._config, [key]: bucket };
   try {
     writeFileAtomic(configPath(), JSON.stringify(_config, null, 2));
@@ -190,4 +203,4 @@ function updateOverride(kind, n, patch) {
 }
 
 load();
-module.exports = { get, getAll, save, updateOverride, CONSOLE_TYPES };
+module.exports = { get, getAll, save, updateOverride, updateOverrides, CONSOLE_TYPES };

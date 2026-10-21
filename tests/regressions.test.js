@@ -95,7 +95,7 @@ function serverHarness() {
     './foh': { mountFoh() {} },
     './scenes': {
       getAll: () => scenes, getScene: (name, aux) => scenes[name]?.[aux],
-      saveScene(name, aux, values) { (scenes[name] ||= {})[aux] = values; },
+      saveScene(name, aux, values) { (scenes[name] ||= {})[aux] = values; return true; }, // the real one reports whether it stored
       deleteScene(name, aux) { delete scenes[name]?.[aux]; }
     }
   };
@@ -642,6 +642,20 @@ test('a desk channel rename reaches phones as a relabel, and a Settings label st
   assert.deepEqual(relabels().map(m => [m.channel, m.label]), [[2, 'Drums']]);
 });
 
+test('a desk aux rename tells phones the label to show, a Settings label winning, and only when it changes', () => {
+  const h = serverHarness();
+  const relabels = () => h.socket.sent.filter(m => m.type === 'aux-relabeled').map(m => [m.aux, m.label]);
+  h.socket.sent = [];
+  h.echo({ address: '/Aux_Outputs/3/Buss_Trim/name', args: ['IEM 3'] });
+  assert.deepEqual(relabels(), [[3, 'IEM 3']]);
+  h.socket.sent = [];
+  h.echo({ address: '/Aux_Outputs/3/Buss_Trim/name', args: ['IEM 3'] }); // re-sent on a snapshot recall
+  assert.deepEqual(relabels(), [], 'the same name again is not re-announced');
+  h.run("serverCfg.auxOverrides = { '3': { label: 'Vocal 1 - Sam' } }");
+  h.echo({ address: '/Aux_Outputs/3/Buss_Trim/name', args: ['AUX 3'] });
+  assert.deepEqual(relabels(), [[3, 'Vocal 1 - Sam']], 'the label wins over the desk name');
+});
+
 test('a snapshot restoring a muted channel is re-silenced ahead of queued recall writes, and keeps its place', () => {
   const h = serverHarness();
   h.echo({ address: level(1), args: [-12] });
@@ -722,6 +736,35 @@ test('phone faders: values arriving mid-drag wait, and the latest shows after th
   assert.equal(slider.value, 0.2, 'still held for a moment after release');
   clock.advance(400);
   assert.equal(slider.value, 0.21, 'then the latest value is shown');
+});
+
+test('monitor faders: values arriving mid-drag wait, and the latest shows after the hold', () => {
+  const clock = fakeClock();
+  let now = 0;
+  const realAdvance = clock.advance;
+  clock.advance = ms => { now += ms; realAdvance(ms); };
+  const context = vm.createContext({ ...clock, Date: { now: () => now }, console: quiet, WebSocket: { OPEN: 1 } });
+  vm.runInContext(read('src/mixer/monitor.js').split('// ── Boot')[0], context);
+  const fader = { value: '0.5', style: { setProperty() {} }, setAttribute() {} };
+  context.fader = fader;
+  vm.runInContext(`
+    channelEls.set('1-1', { fader, db: { textContent: '' } });
+    fader._resync = () => updateFaderEl(1, 1, levels[1][1]);
+  `, context);
+  const echo = db => vm.runInContext(`applySendLevel('/Input_Channels/1/Aux_Send/1/send_level', [${db}])`, context);
+  const slider = db => vm.runInContext(`dbToSlider(${db})`, context);
+  echo(-6);
+  assert.equal(fader.value, slider(-6), 'not held: shown straight away');
+  vm.runInContext('holdFader(fader)', context);
+  fader.value = slider(-30); // the engineer pulls it down
+  echo(0);                   // a late echo of the louder position
+  assert.equal(fader.value, slider(-30), 'a late echo must not overwrite the drag');
+  vm.runInContext('releaseFader(fader)', context);
+  echo(-29.5);               // the desk's echo of the final position
+  clock.advance(100);
+  assert.equal(fader.value, slider(-30), 'still held for a moment after release');
+  clock.advance(400);
+  assert.equal(fader.value, slider(-29.5), 'then the latest value is shown');
 });
 
 test('phone dialogs: the keypress that opens a dialog cannot answer it, and a second dialog cancels the first', async () => {

@@ -1195,18 +1195,11 @@ function onMessage(e) {
   // matched the row div by data-channel and overwrote the row above it.
   if (/^\/Input_Channels\/\d+\/Channel_Input\/name$/.test(address)) return;
 
-  // Aux name update
-  const auxNameMatch = address.match(/^\/Aux_Outputs\/(\d+)\/Buss_Trim\/name$/);
-  if (auxNameMatch) {
-    const aux = parseInt(auxNameMatch[1]);
-    // Update aux button in picker
-    const btn = document.querySelector(`.aux-btn[data-aux="${aux}"]`);
-    if (btn) btn.lastChild.nodeValue = args[0] || `AUX ${aux}`;
-    // Update topbar if this is selected aux
-    if (selectedAux === aux) {
-      document.getElementById('auxBarName').textContent = args[0] || `AUX ${aux}`;
-    }
-  }
+  // A desk aux rename arrives as `aux-relabeled` (the server applies any
+  // Settings or Planning Center label first). The raw name is ignored here:
+  // applying it showed the desk's "AUX 3" over the label.
+  if (/^\/Aux_Outputs\/\d+\/Buss_Trim\/name$/.test(address)) return;
+
 }
 
 // ── Apply config ──────────────────────────────────────────────────────────
@@ -1330,7 +1323,10 @@ function buildAux(options) {
       btn.appendChild(icon);
     }
 
-    btn.appendChild(document.createTextNode(opt.label || `AUX ${opt.channel}`));
+    const name = document.createElement('span');
+    name.className = 'aux-btn-name';
+    name.textContent = opt.label || `AUX ${opt.channel}`;
+    btn.appendChild(name);
     container.appendChild(btn);
   }
 }

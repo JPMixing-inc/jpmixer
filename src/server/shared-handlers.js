@@ -121,11 +121,13 @@ function pushDevicePresets(connections, deviceId) {
 // Center connector naming aux mixes after who's playing them). Updates the
 // backend's in-memory config, persists via config.updateOverride() (not the
 // full save-config path, which would restart the backend), and tells
-// connected pages so labels change with no reconnect. Same on every backend
-// apart from the default channel count.
-function relabel(serverCfg, kind, n, label, maxDefault, broadcastToClients) {
+// connected pages so labels change with no reconnect. JPMixer's own label
+// only: nothing is ever written to the console's channel or mix names.
+// `max` is how many channels/auxes exist: the count the console reports
+// when it reports one (DiGiCo, LV1), else Settings'. Preferring Settings'
+// number rejected renames of mixes the console had but Settings didn't.
+function relabel(serverCfg, kind, n, label, max, broadcastToClients) {
   const num = parseInt(n, 10);
-  const max = (kind === 'aux' ? serverCfg.auxes : serverCfg.channels) || maxDefault;
   if (!Number.isInteger(num) || num < 1 || num > max || typeof label !== 'string') return false;
   const key = kind === 'aux' ? 'auxOverrides' : 'channelOverrides';
   if (!serverCfg[key]) serverCfg[key] = {};

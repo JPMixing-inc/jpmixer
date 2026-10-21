@@ -23,6 +23,7 @@ let ws             = null;
 let chConfig       = [];  // [{channel, label, enabled, ...}]
 let auxConfig      = [];  // [{channel, label, colour, enabled, ...}]
 let cgConfig       = [];  // [{channel, label}]
+let channelProcessing = true; // false: no gain/EQ/dynamics panel on this console
 let consoleFaders  = {};  // ch → dB
 let consoleMutes   = {};  // ch → bool
 let consoleSolos   = {};  // ch → bool
@@ -107,6 +108,8 @@ function onMessage(json) {
       cgFaders      = {}; cgMutes      = {}; cgSolos      = {};
       send({ type: 'request-console-state' });
     }
+    // Consoles whose gain/EQ/dynamics this page can't open (LV1) leave the panel out
+    channelProcessing = json.config.channelProcessing !== false;
     chConfig  = json.config.channels || [];
     auxConfig = json.config.aux || [];
     cgConfig  = json.config.controlGroups || [];
@@ -471,10 +474,13 @@ function buildChStrip(ch) {
   openBtn.textContent = 'EQ';
   openBtn.setAttribute('aria-label', `Open ${ch.label || 'channel ' + ch.channel} processing: gain, EQ and dynamics`);
   const openPanel = () => window.channelPanel?.open(ch.channel, ch.label || `Ch ${ch.channel}`);
-  openBtn.addEventListener('click', openPanel);
-  name.addEventListener('click', openPanel);
+  if (channelProcessing) {
+    openBtn.addEventListener('click', openPanel);
+    name.addEventListener('click', openPanel);
+  }
 
-  strip.append(num, faderWrap, dbEl, btns, name, openBtn);
+  strip.append(num, faderWrap, dbEl, btns, name);
+  if (channelProcessing) strip.append(openBtn);
   return strip;
 }
 

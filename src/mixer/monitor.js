@@ -295,6 +295,36 @@ function applyActiveMixerCounts() {
   }
 }
 
+// ── Fader helpers (the same ones the phone mixer and Console Controller use) ─
+
+// Same 30ms send throttle as the phone's faders: an unthrottled drag sent a
+// desk message on every input event, and each came back as an echo
+function throttle(fn, ms) {
+  let last = 0, timer = null;
+  return (...args) => {
+    const now = Date.now();
+    const remaining = ms - (now - last);
+    clearTimeout(timer);
+    if (remaining <= 0) { last = now; fn(...args); }
+    else timer = setTimeout(() => { last = Date.now(); fn(...args); }, remaining);
+  };
+}
+
+// While a fader is held (and briefly after release), values arriving for it
+// wait: a desk echo of an older position used to yank the thumb back
+// mid-drag, and the release then re-sent that stale value. `levels` is kept
+// current meanwhile, and the fader is redrawn from it when the hold ends
+// (`_resync`, set per fader), so a real later move isn't lost.
+const ECHO_HOLD_MS = 400;
+function holdFader(fader)    { fader._held = true; clearTimeout(fader._resyncTimer); }
+function releaseFader(fader) {
+  fader._held = false;
+  fader._holdUntil = Date.now() + ECHO_HOLD_MS;
+  clearTimeout(fader._resyncTimer);
+  fader._resyncTimer = setTimeout(() => { if (!isFaderHeld(fader) && fader._resync) fader._resync(); }, ECHO_HOLD_MS + 20);
+}
+function isFaderHeld(fader)  { return !!fader._held || Date.now() < (fader._holdUntil || 0); }
+
 // ── Grid builder ──────────────────────────────────────────────────────────
 
 function buildGrid() {
@@ -478,6 +508,14 @@ function buildChannelRow(auxCh, ch) {
   fader.setAttribute('aria-label', `${ch.label || 'Channel ' + ch.channel} level in aux ${auxCh}`);
   fader.setAttribute('aria-valuetext', `${formatDb(currentVal)} dB`);
 
+  const sendLevel = () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+      address: `/Input_Channels/${ch.channel}/Aux_Send/${auxCh}/send_level`,
+      args: [sliderToDb(parseFloat(fader.value))]
+    }));
+  };
+  const sendLevelThrottled = throttle(sendLevel, 30); // as the phone and Console pages pace a drag
   fader.addEventListener('input', () => {
     const val = parseFloat(fader.value);
     fader.style.setProperty('--val', val);
@@ -485,13 +523,19 @@ function buildChannelRow(auxCh, ch) {
     fader.setAttribute('aria-valuetext', `${formatDb(val)} dB`);
     if (!levels[auxCh]) levels[auxCh] = {};
     levels[auxCh][ch.channel] = val;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        address: `/Input_Channels/${ch.channel}/Aux_Send/${auxCh}/send_level`,
-        args: [sliderToDb(val)]
-      }));
-    }
+    sendLevelThrottled();
   });
+  fader.addEventListener('change', sendLevel); // final position on release
+  // Held while a pointer is on it — see holdFader above. Capturing the
+  // pointer means the release reaches this fader even when it's let go off it.
+  fader.addEventListener('pointerdown', (e) => {
+    holdFader(fader);
+    try { fader.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  fader.addEventListener('pointerup',          () => releaseFader(fader));
+  fader.addEventListener('pointercancel',      () => releaseFader(fader));
+  fader.addEventListener('lostpointercapture', () => { if (fader._held) releaseFader(fader); });
+  fader._resync = () => { const v = (levels[auxCh] || {})[ch.channel]; if (v !== undefined) updateFaderEl(auxCh, ch.channel, v); };
 
   channelEls.set(`${auxCh}-${ch.channel}`, { fader, db: dbEl });
 
@@ -504,7 +548,7 @@ function buildChannelRow(auxCh, ch) {
 
 function updateFaderEl(aux, ch, val) {
   const els = channelEls.get(`${aux}-${ch}`);
-  if (!els) return;
+  if (!els || isFaderHeld(els.fader)) return; // shown once the hold ends (the fader's _resync)
   els.fader.value = val;
   els.fader.style.setProperty('--val', val);
   els.db.textContent = formatDb(val);

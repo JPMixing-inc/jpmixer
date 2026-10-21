@@ -142,6 +142,70 @@ function appendItemContent(container, it) {
   }
 }
 
+// Planning Center card: this service's plan and the next few, each opening
+// the plan on Planning Center (people sign in there as usual).
+let lastPlansKey = '';
+function showPlans(plan, upcoming, pcoHome) {
+  const body = document.getElementById('fhPlans');
+  if (!body) return;
+  body.removeAttribute('aria-busy');
+  const key = JSON.stringify([plan, upcoming]);
+  if (key === lastPlansKey) return;
+  lastPlansKey = key;
+  body.textContent = '';
+  if (!plan) { body.dataset.empty = 'No service plan to show yet.'; return; }
+  delete body.dataset.empty;
+  const link = (url, cls, text) => {
+    const a = document.createElement(url ? 'a' : 'span');
+    a.className = cls;
+    if (url) { a.href = url; a.target = '_blank'; a.rel = 'noopener'; }
+    a.textContent = text;
+    return a;
+  };
+  const current = document.createElement('div');
+  current.className = 'fh-plan-current';
+  const label = document.createElement('p');
+  label.className = 'fh-plan-label';
+  label.textContent = 'This service';
+  // The date leads: plans are often left untitled in Planning Center
+  const title = document.createElement('p');
+  title.className = 'fh-plan-title';
+  title.textContent = planDateLabel(plan.date) || 'Next service';
+  current.append(label, title);
+  // Series and title, when the plan has them
+  const sub = [plan.seriesTitle, plan.title].filter(Boolean).join(' · ');
+  if (sub) {
+    const meta = document.createElement('p');
+    meta.className = 'fh-plan-meta';
+    meta.textContent = sub;
+    current.append(meta);
+  }
+  if (plan.url) current.append(link(plan.url, 'fh-plan-open', 'Open in Planning Center ↗'));
+  body.appendChild(current);
+  if (upcoming && upcoming.length) {
+    const head = document.createElement('p');
+    head.className = 'fh-plan-label';
+    head.textContent = 'Coming up';
+    body.appendChild(head);
+    for (const p of upcoming) {
+      const row = link(p.url, 'fh-plan-row', '');
+      const t = document.createElement('span');
+      t.className = 'fh-plan-row-title';
+      t.textContent = planDateLabel(p.date);
+      row.append(t);
+      const detail = [p.seriesTitle, p.title].filter(Boolean).join(' · ');
+      if (detail) {
+        const d = document.createElement('span');
+        d.className = 'fh-plan-row-date';
+        d.textContent = detail;
+        row.append(d);
+      }
+      body.appendChild(row);
+    }
+  }
+  if (pcoHome) body.appendChild(link(pcoHome, 'fh-plan-all', 'All plans in Planning Center ↗'));
+}
+
 function showOrder(order) {
   const body = document.getElementById('fhOrder');
   body.removeAttribute('aria-busy');
@@ -270,6 +334,7 @@ async function refresh() {
       showOrder([]);
       showLiveItem(null);
       showLiveCard(null, null, null);
+      showPlans(null);
     } else {
       showEngineer(data.engineer);
       useLayoutFor(data.engineer);
@@ -282,6 +347,7 @@ async function refresh() {
       showOrder(data.order || []);
       showLiveItem(data.liveItem || null);
       showLiveCard(data.previousItem || null, data.liveItem || null, data.nextItem || null);
+      showPlans(data.plan || null, data.upcoming || [], data.pcoHome || null);
     }
     lastSuccess = new Date();
     setStatus('ready', 'Updated ' + lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));

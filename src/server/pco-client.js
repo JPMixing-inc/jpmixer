@@ -168,6 +168,14 @@ async function listPositions(serviceTypeId, creds) {
 // selected, even if the next plan is closer. One extra request, only when a
 // recent (under 36h) past plan and an upcoming plan both exist.
 const PAST_PLAN_WINDOW_MS = 36 * 60 * 60 * 1000;
+// A plan as the Home pages show it. planning_center_url is the plan's page on
+// Planning Center (CONFIRMED on a live account: services.planningcenteronline.com/plans/<id>).
+const PCO_WEB = 'https://services.planningcenteronline.com';
+function planEntry(d, date) {
+  const a = d.attributes || {};
+  const url = typeof a.planning_center_url === 'string' && a.planning_center_url.startsWith(PCO_WEB + '/') ? a.planning_center_url : null;
+  return { id: d.id, date, title: a.title || null, seriesTitle: a.series_title || null, url };
+}
 async function nextPlan(serviceTypeId, creds) {
   const now = Date.now();
   let url = `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans?order=-sort_date&per_page=25`;
@@ -184,7 +192,7 @@ async function nextPlan(serviceTypeId, creds) {
       const date = d.attributes && (d.attributes.sort_date || d.attributes.dates);
       const time = date ? new Date(date).getTime() : NaN;
       if (!Number.isFinite(time)) continue;
-      const entry = { id: d.id, date, title: (d.attributes && d.attributes.title) || null };
+      const entry = planEntry(d, date);
       const distance = Math.abs(time - now);
       if (distance < bestDistance) { best = entry; bestDistance = distance; }
       if (time <= now) {
@@ -217,6 +225,16 @@ async function nextPlan(serviceTypeId, creds) {
   }
   if (url) throw new Error('Planning Center plan search exceeded 50 pages; no current plan was reached.');
   return best;
+}
+
+// The next few plans after today, soonest first (CONFIRMED: filter=future
+// with order=sort_date works on a live account). For the Home pages'
+// Planning Center card.
+async function upcomingPlans(serviceTypeId, creds, count = 4) {
+  const json = await pcoFetch(`/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans?filter=future&order=sort_date&per_page=${Math.max(1, Math.min(10, count))}`, creds);
+  return (json.data || [])
+    .map(d => planEntry(d, d.attributes && (d.attributes.sort_date || d.attributes.dates)))
+    .filter(p => p.date);
 }
 
 // A Plan covering a full weekend (Saturday + Sunday, or any multi-day
@@ -428,9 +446,12 @@ const sharedCache = new Map(); // key -> { at, promise }
 function credsKey(creds) {
   return require('crypto').createHash('sha256').update(authHeader(creds && creds.appId, creds && creds.secret)).digest('hex');
 }
+// Credentials are hashed into the key wherever they sit in the argument list
+// (upcomingPlans takes a count after them); the secret itself is never a key
+const isCreds = (a) => !!a && typeof a === 'object' && ('appId' in a || 'secret' in a);
 function sharedCall(name, fn) {
   return (...args) => {
-    const key = name + ':' + JSON.stringify(args.map((a, i) => (i === args.length - 1 && a && typeof a === 'object') ? credsKey(a) : a));
+    const key = name + ':' + JSON.stringify(args.map(a => isCreds(a) ? credsKey(a) : a));
     const now = Date.now();
     const hit = sharedCache.get(key);
     if (hit && now - hit.at < SHARED_CACHE_MS) return hit.promise;
@@ -448,8 +469,9 @@ const shared = {
   listPositions: sharedCall('listPositions', listPositions),
   listPlanItems: sharedCall('listPlanItems', listPlanItems),
   resolveAutoDay: sharedCall('resolveAutoDay', resolveAutoDay),
+  upcomingPlans: sharedCall('upcomingPlans', upcomingPlans),
   getLiveItemId,
   clear: () => sharedCache.clear(), // tests
 };
 
-module.exports = { listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, resolveAutoDay, nextPlan, planTeamMembers, shared, USER_AGENT };
+module.exports = { listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, resolveAutoDay, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };

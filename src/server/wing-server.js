@@ -206,11 +206,11 @@ function fireSnapshot() { return false; } // no scene signal for WING — see fi
 // full rationale (Planning Center connector use case).
 // Live relabeling (Control API / Planning Center) — see shared-handlers.js
 function setChannelLabel(n, label) {
-  return shared.relabel(serverCfg, 'channel', n, label, 40, broadcastToClients);
+  return shared.relabel(serverCfg, 'channel', n, label, serverCfg.channels || 40, broadcastToClients);
 }
 
 function setAuxLabel(n, label) {
-  return shared.relabel(serverCfg, 'aux', n, label, 16, broadcastToClients);
+  return shared.relabel(serverCfg, 'aux', n, label, serverCfg.auxes || 16, broadcastToClients);
 }
 
 // Re-derives every configured channel's send.on state for this aux from the
@@ -366,7 +366,7 @@ function start(cfg) {
       if (msg.type === 'save-scene') {
         const key = (typeof msg.snapshot === 'string' && msg.snapshot) ? msg.snapshot : currentSnapshot;
         if (!key) return;
-        scenes.saveScene(key, msg.aux, msg.values);
+        if (!scenes.saveScene(key, msg.aux, msg.values)) return; // not a mix number, or no fader values
         broadcastToClients({ type: 'scene-saved', snapshot: key, aux: msg.aux });
         return;
       }

@@ -112,11 +112,19 @@ button:focus-visible { outline: 2px solid var(--jp-light); outline-offset: 4px; 
 #fhCardVisibilityList { position: absolute; z-index: 10; top: calc(100% + 8px); right: 0; width: 260px; max-width: calc(100vw - 48px); padding: 12px; background: var(--jp-card); border: 1px solid var(--jp-edge); border-radius: 10px; box-shadow: 0 12px 32px #0006; }
 #fhCardVisibilityList label { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 12px; cursor: pointer; }
 #fhCardVisibilityList input { width: 17px; height: 17px; accent-color: var(--accent); }
-.fh-dashboard { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; align-items: start; }
-.fh-layout-card { grid-column: span var(--fh-card-span, 4); min-width: 0; position: relative; }
-.fh-layout-card .fh-card-body { height: var(--fh-card-height, auto); max-height: var(--fh-card-height, 320px); }
+/* A free grid (foh-layout.js): 24 columns, 10 px rows. Each card is placed
+   with grid-column / grid-row and fills its area; its body scrolls. */
+.fh-dashboard { position: relative; display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); grid-auto-rows: 10px; column-gap: 20px; row-gap: 0; align-items: stretch; }
+.fh-layout-card { min-width: 0; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.fh-layout-card .fh-card-body { flex: 1; min-height: 0; height: auto; max-height: none; overflow-y: auto; }
 .fh-shortcut { display: flex; flex-direction: column; }
-.fh-shortcut .fh-nav-card { flex: 1; min-height: var(--fh-shortcut-height, 190px); }
+.fh-shortcut .fh-nav-card { flex: 1; min-height: 0; }
+.fh-drop-slot { z-index: 0; border: 2px dashed var(--accent); border-radius: 14px; background: rgba(var(--jp-accent-rgb), .06); pointer-events: none; }
+.fh-drop-slot[hidden] { display: none; }
+.fh-editing .fh-layout-card { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.fh-editing .fh-layout-card select, .fh-editing .fh-layout-card input { cursor: auto; touch-action: auto; }
+.fh-gesture-source { z-index: 5; box-shadow: 0 18px 48px #000a; opacity: .92; }
+.fh-dragging .fh-gesture-source { transition: none; }
 .fh-card-editor { display: none; flex-direction: column; gap: 12px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--jp-edge); }
 .fh-editing .fh-card-editor { display: flex; }
 .fh-editing .fh-shortcut { border: 1px solid var(--jp-edge); border-radius: 14px; overflow: hidden; }
@@ -129,24 +137,21 @@ button:focus-visible { outline: 2px solid var(--jp-light); outline-offset: 4px; 
 .fh-editor-size { display: flex; gap: 10px; }
 .fh-editor-size label { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 7px; font-size: 10px; color: var(--jp-label); }
 .fh-editor-size select { width: 100%; min-width: 0; min-height: 36px; border: 1px solid var(--jp-edge); border-radius: 6px; padding: 6px; background: var(--jp-deep); color: var(--text); font: inherit; font-size: 11px; }
-.fh-editing .fh-card-hidden { border-style: dashed; opacity: .65; }
-.fh-hidden-note { display: none; font-size: 10px; color: var(--jp-label); margin-bottom: 12px; }
-.fh-editing .fh-card-hidden .fh-hidden-note { display: block; }
-.fh-editing .fh-card-hidden .fh-card-body { display: none; }
 .fh-layout-empty { padding: 36px 20px; border: 1px dashed var(--jp-edge); border-radius: 12px; color: var(--jp-secondary); font-size: 13px; line-height: 1.7; }
-.fh-drag-source { opacity: .35 !important; }
-.fh-drop-before { outline: 2px solid var(--accent); outline-offset: 4px; }
-.fh-drag-ghost { position: fixed; z-index: 1000; pointer-events: none; padding: 16px 20px; max-width: 260px; border: 1px solid var(--accent); border-radius: 10px; background: var(--jp-card); box-shadow: 0 10px 30px #0008; color: var(--text); font-size: 13px; }
 .fh-dragging, .fh-dragging * { cursor: grabbing !important; }
 .fh-card-editor button:disabled { cursor: default; }
 .fh-card-editor select:focus-visible, #fhCardVisibility summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 700px) {
-  .fh-dashboard { grid-template-columns: minmax(0, 1fr); }
-  .fh-layout-card { grid-column: 1; }
+  /* Phones: one column, top to bottom in the layout's order */
+  .fh-dashboard { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; row-gap: 16px; }
+  .fh-layout-card { grid-column: 1; grid-row: auto; overflow: visible; }
+  .fh-layout-card .fh-card-body { flex: none; max-height: 240px; }
+  .fh-layout-card .fh-card-body.fh-plans, .fh-layout-card .fh-companion { max-height: none; }
+  .fh-shortcut .fh-nav-card { min-height: 160px; }
   .fh-layout-phone-hint { display: inline; }
-  .fh-layout-card .fh-card-body { max-height: var(--fh-card-height, 240px); }
   .fh-layout-actions { width: 100%; }
-  .fh-editor-size .fh-width-field { display: none; }
+  .fh-editor-size { display: none; }
+  .fh-editing .fh-layout-card { cursor: auto; touch-action: auto; user-select: auto; -webkit-user-select: auto; }
 }
 @media (pointer: coarse) {
   .fh-editor-buttons button, .fh-editor-size select { min-height: 44px; }
@@ -162,11 +167,8 @@ button:focus-visible { outline: 2px solid var(--jp-light); outline-offset: 4px; 
 .fh-resize-handle { position: absolute; right: 5px; bottom: 5px; z-index: 2; width: 36px; height: 36px; min-height: 36px; padding: 0; border-color: var(--jp-muted); color: var(--jp-label); background: var(--jp-card); cursor: nwse-resize; touch-action: none; font-size: 22px; user-select: none; -webkit-user-select: none; }
 .fh-editing .fh-card { padding-bottom: 46px; }
 .fh-editing .fh-shortcut .fh-nav-card { padding-bottom: 48px; }
-.fh-resize-source { outline: 1px solid var(--accent); outline-offset: 3px; }
-.fh-resize-preview { position: fixed; z-index: 1000; pointer-events: none; border: 2px dashed var(--accent); border-radius: 14px; background: rgba(var(--jp-accent-rgb), .06); }
-.fh-resize-preview > span { position: absolute; top: 8px; left: 8px; max-width: calc(100% - 16px); padding: 9px 12px; border-radius: 6px; background: var(--jp-card); border: 1px solid var(--accent); color: var(--text); font-size: 12px; }
 .fh-resizing, .fh-resizing * { cursor: nwse-resize !important; }
-@media (max-width: 700px) { .fh-resize-handle, .fh-resizing, .fh-resizing * { cursor: ns-resize !important; } }
+@media (max-width: 700px) { .fh-resize-handle { display: none; } }
 @media (pointer: coarse) { .fh-resize-handle { width: 44px; height: 44px; } }
 
 .fh-card-body { overflow-x: hidden; }
@@ -217,3 +219,37 @@ body.fh-locked .fh-main > :not(.fh-lock), body.fh-locked .fh-header-actions { di
 .fh-companion-key.is-down { transform: scale(.94); filter: brightness(1.25); }
 .fh-companion-key:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 700px) { .fh-companion-grid { gap: 4px; } .fh-companion-key { border-radius: 6px; } }
+
+/* Planning Center card (foh.js showPlans) */
+.fh-plans { display: flex; flex-direction: column; gap: 8px; padding-bottom: 14px; }
+.fh-plan-current { display: flex; flex-direction: column; gap: 4px; padding: 14px; border: 1px solid var(--jp-line); border-radius: 10px; background: rgba(var(--jp-accent-rgb), .06); }
+.fh-plan-label { color: var(--accent); font-size: 10px; font-weight: 650; letter-spacing: 1.2px; text-transform: uppercase; }
+.fh-plans > .fh-plan-label { margin-top: 8px; }
+.fh-plan-title { font-size: 16px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.fh-plan-meta { font-size: 12px; color: var(--jp-secondary); }
+.fh-plan-open { align-self: flex-start; margin-top: 8px; padding: 8px 14px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; text-decoration: none; }
+.fh-plan-open:hover { filter: brightness(1.1); }
+.fh-plan-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--jp-line); color: var(--text); text-decoration: none; }
+a.fh-plan-row:hover .fh-plan-row-title { color: var(--accent); }
+.fh-plan-row-title { font-size: 13px; font-weight: 550; min-width: 0; overflow-wrap: anywhere; }
+.fh-plan-row-date { font-size: 11px; color: var(--jp-secondary); flex-shrink: 0; white-space: nowrap; }
+.fh-plan-all { align-self: flex-start; margin-top: 6px; color: var(--jp-label); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.fh-plan-all:hover { color: var(--text); }
+
+/* Arrange mode: one compact toolbar per card (move · width · height · hide),
+   so a card shows as much of itself as possible while arranging */
+.fh-editing .fh-card-editor { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 12px; }
+.fh-card-editor .fh-editor-buttons { display: contents; }
+.fh-card-editor .fh-drag-handle { order: 0; margin-right: 0; }
+.fh-card-editor .fh-editor-size { order: 1; flex: 1; min-width: 150px; gap: 6px; }
+.fh-card-editor .fh-editor-buttons > button:not(.fh-drag-handle) { order: 2; }
+.fh-card-editor .fh-editor-size label { gap: 0; font-size: 0; }
+.fh-card-editor .fh-editor-size select { min-height: 34px; font-size: 11px; }
+
+/* While arranging, nothing inside a card scrolls or takes the touch, so a
+   drag that starts over a list can't be taken over by the browser (iPad) */
+@media (min-width: 701px) {
+  .fh-editing .fh-layout-card .fh-card-body { overflow: hidden; }
+  .fh-editing .fh-layout-card * { touch-action: none; }
+  .fh-editing .fh-layout-card select, .fh-editing .fh-layout-card input { touch-action: manipulation; }
+}

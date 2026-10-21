@@ -113,6 +113,7 @@ const fields = {
   klangIp:          { el: $('klangIp'),          key: 'klangIp',          parse: String },
   klangPort:        { el: $('klangPort'),        key: 'klangPort',        parse: Number },
   wingPort:         { el: $('wingPort'),         key: 'wingPort',         parse: Number },
+  lv1Port:          { el: $('lv1Port'),          key: 'lv1Port',          parse: Number },
   apiPort:          { el: $('apiPort'),          key: 'apiPort',          parse: Number },
   apiToken:         { el: $('apiToken'),          key: 'apiToken',        parse: String },
   pcoAppId:         { el: $('pcoAppId'),          key: 'pcoAppId',        parse: v => String(v).trim() },
@@ -133,15 +134,17 @@ function updateConsoleTypeFields() {
   const isDlive = consoleType === 'dlive';
   const isKlang = consoleType === 'klang';
   const isWing  = consoleType === 'wing';
+  const isLv1   = consoleType === 'lv1';
   isDliveType = isDlive;
-  isConsoleControllerUnsupported = isDlive || isKlang || isWing;
+  isConsoleControllerUnsupported = isDlive || isKlang || isWing; // LV1 has one
 
-  $('digicoPortsRow').style.display = (isDlive || isKlang || isWing) ? 'none' : '';
+  $('digicoPortsRow').style.display = (isDlive || isKlang || isWing || isLv1) ? 'none' : '';
   // Only the DiGiCo Console Controller has Control Groups
-  $('groupsField').style.display = (isDlive || isKlang || isWing) ? 'none' : '';
+  $('groupsField').style.display = (isDlive || isKlang || isWing || isLv1) ? 'none' : '';
   $('klangIpRow').style.display     = isKlang ? '' : 'none';
   $('klangFieldsRow').style.display = isKlang ? '' : 'none';
   $('wingFieldsRow').style.display  = isWing ? '' : 'none';
+  $('lv1FieldsRow').style.display   = isLv1 ? '' : 'none';
   // WING is self-contained (reuses Console IP Address directly, like plain
   // dLive) — it never touches the dLive-specific fields block at all.
   $('dliveFieldsRow').style.display = (isDlive || isKlang) ? '' : 'none';
@@ -149,7 +152,8 @@ function updateConsoleTypeFields() {
   $('dliveWarningText').textContent = isKlang
     ? 'When set, this must point at the same console — under Utility → Control → MIDI — that KLANG is paired with.'
     : '⚠️ dLive support is new and hasn’t been validated on real hardware yet. Aux send levels, mute, and scene recall work; per-send pan, EQ, and the Console Controller are not implemented for dLive.';
-  $('deskIpLabel').textContent = isKlang ? 'dLive Console IP Address (optional)' : 'Console IP Address';
+  $('deskIpLabel').textContent = isKlang ? 'dLive Console IP Address (optional)' : isLv1 ? 'LV1 Computer IP Address' : 'Console IP Address';
+  $('deskIp').placeholder = isLv1 ? 'Blank = find LV1 on the network' : '192.168.1.100';
 
   // dLive's protocol has a hard ceiling — 128 input channels, 62 mono aux
   // sends (this integration doesn't use the separate stereo-aux pool). The
@@ -167,10 +171,12 @@ function updateConsoleTypeFields() {
 $('consoleType').addEventListener('change', updateConsoleTypeFields);
 $('dliveTlsEnabled').addEventListener('change', updateConsoleTypeFields);
 
-$('wingPort').addEventListener('change', () => {
-  const raw = Number($('wingPort').value) || 0;
-  $('wingPort').value = (raw === 0) ? 0 : Math.max(1, Math.min(65535, raw));
-});
+for (const id of ['wingPort', 'lv1Port']) {
+  $(id).addEventListener('change', () => {
+    const raw = Number($(id).value) || 0;
+    $(id).value = (raw === 0) ? 0 : Math.max(1, Math.min(65535, raw));
+  });
+}
 
 // ── External Control API ────────────────────────────────────────────────
 
@@ -507,7 +513,7 @@ $('pcoSyncNowBtn').addEventListener('click', async () => {
   // toggle, and shouldn't need a separate "Refresh Positions" click.
   refreshPcoPositions();
   if (!$('pcoUpdateAuxNames').checked) {
-    $('pcoSyncStatus').textContent = 'Aux channel renaming is turned off above — nothing to sync. The Green Room display already updates on its own.';
+    $('pcoSyncStatus').textContent = 'Performer names on aux mixes are turned off above, so there’s nothing to sync. The Green Room and production Home pages update on their own.';
     $('pcoSyncResults').innerHTML = '';
     return;
   }
@@ -654,13 +660,18 @@ function renderAuxes() {
   // setting) — disable the toggle so it doesn't look like a live control
   // that silently does nothing.
   const consoleType = $('consoleType').value;
-  const eqDisabled = consoleType === 'dlive' || consoleType === 'klang' || consoleType === 'wing';
+  const eqDisabled = ['dlive', 'klang', 'wing', 'lv1'].includes(consoleType);
+  // LV1 leaves the EQ column out entirely for now (its remote doesn't reach
+  // the EQ plug-ins most shows use); the others show it switched off
+  const eqHidden = consoleType === 'lv1';
+  list.classList.toggle('no-eq', eqHidden);
+  $('auxKeyEq').hidden = eqHidden;
 
   // Column headings once, at the top of the list
   const head = document.createElement('div');
   head.className = 'aux-row aux-row-head';
   head.setAttribute('role', 'row');
-  head.innerHTML = '<span role="columnheader">#</span><span role="columnheader">Color</span><span role="columnheader">Mix</span><span role="columnheader">Show</span><span role="columnheader">EQ</span><span role="columnheader">Link only</span>';
+  head.innerHTML = '<span role="columnheader">#</span><span role="columnheader">Color</span><span role="columnheader">Mix</span><span role="columnheader">Show</span>' + (eqHidden ? '' : '<span role="columnheader">EQ</span>') + '<span role="columnheader">Link only</span>';
   list.appendChild(head);
   $('auxKeyGroups').hidden = !channelGroups.length;
 
@@ -687,7 +698,7 @@ function renderAuxes() {
         <span class="aux-badges">${linkOnly ? '<span class="aux-badge">Link only</span>' : ''}${enabled ? '' : '<span class="aux-badge muted">Hidden</span>'}</span>
       </span>
       <span role="cell"><input type="checkbox" class="toggle aux-enabled" data-aux="${i}" ${enabled ? 'checked' : ''} title="Listed in the performer mix picker" aria-label="Show aux ${i}" /></span>
-      <span role="cell"><input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} ${eqDisabled ? 'disabled' : ''} title="${eqTitle}" aria-label="Allow EQ for aux ${i}" /></span>
+      ${eqHidden ? '' : `<span role="cell"><input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} ${eqDisabled ? 'disabled' : ''} title="${eqTitle}" aria-label="Allow EQ for aux ${i}" /></span>`}
       <span role="cell"><input type="checkbox" class="toggle aux-link-only" data-aux="${i}" ${linkOnly ? 'checked' : ''} title="Hidden from the picker; open it with its direct link" aria-label="Direct link only for aux ${i}" /></span>
     `;
     // Which channel groups this mix's phones open to (Channels tab groups).
@@ -1334,6 +1345,9 @@ function collectConfig() {
   if (out.wingPort !== 0 && (!Number.isInteger(out.wingPort) || out.wingPort < 1 || out.wingPort > 65535)) {
     out.wingPort = 0; // 0 = use the documented default port (2223)
   }
+  if (out.lv1Port !== 0 && (!Number.isInteger(out.lv1Port) || out.lv1Port < 1 || out.lv1Port > 65535)) {
+    out.lv1Port = 0; // 0 = find LV1's port
+  }
   if (out.apiPort !== undefined && (!Number.isInteger(out.apiPort) || out.apiPort < 1 || out.apiPort > 65535)) {
     out.apiPort = 9096; // documented default
   }
@@ -1937,9 +1951,10 @@ $('saveBtn').addEventListener('click', async () => {
     setTimeout(() => { $('saveBtn').textContent = 'Save & Apply'; }, 2000);
     return;
   }
-  // This is now the baseline for the next save
+  // This is now the baseline for the next save. Turning performer names off
+  // takes them off the mixes on save, so pick up the names they have now.
   channelOverrides = out.channelOverrides;
-  auxOverrides     = out.auxOverrides;
+  auxOverrides     = result.auxNamesCleared ? ((await window.jpm.getConfig()).auxOverrides || {}) : out.auxOverrides;
   loadedOverrides  = JSON.parse(JSON.stringify({ channel: channelOverrides, aux: auxOverrides }));
   pcoSavedServiceTypeId = out.pcoServiceTypeId;
   pcoSavedTeamId        = out.pcoTeamId;
@@ -1954,6 +1969,7 @@ $('saveBtn').addEventListener('click', async () => {
   if (result.loginItem && !result.loginItem.ok && !result.loginItem.needsApproval) $('openAtLogin').checked = !$('openAtLogin').checked;
   // Most changes now apply live; say when phones were disconnected by a restart
   $('saveBtn').textContent = result.restarted ? 'Saved — server restarted' : 'Saved!';
+  if (result.auxNamesCleared) $('pcoSyncStatus').textContent = `Took performer names off ${result.auxNamesCleared} aux ${result.auxNamesCleared === 1 ? 'mix' : 'mixes'}.`;
   refreshPort80Status(); // a server-port change can stop the helper matching
   setTimeout(() => {
     $('saveBtn').textContent = 'Save & Apply';

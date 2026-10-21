@@ -120,6 +120,7 @@
             <option value="dlive">Allen &amp; Heath dLive</option>
             <option value="klang">KLANG (paired with dLive)</option>
             <option value="wing">Behringer WING</option>
+            <option value="lv1">Waves eMotion LV1</option>
           </select>
         </div>
 
@@ -180,6 +181,16 @@
             <input type="number" id="wingPort" min="0" max="65535" placeholder="Leave 0 for default (2223)" />
           </div>
           <div class="sub">Leave at 0 to use the documented default OSC port. WING confirms it's actually reachable with a real round trip on connect, unlike dLive/KLANG — the Console status pill above reflects that directly.</div>
+        </div>
+
+        <div class="settings-stack" id="lv1FieldsRow" style="display:none">
+          <div class="sub">⚠️ LV1 support is brand new and has only been tested against an LV1 show, not yet during a live service. Aux send levels, mute, solo, per-send pan, live channel and mix names, Ear Scenes (by LV1 scene name) and the Console Controller (channel, aux and DCA faders, mutes and solos) work; its ‹ › scene buttons haven’t been confirmed on a real LV1 yet, and built-in EQ and the channel processing panel are not implemented.</div>
+          <details class="settings-help"><summary>Switch on LV1’s MyMon remote</summary><div class="settings-help-body"><div class="sub">JPMixer connects the same way Waves’ MyMon and MyFOH apps do. In LV1, switch on the MyMon / MyFOH remote. JPMixer then finds LV1 on the network by itself, the way the MyMon app does, and reads channel and mix names and counts from the LV1 show. Leave LV1 Computer IP Address blank to use the LV1 it finds (this computer’s first). Enter the LV1 computer’s address when it’s on a different network from this one (LV1’s announcements don’t cross routers; JPMixer then finds LV1 by checking that computer directly, which can take up to half a minute after LV1 starts), or when more than one LV1 is on the network.</div></div></details>
+          <div class="field-row">
+            <label for="lv1Port">LV1 Remote Port</label>
+            <input type="number" id="lv1Port" min="0" max="65535" placeholder="Leave 0 to find it" />
+          </div>
+          <div class="sub">LV1 picks a new port each time it starts and announces it on the network. Leave this at 0.</div>
         </div>
 
         <div class="settings-stack" id="dliveFieldsRow" style="display:none">
@@ -302,7 +313,7 @@
         <div class="settings-heading"><h2>Mixes</h2><p class="sub">Names come from the console. Pick a color for each mix's button and what performers can do with it.</p></div>
         <dl class="aux-key">
           <div><dt>Show</dt><dd>Listed in the performer mix picker</dd></div>
-          <div><dt>EQ</dt><dd>Performers can adjust this mix's EQ</dd></div>
+          <div id="auxKeyEq"><dt>EQ</dt><dd>Performers can adjust this mix's EQ</dd></div>
           <div><dt>Link only</dt><dd>Hidden from the picker; open it with its direct link below</dd></div>
           <div class="aux-key-groups" id="auxKeyGroups" hidden><dt>Opens to</dt><dd>The channel groups phones start on. Performers can still tap All.</dd></div>
         </dl>
@@ -574,8 +585,8 @@
 
       <section class="card pco-card" id="pco-sync" aria-labelledby="pcoSyncHeading">
         <div class="pco-section-heading"><div><h2 id="pcoSyncHeading">Sync aux names</h2><p class="sub">Use scheduled names to identify each performer’s mix.</p></div></div>
-        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoUpdateAuxNames">Rename aux channels when syncing</label><p class="sub">Turn off to use the room displays without changing aux names.</p></div><input type="checkbox" id="pcoUpdateAuxNames" class="toggle" /></div>
-        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoPhoneAssignments">Assign phones by Planning Center performer</label><p class="sub">Performers choose their name once. JPMixer selects their mapped aux and keeps My Mixes under their Planning Center identity, so a changed device ID can recover them. If browser data is cleared, choose the name again.</p><p class="sub" id="pcoPhoneAssignmentsNote" hidden>Turn on aux renaming above to use this.</p></div><input type="checkbox" id="pcoPhoneAssignments" class="toggle" /></div>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoUpdateAuxNames">Show performer names on aux mixes</label><p class="sub">Names each mix after who’s scheduled on it, like “Vocal 1 - Sam”, on the aux picker and in Settings. Turn off to keep the mixes’ own names; names already added come off when you save. Planning Center still runs the Green Room and the production Home pages either way.</p></div><input type="checkbox" id="pcoUpdateAuxNames" class="toggle" /></div>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoPhoneAssignments">Assign phones by Planning Center performer</label><p class="sub">Performers choose their name once. JPMixer selects their mapped aux and keeps My Mixes under their Planning Center identity, so a changed device ID can recover them. If browser data is cleared, choose the name again.</p><p class="sub" id="pcoPhoneAssignmentsNote" hidden>Turn on performer names above to use this.</p></div><input type="checkbox" id="pcoPhoneAssignments" class="toggle" /></div>
         <p class="sub">When enabled, names update at startup and after Save &amp; Apply. Sync Now applies the current mappings immediately. Unmapped positions are listed in the results.</p>
         <div class="pco-sync-action"><p class="sub" id="pcoSyncStatus" role="status"></p><button type="button" class="btn btn-primary" id="pcoSyncNowBtn">Sync Now</button></div>
         <div id="pcoSyncResults" aria-live="polite"></div>
@@ -720,7 +731,7 @@
   </main>
 
   <footer>
-    <div class="footer-meta"><span class="version">v2.0.0</span><span>Changes apply when you save.</span></div>
+    <div class="footer-meta"><span class="version">v2.0.5</span><span>Changes apply when you save.</span></div>
     <button class="btn btn-primary" id="saveBtn">Save &amp; Apply</button>
   </footer>
 
