@@ -129,11 +129,16 @@ const pcStatus        = (midiCh) => 0xC0 | midiCh;
 // found only by cross-checking against a real independent implementation
 // (bitfocus/companion-module-allenheath-dlive-ilive). It's a CC pair, not
 // NRPN or SysEx like everything else here: select-channel on CC 0x73, then
-// on/off (0x7F/0x00) as the value on CC 0x26. Not needed for the musician
-// mixer (mute/solo there is emulated by zeroing the send level, same as
-// DiGiCo), but real Solo would matter for a future Console Controller:
-//   buildSolo(midiCh, ch, on) would be
-//   [ccStatus(midiCh), 0x73, ch, ccStatus(midiCh), 0x26, on ? 0x7F : 0x00]
+// on/off (0x7F/0x00) as the value on CC 0x26. Confirmed against dLive
+// Director 2.12 offline (2026-10-21): it solos the channel, and the console
+// sends the same pair to its other controllers. There's no way to ask for
+// the current solo state. Used by the Console Controller (the desk's own
+// solo); the musician mixer's per-mix solo zeroes sends instead, as on DiGiCo.
+const SOLO = { SELECT: 0x73, VALUE: 0x26 };
+function buildSoloSet(midiCh, ch, on) {
+  const s = ccStatus(midiCh);
+  return [s, SOLO.SELECT, ch, s, SOLO.VALUE, on ? 0x7F : 0x00];
+}
 
 // ── Message builders (writer side — always emits full status bytes; the
 // spec's running-status examples are an optimization for the *sender*, not
@@ -390,7 +395,7 @@ function buildTlsAuthMessage(userProfile, password) {
 }
 
 module.exports = {
-  SYSEX_HEADER, SYSEX_END, PARAM, COLOURS,
+  SYSEX_HEADER, SYSEX_END, PARAM, COLOURS, SOLO, buildSoloSet,
   coordinate, dbToLv, lvToDb, nearestColourIndex,
   buildFaderSet, buildFaderGet, buildMuteOn, buildMuteOff, buildMuteGet,
   buildSendLevelSet, buildSendLevelGet, buildNameSet, buildNameGet,

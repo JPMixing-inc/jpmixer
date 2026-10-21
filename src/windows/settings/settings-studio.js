@@ -4,11 +4,12 @@
 // navigation, IPC, and server lifecycle.
 (() => {
   const pages = {
-    general: ['General', 'The web server, and what JPMixer does when this computer starts.'],
-    console: ['Console', 'Choose your console, connect to it, and set snapshot behavior.'],
+    start: ['Get started', 'The address phones connect to, and each part of setting JPMixer up, in order.'],
+    general: ['General', 'What JPMixer does when this computer starts, and while the server runs.'],
+    console: ['Console', 'Choose your console and connect to it.'],
     channels: ['Channels', 'Rename, group, show or hide channels. Drag rows to change their order.'],
     auxes: ['Aux mixes', 'Set mix names, colors, and what performers can do with each.'],
-    performers: ['Performers', 'What performers see on their phones, and their saved My Mixes.'],
+    performers: ['Performers', 'Ear Scenes, what performers see on their phones, and their saved My Mixes.'],
     views: ['Pages', 'Every page JPMixer serves, with each Home page’s own setup.'],
     branding: ['Branding', 'Your logo and accent color on the pages JPMixer serves.'],
     pco: ['Planning Center', 'Connect your schedule and map team positions to mixes.'],

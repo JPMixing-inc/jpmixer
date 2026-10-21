@@ -71,6 +71,27 @@ function recordSync(entries) {
   save();
 }
 
+// After a sync: mixes Planning Center had named that nobody is scheduled on
+// any more (taken off the plan, declined, or the next service has different
+// people) go back to the name they had, in one settings write. A mix whose
+// name someone has typed since is left alone and forgotten. `scheduled` is
+// the set of aux numbers (as strings) this sync named. Returns the auxes
+// it changed.
+function releaseUnscheduled(scheduled) {
+  const recs = load();
+  const overrides = config.get('auxOverrides') || {};
+  const patches = {}, changed = [];
+  let forgot = false;
+  for (const [n, rec] of Object.entries(recs)) {
+    if (scheduled.has(n)) continue;
+    if ((overrides[n] || {}).label === rec.label) { patches[n] = { label: rec.before }; changed.push(Number(n)); }
+    delete recs[n]; forgot = true;
+  }
+  if (changed.length) config.updateOverrides('aux', patches);
+  if (forgot) save();
+  return changed;
+}
+
 // Puts every aux that still shows a performer name back to the name it had
 // before (or the console's own name), in one settings write. Returns the
 // auxes it changed. Safe to run on every save with names off: a mix whose
@@ -97,4 +118,4 @@ function clear() {
   return changed;
 }
 
-module.exports = { isPcoLabel, beforeSync, recordSync, clear, _reset: () => { records = null; legacy = false; } };
+module.exports = { isPcoLabel, beforeSync, recordSync, releaseUnscheduled, clear, _reset: () => { records = null; legacy = false; } };

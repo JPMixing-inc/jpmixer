@@ -81,6 +81,11 @@ const DEFAULTS = {
                            // explicitly. Narrows both the Green Room display and Sync Now's aux
                            // labeling — for a weekend plan with multiple PlanTimes. See pco-client.js.
   pcoPositionMapping: {}, // { "PCO position name": auxNumber }
+  // An optional second service (a Wednesday night, another event) that takes
+  // over on a day it has a plan and the main one doesn't — see pco-services.js.
+  // { enabled, serviceTypeId, teamId, positionMapping: { position: aux, 0 = not
+  // on a mix }, roles: { foh|propresenter|lighting|switcher: { team, position } } }
+  pcoAlt: { enabled: false, serviceTypeId: '', teamId: '', positionMapping: {}, roles: {} },
   pcoIncludeUnconfirmed: false,
   pcoGreenRoomHidden: [], // PCO position names to exclude from the Green Room display; empty = show everyone
   pcoPhoneAssignments: false, // opt-in person identity and automatic phone aux selection

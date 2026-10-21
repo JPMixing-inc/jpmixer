@@ -349,7 +349,7 @@ app.whenReady().then(async () => {
   createTray();
 
   if (config.get('autoStart')) {
-    startServer();
+    startServer({ atLaunch: true });
   }
   if (splash) splash.done();
   startupDone = true;
@@ -475,7 +475,7 @@ function sceneKeySchemeFor(consoleType) {
   return ['dlive', 'klang', 'wing'].includes(consoleType) ? 'number' : 'name';
 }
 
-function startServer({ pcoSync = true } = {}) {
+function startServer({ pcoSync = true, atLaunch = false } = {}) {
   // Start while already running, or while a stop is still closing sockets
   // (e.g. tray Start during a Save & Apply restart), bound the ports twice;
   // the second bind's error then stopped the first server too.
@@ -525,7 +525,13 @@ function startServer({ pcoSync = true } = {}) {
     // Apply restart that didn't touch Planning Center settings — otherwise
     // it overwrote aux names the engineer had just edited (dLive/KLANG/WING
     // restart on every save).
-    if (pcoSync) autoSyncPlanningCenter().catch((err) => console.error('[JPMixer/PCO] auto-sync error:', err));
+    // At launch the first sync waits PCO_LAUNCH_SYNC_MS, so the app has
+    // settled (network up, console connecting) before it runs.
+    if (atLaunch) startPcoAutoSync({ firstInMs: PCO_LAUNCH_SYNC_MS });
+    else {
+      if (pcoSync) autoSyncPlanningCenter().catch((err) => console.error('[JPMixer/PCO] auto-sync error:', err));
+      startPcoAutoSync();
+    }
   } catch (err) {
     console.error('Server start failed:', err);
     serverRunning = false;
@@ -543,6 +549,7 @@ function startServer({ pcoSync = true } = {}) {
 // again on the same ports
 async function stopServer() {
   if (!server) return;
+  stopPcoAutoSync();
   const closed = Promise.resolve(server.stop());
   serverStopping = closed;
   serverRunning = false;
@@ -951,7 +958,7 @@ const RESTART_KEYS = [
 // What the aux-name sync reads. The Team filter and the Green Room's hidden
 // positions only shape the Green Room display, which reads Planning Center
 // itself on each load — changing them shouldn't re-run a rename.
-const PCO_KEYS = ['pcoAppId', 'pcoSecret', 'pcoServiceTypeId', 'pcoPositionMapping', 'pcoIncludeUnconfirmed', 'pcoDay', 'pcoUpdateAuxNames'];
+const PCO_KEYS = ['pcoAppId', 'pcoSecret', 'pcoServiceTypeId', 'pcoPositionMapping', 'pcoIncludeUnconfirmed', 'pcoDay', 'pcoUpdateAuxNames', 'pcoAlt'];
 
 function needsRestart(prev, next) {
   if (RESTART_KEYS.some(k => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))) return true;
@@ -1086,10 +1093,18 @@ ipcMain.handle('pco-list-positions', async (_, serviceTypeId, creds) => {
 // (fired automatically when the console backend starts, see startServer())
 // — one implementation either way applies to.
 const pcoAuxNames = require('./src/server/pco-aux-names');
-async function runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, creds, automatic = false }) {
+const pcoServices = require('./src/server/pco-services');
+// serviceTypeId/mapping/day are the main service's, `alt` the second
+// service's settings (pcoAlt); Sync Now passes them before they're saved.
+// Whichever service runs today is synced — see pco-services.js.
+async function runPcoSync({ serviceTypeId: mainTypeId, mapping: mainMapping, includeUnconfirmed, day: mainDay, alt = config.get('pcoAlt'), creds, automatic = false }) {
   try {
-    const plan = await pcoClient.nextPlan(serviceTypeId, creds);
+    const { service, plan } = await pcoServices.activeService(pcoClient, creds, {
+      ...config.getAll(), pcoServiceTypeId: mainTypeId, pcoPositionMapping: mainMapping, pcoDay: mainDay, pcoAlt: alt,
+    });
     if (!plan) return { ok: false, error: 'No upcoming plan found for this Service Type.' };
+    const { serviceTypeId, mapping, day } = service;
+    const offMix = new Set(service.offMix.map(p => p.toLowerCase())); // "Not on a mix" on the second service
 
     // "auto" resolves against this plan's own PlanTimes (whichever is
     // closest to right now) rather than literally today's calendar date —
@@ -1121,19 +1136,26 @@ async function runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, cre
       if (!m.positionName) continue;
       const auxNum = lookupAux(mapping, m.positionName);
       if (auxNum === undefined) {
-        if (!unmapped.includes(m.positionName)) unmapped.push(m.positionName);
+        if (!offMix.has(m.positionName.toLowerCase()) && !unmapped.includes(m.positionName)) unmapped.push(m.positionName);
         continue;
       }
       if (!serverRunning || !server) { errors.push(`${m.positionName}: no console backend is running`); continue; }
       const label = `${m.positionName} - ${m.personName}`;
       if (!beforeByAux.has(String(auxNum))) beforeByAux.set(String(auxNum), pcoAuxNames.beforeSync(auxNum, mapping));
       const before = beforeByAux.get(String(auxNum));
+      // Already showing that name (the sync every few minutes, most of the
+      // time): leave it, so phones aren't refreshed for nothing
+      const current = ((config.get('auxOverrides') || {})[String(auxNum)] || {}).label;
+      if (current === label) { records.push({ aux: auxNum, label, before }); applied.push({ aux: auxNum, label, unchanged: true }); continue; }
       if (server.setAuxLabel(auxNum, label)) { records.push({ aux: auxNum, label, before }); applied.push({ aux: auxNum, label }); }
       else errors.push(`Aux ${auxNum}: rejected (out of range?)`);
     }
     pcoAuxNames.recordSync(records);
+    // Mixes it named before that nobody is scheduled on now: their own name back
+    const released = pcoAuxNames.releaseUnscheduled(new Set(records.map(r => String(r.aux))));
+    if (released.length && serverRunning && server && server.applyConfigLive) server.applyConfigLive(config.getAll());
 
-    return { ok: true, plan: { id: plan.id, title: plan.title, date: plan.date }, resolvedDay, applied, unmapped, errors };
+    return { ok: true, service: service.which, plan: { id: plan.id, title: plan.title, date: plan.date }, resolvedDay, applied, unmapped, errors, released };
   } catch (err) {
     return { ok: false, error: err.message, status: err.status || null, body: err.body || null };
   }
@@ -1151,7 +1173,8 @@ async function autoSyncPlanningCenter() {
   const secret = config.get('pcoSecret');
   const serviceTypeId = config.get('pcoServiceTypeId');
   const mapping = config.get('pcoPositionMapping') || {};
-  if (!appId || !secret || !serviceTypeId || Object.keys(mapping).length === 0) return;
+  const alt = pcoServices.altService(config.getAll());
+  if (!appId || !secret || !serviceTypeId || (Object.keys(mapping).length === 0 && !(alt && Object.keys(alt.mapping).length))) return;
   // The Green Room display reads Planning Center directly on every page
   // load (see greenroom.js) — it never depends on this function running.
   // This only renames aux channels, so it's the one part this setting can
@@ -1166,16 +1189,47 @@ async function autoSyncPlanningCenter() {
     creds: pcoCreds(),
     automatic: true,
   });
-  if (result.ok) {
-    const dayNote = result.resolvedDay ? ` (${result.resolvedDay})` : '';
-    console.log(`[JPMixer/PCO] auto-sync: ${result.applied.length} aux label(s) updated from "${result.plan.title || result.plan.id}"${dayNote}`);
-  } else {
-    console.log(`[JPMixer/PCO] auto-sync skipped: ${result.error}`);
-  }
+  // Logged only when something changed (or went wrong differently): this
+  // runs every few minutes
+  const changed = result.ok ? result.applied.filter(a => !a.unchanged).length : 0;
+  const note = result.ok
+    ? (changed || result.released.length ? `${changed} aux name(s) updated, ${result.released.length} given back their own name, from "${result.plan.title || result.plan.id}"${result.service === 'alt' ? ' (second service)' : ''}${result.resolvedDay ? ` (${result.resolvedDay})` : ''}` : null)
+    : `skipped: ${result.error}`;
+  if (note && note !== lastAutoSyncNote) console.log(`[JPMixer/PCO] auto-sync ${note}`);
+  lastAutoSyncNote = result.ok ? null : note;
+}
+let lastAutoSyncNote = null;
+
+// While the server runs, aux names follow the schedule: someone swapped in
+// on Sunday morning, a performer taken off the plan, or the next service's
+// plan taking over once this one is past. Settings changes and the server
+// starting still sync straight away, as before.
+const PCO_AUTO_SYNC_MS = 5 * 60 * 1000;
+const PCO_LAUNCH_SYNC_MS = 10 * 1000; // the first sync after the app opens
+let pcoAutoSyncTimer = null, pcoAutoSyncFirst = null, pcoAutoSyncRunning = false;
+async function pcoAutoSyncTick() {
+  if (!serverRunning || pcoAutoSyncRunning) return;
+  pcoAutoSyncRunning = true;
+  try { await autoSyncPlanningCenter(); } catch (err) { console.error('[JPMixer/PCO] auto-sync error:', err); }
+  finally { pcoAutoSyncRunning = false; }
+}
+// firstInMs: sync once after that long, then every PCO_AUTO_SYNC_MS from there
+function startPcoAutoSync({ firstInMs = 0 } = {}) {
+  stopPcoAutoSync();
+  if (!firstInMs) { pcoAutoSyncTimer = setInterval(pcoAutoSyncTick, PCO_AUTO_SYNC_MS); return; }
+  pcoAutoSyncFirst = setTimeout(() => {
+    pcoAutoSyncFirst = null;
+    pcoAutoSyncTick();
+    pcoAutoSyncTimer = setInterval(pcoAutoSyncTick, PCO_AUTO_SYNC_MS);
+  }, firstInMs);
+}
+function stopPcoAutoSync() {
+  clearTimeout(pcoAutoSyncFirst); pcoAutoSyncFirst = null;
+  clearInterval(pcoAutoSyncTimer); pcoAutoSyncTimer = null;
 }
 
-ipcMain.handle('pco-sync-now', async (_, { serviceTypeId, mapping, includeUnconfirmed, day, creds: explicitCreds }) => {
-  return runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, creds: pcoCreds(explicitCreds) });
+ipcMain.handle('pco-sync-now', async (_, { serviceTypeId, mapping, includeUnconfirmed, day, alt, creds: explicitCreds }) => {
+  return runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, alt, creds: pcoCreds(explicitCreds) });
 });
 
 // Opens the Green Room display in the system's default browser (not an

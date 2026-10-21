@@ -60,6 +60,7 @@ const crypto = require('crypto');
 const express = require('express');
 const config = require('./config');
 const pco = require('./pco-client').shared; // 20s shared cache — see pco-client.js
+const pcoServices = require('./pco-services'); // the main service, or the second one on its day
 
 const ROLES = {
   foh:          { label: 'FOH Engineer', page: 'FOH Engineer Home', positionKey: 'pcoFohPositionName', teamKey: 'pcoFohTeamId' },
@@ -156,7 +157,7 @@ function mountFoh(app, status) {
     const pages = await Promise.all(Object.entries(ROLES).map(async ([id, role]) => {
       const locked = id === 'foh' && !!accessCode();
       // Set up = Planning Center connected and this page's role picked
-      const configured = !!(config.get('pcoAppId') && config.get('pcoSecret') && config.get('pcoServiceTypeId') && config.get(role.positionKey));
+      const configured = !!(config.get('pcoAppId') && config.get('pcoSecret') && config.get('pcoServiceTypeId') && pcoServices.rolePicked(id));
       let person = null;
       // A locked FOH Home doesn't give its schedule away here either
       if (configured && !(locked && !hasFohAccess(req))) {
@@ -187,22 +188,23 @@ async function roleData(roleId, status) {
 
   const appId = config.get('pcoAppId');
   const secret = config.get('pcoSecret');
-  const serviceTypeId = config.get('pcoServiceTypeId');
-  const positionName = config.get(role.positionKey);
+  const notSetUp = () => reply({ ok: false, error: `The ${role.page} page isn’t set up yet — choose who it welcomes in JPMixer Settings → Pages.`, consoleConnected, connectionCount });
 
-  if (!appId || !secret || !serviceTypeId || !positionName) {
-    return reply({ ok: false, error: `The ${role.page} page isn’t set up yet — choose who it welcomes in JPMixer Settings → Pages.`, consoleConnected, connectionCount });
-  }
+  if (!appId || !secret || !config.get('pcoServiceTypeId') || !pcoServices.rolePicked(roleId)) return notSetUp();
 
   try {
     const creds = { appId, secret };
-    const plan = await pco.nextPlan(serviceTypeId, creds);
+    // The main service, or the second one on its day — with its own roles
+    const { service, plan } = await pcoServices.activeService(pco, creds);
+    const serviceTypeId = service.serviceTypeId;
+    const positionName = service.roles[roleId].position;
+    if (!positionName) return notSetUp();
     if (!plan) { return reply({ ok: true, plan: null, engineer: null, roster: [], order: [], liveItem: null, previousItem: null, nextItem: null, consoleConnected, connectionCount }); }
 
     // "auto" resolves against this plan's own PlanTimes (whichever is
     // closest to right now), not literally today's calendar date — see
     // pco-client.js's resolveAutoDay() for why that distinction matters.
-    const rawDay = config.get('pcoDay');
+    const rawDay = service.day;
     const day = rawDay === 'auto' ? await pco.resolveAutoDay(serviceTypeId, plan.id, creds) : rawDay;
 
     // The Planning Center card's next few plans are fetched alongside the
@@ -214,8 +216,8 @@ async function roleData(roleId, status) {
       pco.upcomingPlans(serviceTypeId, creds, 4).catch(() => []),
     ]);
     const includeUnconfirmed = !!config.get('pcoIncludeUnconfirmed');
-    const fohTeamId = config.get(role.teamKey); // this role's team (named for FOH, which came first)
-    const rosterTeamId = config.get('pcoTeamId');
+    const fohTeamId = service.roles[roleId].team; // this role's team (named for FOH, which came first)
+    const rosterTeamId = service.teamId;
     const hidden = new Set((config.get('pcoGreenRoomHidden') || []).map((p) => p.toLowerCase()));
 
     // One listPositions() round trip covers both the FOH pairing and the

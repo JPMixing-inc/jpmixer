@@ -127,3 +127,24 @@ test('beforeSync judges the current label against the mapping this sync uses, no
   assert.equal(names.beforeSync(4, { 'Drums': 4 }), '', 'a performer name from an older sync on a newly mapped mix is not the name to go back to');
   assert.equal(names.beforeSync(4), 'Drums - Pat', 'with the saved, empty mapping it reads as a typed name');
 });
+
+test('a mix nobody is scheduled on any more gets its own name back; scheduled ones keep theirs', () => {
+  fresh({ 2: { label: 'Keys IEM' } });
+  sync([[1, 'Vocal 1 - Sam'], [2, 'Keys - Alex'], [3, 'Bass - Riley']]);
+  // Next sync: Alex is off the plan, Sam and Riley are still on
+  assert.deepEqual(names.releaseUnscheduled(new Set(['1', '3'])), [2]);
+  assert.equal(label(2), 'Keys IEM');
+  assert.equal(label(1), 'Vocal 1 - Sam');
+  assert.equal(label(3), 'Bass - Riley');
+  // Later turning names off still clears the ones that are left
+  assert.deepEqual(names.clear().sort(), [1, 3]);
+});
+
+test('releasing leaves a name someone typed since alone', () => {
+  fresh({});
+  sync([[3, 'Bass - Riley']]);
+  config.updateOverride('aux', 3, { label: 'Bass wedge' });
+  assert.deepEqual(names.releaseUnscheduled(new Set()), []);
+  assert.equal(label(3), 'Bass wedge');
+  assert.deepEqual(names.releaseUnscheduled(new Set()), [], 'and forgets it');
+});

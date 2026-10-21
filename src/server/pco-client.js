@@ -465,6 +465,7 @@ function sharedCall(name, fn) {
 }
 const shared = {
   nextPlan: sharedCall('nextPlan', nextPlan),
+  listPlanTimes: sharedCall('listPlanTimes', listPlanTimes),
   planTeamMembers: sharedCall('planTeamMembers', planTeamMembers),
   listPositions: sharedCall('listPositions', listPositions),
   listPlanItems: sharedCall('listPlanItems', listPlanItems),

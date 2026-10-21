@@ -67,6 +67,7 @@ class DliveClient extends EventEmitter {
     this._socket = null;
     this._decoder = new P.Decoder();
     this._nrpn = new P.NrpnReassembler();
+    this._soloSelect = new Map(); // midiCh -> the channel a solo pair's first half picked
     this._reconnectTimer = null;
     this._reconnectDelay = 1000;
     this._manuallyStopped = false;
@@ -85,6 +86,7 @@ class DliveClient extends EventEmitter {
     // program change
     this._decoder = new P.Decoder();
     this._nrpn = new P.NrpnReassembler();
+    this._soloSelect = new Map(); // midiCh -> the channel a solo pair's first half picked
     this._sceneBankPending = null;
     const onConnect = () => {
       this.connected = true;
@@ -157,11 +159,14 @@ class DliveClient extends EventEmitter {
       try { socket.destroy(); } catch (_) {}
       return Promise.resolve();
     }
+    // The last writes (mutes being released on shutdown) need the console to
+    // read them before the close arrives: ended straight after writing,
+    // dLive Director 2.12 dropped them and left released sends at -inf.
     return new Promise((resolve) => {
       const done = () => { clearTimeout(timer); resolve(); };
-      const timer = setTimeout(() => { socket.destroy(); done(); }, 1000);
+      const timer = setTimeout(() => { socket.destroy(); done(); }, 1500);
       socket.once('close', done);
-      try { socket.end(); } catch (_) { socket.destroy(); done(); }
+      setTimeout(() => { try { socket.end(); } catch (_) { socket.destroy(); done(); } }, 250);
     });
   }
 
@@ -200,6 +205,10 @@ class DliveClient extends EventEmitter {
     return this._write(on ? P.buildMuteOn(coord.midiCh, coord.ch) : P.buildMuteOff(coord.midiCh, coord.ch));
   }
 
+  setSolo(coord, on) {
+    return this._write(P.buildSoloSet(coord.midiCh, coord.ch, on));
+  }
+
   requestMute(coord) {
     return this._write(P.buildMuteGet(coord.midiCh, coord.ch));
   }
@@ -235,6 +244,13 @@ class DliveClient extends EventEmitter {
     if (ev.type === 'cc') {
       // Bank Select (controller 0) precedes a scene-recall Program Change.
       if (ev.controller === 0x00) { this._sceneBankPending = ev.value; return; }
+      // Solo: CC 0x73 picks the channel, then CC 0x26 carries on/off
+      if (ev.controller === P.SOLO.SELECT) { this._soloSelect.set(ev.midiCh, ev.value); return; }
+      if (ev.controller === P.SOLO.VALUE && this._soloSelect.has(ev.midiCh)) {
+        const ch = this._soloSelect.get(ev.midiCh); this._soloSelect.delete(ev.midiCh);
+        this.emit('solo', { midiCh: ev.midiCh, ch, on: ev.value >= 0x40 });
+        return;
+      }
       const nrpn = this._nrpn.feed(ev);
       if (nrpn) {
         const coord = { midiCh: nrpn.midiCh, ch: nrpn.ch };
@@ -290,7 +306,9 @@ class DliveClient extends EventEmitter {
     if (opcode === 0x02 || opcode === 0x03) { // Name: 0x02 get-reply, 0x03 set(-echo)
       if (bytes.length < 10) return;
       const ch = bytes[9];
-      const name = Buffer.from(bytes.slice(10)).toString('ascii').replace(/\0+$/, '');
+      // A name set over MIDI comes back padded to 8 with spaces (seen on
+      // dLive Director 2.12); trim, or "Kick" and "Kick    " differ
+      const name = Buffer.from(bytes.slice(10)).toString('ascii').replace(/\0+$/, '').trimEnd();
       this.emit('name', { midiCh, ch, name });
       return;
     }

@@ -136,11 +136,13 @@ function updateConsoleTypeFields() {
   const isWing  = consoleType === 'wing';
   const isLv1   = consoleType === 'lv1';
   isDliveType = isDlive;
-  isConsoleControllerUnsupported = isDlive || isKlang || isWing; // LV1 has one
+  isConsoleControllerUnsupported = isKlang || isWing; // DiGiCo, dLive and LV1 have one
 
   $('digicoPortsRow').style.display = (isDlive || isKlang || isWing || isLv1) ? 'none' : '';
-  // Only the DiGiCo Console Controller has Control Groups
-  $('groupsField').style.display = (isDlive || isKlang || isWing || isLv1) ? 'none' : '';
+  // Control Groups: DiGiCo's, or dLive's DCAs (up to 24). LV1 reports its own.
+  $('groupsField').style.display = (isKlang || isWing || isLv1) ? 'none' : '';
+  $('groups').max = isDlive ? '24' : '64';
+  if (isDlive && Number($('groups').value) > 24) $('groups').value = '24';
   $('klangIpRow').style.display     = isKlang ? '' : 'none';
   $('klangFieldsRow').style.display = isKlang ? '' : 'none';
   $('wingFieldsRow').style.display  = isWing ? '' : 'none';
@@ -151,7 +153,7 @@ function updateConsoleTypeFields() {
   $('dliveAuthRow').style.display   = ((isDlive || isKlang) && $('dliveTlsEnabled').checked) ? '' : 'none';
   $('dliveWarningText').textContent = isKlang
     ? 'When set, this must point at the same console — under Utility → Control → MIDI — that KLANG is paired with.'
-    : '⚠️ dLive support is new and hasn’t been validated on real hardware yet. Aux send levels, mute, and scene recall work; per-send pan, EQ, and the Console Controller are not implemented for dLive.';
+    : '⚠️ dLive support has been tested against dLive Director running offline, not yet a real MixRack. Aux send levels, mute, solo, scene recall, Ear Scenes, live names and the Console Controller (channel, aux and DCA faders, mutes and solos) work; per-send pan and EQ are not available over dLive’s MIDI control. To try it without a console, run dLive Director offline with System → Offline → “Enable Director Connections to MixRack IP Controllers” ticked, and use this computer’s address with Director’s MIDI channel.';
   $('deskIpLabel').textContent = isKlang ? 'dLive Console IP Address (optional)' : isLv1 ? 'LV1 Computer IP Address' : 'Console IP Address';
   $('deskIp').placeholder = isLv1 ? 'Blank = find LV1 on the network' : '192.168.1.100';
 
@@ -322,6 +324,7 @@ function renderPcoPositionsEditable(positions) {
       const pos = sel.dataset.pcoPosition;
       if (sel.value) pcoPositionMapping[pos] = Number(sel.value);
       else delete pcoPositionMapping[pos];
+      renderPcoAltPositions();
     });
   });
   container.querySelectorAll('input[data-pco-hide]').forEach((cb) => {
@@ -329,6 +332,7 @@ function renderPcoPositionsEditable(positions) {
       const pos = cb.dataset.pcoHide;
       pcoGreenRoomHidden = pcoGreenRoomHidden.filter((p) => p.toLowerCase() !== pos.toLowerCase());
       if (cb.checked) pcoGreenRoomHidden.push(pos);
+      renderPcoAltPositions(); // the second service's list shows the same choice
     });
   });
 }
@@ -412,6 +416,7 @@ async function refreshPcoServiceTypes() {
       + res.types.map((t) => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('')
     : '<option value="">— none found —</option>';
   pcoServiceTypesLoaded = true;
+  fillPcoAltServiceTypes(res.types);
   if (pcoSavedServiceTypeId && res.types.some((t) => t.id === pcoSavedServiceTypeId)) {
     sel.value = pcoSavedServiceTypeId;
     await refreshPcoTeams(); // saved Service Type is already selected — chain into Teams too
@@ -456,6 +461,168 @@ async function refreshPcoPositions() {
 }
 
 $('pcoRefreshPositionsBtn').addEventListener('click', refreshPcoPositions);
+
+// ── Planning Center: the optional second service ───────────────────────────
+// Its own Service Type, Team, mapping and Home page roles, saved as pcoAlt.
+// On a day it has a plan and the main service doesn't, it runs instead (see
+// src/server/pco-services.js). Same rule as the main dropdowns: until a list
+// is loaded from Planning Center, Save & Apply keeps what was saved.
+const blankPcoAlt = () => ({ enabled: false, serviceTypeId: '', teamId: '', positionMapping: {}, roles: {} });
+let pcoAlt = blankPcoAlt();         // as saved; positionMapping is edited in place
+let pcoAltTypesLoaded = false, pcoAltTeamsLoaded = false;
+let pcoAltPositions = null;         // the second service's positions, once fetched
+const altRoleId = (r) => r.key.toLowerCase(); // 'Foh' → 'foh', as pco-services.js keys them
+const altRolePick = (r) => (pcoAlt.roles && pcoAlt.roles[altRoleId(r)]) || { team: '', position: '' };
+
+function updatePcoAltFields() {
+  const on = $('pcoAltEnabled').checked;
+  $('pcoAltFields').hidden = !on;
+  // Opening it the first time loads its lists
+  if (on && !pcoAltTypesLoaded && pcoCredsFromFields().appId && pcoCredsFromFields().secret) refreshPcoAltServiceTypes();
+}
+$('pcoAltEnabled').addEventListener('change', updatePcoAltFields);
+
+function fillPcoAltServiceTypes(types) {
+  const sel = $('pcoAltServiceType');
+  sel.innerHTML = '<option value="">— pick a Service Type —</option>'
+    + types.map((t) => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('');
+  pcoAltTypesLoaded = true;
+  if (pcoAlt.serviceTypeId && types.some((t) => t.id === pcoAlt.serviceTypeId)) {
+    sel.value = pcoAlt.serviceTypeId;
+    if ($('pcoAltEnabled').checked) refreshPcoAltLists();
+  } else if (pcoAlt.serviceTypeId) {
+    $('pcoAltStatus').textContent = 'The saved second service wasn’t found. Pick one.';
+  }
+}
+async function refreshPcoAltServiceTypes() {
+  $('pcoAltStatus').textContent = 'Loading…';
+  const res = await window.jpm.pcoListServiceTypes(pcoCredsFromFields());
+  if (!res.ok) { $('pcoAltStatus').textContent = `Error: ${res.error}${res.status ? ' (' + res.status + ')' : ''}`; return; }
+  $('pcoAltStatus').textContent = '';
+  fillPcoAltServiceTypes(res.types);
+}
+
+// Teams and positions for the second service, fetched together
+async function refreshPcoAltLists() {
+  const serviceTypeId = $('pcoAltServiceType').value;
+  if (!serviceTypeId) { $('pcoAltStatus').textContent = 'Pick the second service’s Service Type first.'; return; }
+  pcoAltTeamsLoaded = false; pcoAltPositions = null;
+  $('pcoAltStatus').textContent = 'Loading…';
+  const creds = pcoCredsFromFields();
+  const [teams, positions] = await Promise.all([window.jpm.pcoListTeams(serviceTypeId, creds), window.jpm.pcoListPositions(serviceTypeId, creds)]);
+  if ($('pcoAltServiceType').value !== serviceTypeId) return; // changed while loading
+  if (!teams.ok || !positions.ok) {
+    const bad = teams.ok ? positions : teams;
+    $('pcoAltStatus').textContent = `Error: ${bad.error}${bad.status ? ' (' + bad.status + ')' : ''}`;
+    return;
+  }
+  const teamOptions = (first) => `<option value="">${first}</option>` + teams.teams.map((t) => `<option value="${escHtml(t.id)}">${escHtml(t.name)}</option>`).join('');
+  const has = (id) => teams.teams.some((t) => t.id === id);
+  $('pcoAltTeam').innerHTML = teamOptions('— All Teams —');
+  if (pcoAlt.teamId && has(pcoAlt.teamId)) $('pcoAltTeam').value = pcoAlt.teamId;
+  for (const r of PCO_ROLE_PAGES) {
+    const sel = $(`pcoAlt${r.key}Team`);
+    sel.innerHTML = teamOptions('— Select Team —');
+    if (altRolePick(r).team && has(altRolePick(r).team)) sel.value = altRolePick(r).team;
+  }
+  pcoAltTeamsLoaded = true;
+  pcoAltPositions = positions.positions;
+  $('pcoAltStatus').textContent = `${teams.teams.length} team(s) and ${positions.positions.length} position(s) loaded.`;
+  renderPcoAltPositions();
+  for (const r of PCO_ROLE_PAGES) renderPcoAltRoleOptions(r);
+}
+
+// The main service's mix for a position of this name, if it has one
+function mainAuxFor(position) {
+  const key = Object.keys(pcoPositionMapping).find((k) => k.toLowerCase() === position.toLowerCase());
+  return key === undefined ? null : pcoPositionMapping[key];
+}
+function renderPcoAltPositions() {
+  const container = $('pcoAltPositionsList');
+  if (!pcoAltPositions) return;
+  const teamId = $('pcoAltTeam').value;
+  const positions = teamId ? pcoAltPositions.filter((p) => p.teamId === teamId) : pcoAltPositions;
+  if (!positions.length) { container.textContent = 'No Team Positions found for this Service Type.'; return; }
+  container.innerHTML = '';
+  for (const pos of positions) {
+    const mainAux = mainAuxFor(pos.name);
+    const picked = pcoAlt.positionMapping[pos.name];
+    // Blank = same as the main service; 0 = not on a mix (only needed when the main one maps it)
+    const first = mainAux ? `Same as main service (Aux ${escHtml(mainAux)})` : '— unmapped —';
+    const options = pcoAuxOptionsHtml(picked).replace('<option value="">— unmapped —</option>', () =>
+      `<option value="">${first}</option>` + (mainAux ? `<option value="0"${picked !== undefined && Number(picked) === 0 ? ' selected' : ''}>Not on a mix</option>` : ''));
+    const hidden = pcoGreenRoomHidden.some((p) => p.toLowerCase() === pos.name.toLowerCase());
+    const row = document.createElement('div');
+    row.className = 'pco-position-row';
+    row.innerHTML = `
+      <span class="pco-position-name">${escHtml(pos.name)}</span>
+      <select aria-label="Aux mix for ${escHtml(pos.name)} on the second service" data-pco-alt-position="${escHtml(pos.name)}">${options}</select>
+      <label class="pco-hide-toggle"><input type="checkbox" data-pco-alt-hide="${escHtml(pos.name)}"${hidden ? ' checked' : ''} /> Hide from Green Room</label>`;
+    container.appendChild(row);
+  }
+}
+$('pcoAltPositionsList').addEventListener('change', (e) => {
+  const pos = e.target.dataset.pcoAltPosition, hide = e.target.dataset.pcoAltHide;
+  if (pos !== undefined) {
+    if (e.target.value === '') delete pcoAlt.positionMapping[pos];
+    else pcoAlt.positionMapping[pos] = Number(e.target.value);
+  } else if (hide !== undefined) {
+    pcoGreenRoomHidden = pcoGreenRoomHidden.filter((p) => p.toLowerCase() !== hide.toLowerCase());
+    if (e.target.checked) pcoGreenRoomHidden.push(hide);
+    if (pcoAllPositions.length) renderPcoPositionsForSelectedTeam(); // the main list shows the same choice
+  }
+});
+$('pcoAltTeam').addEventListener('change', renderPcoAltPositions);
+
+function renderPcoAltRoleOptions(r) {
+  if (!pcoAltPositions) return;
+  const sel = $(`pcoAlt${r.key}Position`);
+  const teamId = $(`pcoAlt${r.key}Team`).value;
+  const pick = altRolePick(r);
+  const filtered = teamId ? pcoAltPositions.filter((p) => p.teamId === teamId) : pcoAltPositions;
+  sel.innerHTML = '<option value="">Same as main service</option>'
+    + filtered.map((p) => `<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('');
+  if (pick.position && teamId === pick.team && filtered.some((p) => p.name === pick.position)) sel.value = pick.position;
+}
+for (const r of PCO_ROLE_PAGES) $(`pcoAlt${r.key}Team`).addEventListener('change', () => renderPcoAltRoleOptions(r));
+
+// Team ids belong to one Service Type: a different one starts its picks over
+$('pcoAltServiceType').addEventListener('change', () => {
+  pcoAltTeamsLoaded = false; pcoAltPositions = null;
+  $('pcoAltTeam').innerHTML = '<option value="">— All Teams —</option>';
+  for (const r of PCO_ROLE_PAGES) {
+    $(`pcoAlt${r.key}Team`).innerHTML = '<option value="">— Select Team —</option>';
+    $(`pcoAlt${r.key}Position`).innerHTML = '<option value="">Same as main service</option>';
+  }
+  $('pcoAltPositionsList').textContent = 'Loading…';
+  refreshPcoAltLists();
+});
+$('pcoAltRefreshBtn').addEventListener('click', () => (pcoAltTypesLoaded ? refreshPcoAltLists() : refreshPcoAltServiceTypes()));
+
+// What Save & Apply (and Sync Now) use for the second service
+function collectPcoAlt() {
+  const typeChanged = pcoAltTypesLoaded && ($('pcoAltServiceType').value || '') !== pcoAlt.serviceTypeId;
+  const roles = {};
+  for (const r of PCO_ROLE_PAGES) {
+    const pick = typeChanged ? { team: '', position: '' } : altRolePick(r);
+    const team = pcoAltTeamsLoaded ? ($(`pcoAlt${r.key}Team`).value || '') : pick.team;
+    const position = pcoAltPositions ? ($(`pcoAlt${r.key}Position`).value || '') : pick.position;
+    if (team || position) roles[altRoleId(r)] = { team, position };
+  }
+  return {
+    enabled: $('pcoAltEnabled').checked,
+    serviceTypeId: pcoAltTypesLoaded ? ($('pcoAltServiceType').value || '') : pcoAlt.serviceTypeId,
+    teamId: pcoAltTeamsLoaded ? ($('pcoAltTeam').value || '') : (typeChanged ? '' : pcoAlt.teamId),
+    positionMapping: { ...pcoAlt.positionMapping },
+    roles,
+  };
+}
+function loadPcoAlt(saved) {
+  const a = saved && typeof saved === 'object' ? saved : {};
+  pcoAlt = { ...blankPcoAlt(), ...a,
+    positionMapping: a.positionMapping && typeof a.positionMapping === 'object' ? { ...a.positionMapping } : {},
+    roles: a.roles && typeof a.roles === 'object' ? JSON.parse(JSON.stringify(a.roles)) : {} };
+}
 
 // ── Companion buttons (Pages tab) ──────────────────────────────────────────
 function updateCompanionFields() {
@@ -524,6 +691,7 @@ $('pcoSyncNowBtn').addEventListener('click', async () => {
     mapping: pcoPositionMapping,
     includeUnconfirmed: $('pcoIncludeUnconfirmed').checked,
     day: $('pcoDay').value,
+    alt: collectPcoAlt(),
     creds: pcoCredsFromFields(),
   });
   if (!res.ok) {
@@ -537,10 +705,17 @@ $('pcoSyncNowBtn').addEventListener('click', async () => {
     return;
   }
   const dayNote = res.resolvedDay ? ` for ${res.resolvedDay}` : '';
-  $('pcoSyncStatus').textContent = `Synced from "${res.plan.title || res.plan.id}"${dayNote}.`;
+  $('pcoSyncStatus').textContent = `Synced from "${res.plan.title || res.plan.id}"${dayNote}${res.service === 'alt' ? ', the second service (it has today’s plan)' : ''}.`;
   const parts = [];
-  if (res.applied.length) {
-    parts.push(`<div class="sub"><strong>Updated:</strong> ${res.applied.map((a) => `Aux ${escHtml(a.aux)} → "${escHtml(a.label)}"`).join(', ')}</div>`);
+  const updated = res.applied.filter(a => !a.unchanged), already = res.applied.filter(a => a.unchanged);
+  if (updated.length) {
+    parts.push(`<div class="sub"><strong>Updated:</strong> ${updated.map((a) => `Aux ${escHtml(a.aux)} → "${escHtml(a.label)}"`).join(', ')}</div>`);
+  }
+  if (already.length) {
+    parts.push(`<div class="sub"><strong>Already up to date:</strong> ${already.map((a) => `Aux ${escHtml(a.aux)} "${escHtml(a.label)}"`).join(', ')}</div>`);
+  }
+  if (res.released && res.released.length) {
+    parts.push(`<div class="sub"><strong>Nobody scheduled now, own name back:</strong> ${res.released.map((n) => `Aux ${escHtml(n)}`).join(', ')}</div>`);
   }
   if (res.unmapped.length) {
     parts.push(`<div class="sub">⚠️ Scheduled but unmapped: ${res.unmapped.map(escHtml).join(', ')}</div>`);
@@ -694,8 +869,7 @@ function renderAuxes() {
       <span class="aux-num" role="cell">${i}</span>
       <span role="cell"><input type="color" class="aux-colour colour-input" data-aux="${i}" value="${escHtml(colour)}" title="Button color" aria-label="Aux ${i} color" /></span>
       <span class="aux-main" role="cell">
-        <span class="aux-name-label">${escHtml(name)}</span>
-        <span class="aux-badges">${linkOnly ? '<span class="aux-badge">Link only</span>' : ''}${enabled ? '' : '<span class="aux-badge muted">Hidden</span>'}</span>
+        <span class="aux-name-label"><input type="text" class="aux-label-input" data-aux="${i}" value="${escHtml(ov.label || '')}" placeholder="${escHtml(name)}" maxlength="40" aria-label="Aux ${i} name" title="Leave empty to use the console’s name" /><span class="aux-badges">${linkOnly ? '<span class="aux-badge">Link only</span>' : ''}${enabled ? '' : '<span class="aux-badge muted">Hidden</span>'}</span></span>
       </span>
       <span role="cell"><input type="checkbox" class="toggle aux-enabled" data-aux="${i}" ${enabled ? 'checked' : ''} title="Listed in the performer mix picker" aria-label="Show aux ${i}" /></span>
       ${eqHidden ? '' : `<span role="cell"><input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} ${eqDisabled ? 'disabled' : ''} title="${eqTitle}" aria-label="Allow EQ for aux ${i}" /></span>`}
@@ -752,7 +926,11 @@ $('auxesList').addEventListener('change', e => {
   const aux = e.target.dataset.aux;
   if (!aux) return;
   if (!auxOverrides[aux]) auxOverrides[aux] = {};
-  if (e.target.classList.contains('aux-enabled')) {
+  if (e.target.classList.contains('aux-label-input')) {
+    // Your own name for the mix; empty = the console's name again
+    const label = e.target.value.trim();
+    if (label) auxOverrides[aux].label = label; else delete auxOverrides[aux].label;
+  } else if (e.target.classList.contains('aux-enabled')) {
     auxOverrides[aux].enabled = e.target.checked;
   } else if (e.target.classList.contains('aux-colour')) {
     auxOverrides[aux].colour = e.target.value;
@@ -996,32 +1174,40 @@ function renderGroups() {
   list.innerHTML = '';
 
   if (channelGroups.length === 0) {
-    list.innerHTML = '<div class="empty-hint">No groups yet — click + Add Group to create one.</div>';
+    list.innerHTML = '<div class="empty-hint">No groups yet. Click + Add group, or pick “+ New group…” on a channel below.</div>';
     return;
   }
 
   for (const g of channelGroups) {
+    const used = Object.values(channelOverrides).filter(ov => ov && ov.groupId === g.id).length;
     const row = document.createElement('div');
-    row.className = 'group-row';
+    row.className = 'group-row group-chip';
     row.innerHTML = `
-      <input type="text" class="group-name-input" value="${escHtml(g.name)}" placeholder="Group name" data-id="${g.id}" />
-      <button class="btn btn-sm btn-danger delete-group" data-id="${g.id}">Remove</button>
+      <input type="text" class="group-name-input" value="${escHtml(g.name)}" placeholder="Group name" data-id="${g.id}" aria-label="Group name" size="${Math.max(6, Math.min(24, g.name.length + 1))}" />
+      <span class="group-count" title="Channels in this group">${used}</span>
+      <button class="group-remove delete-group" data-id="${g.id}" aria-label="Remove group ${escHtml(g.name)}" title="Remove group">×</button>
     `;
     list.appendChild(row);
   }
 }
 
-$('addGroupBtn').addEventListener('click', () => {
-  channelGroups.push({ id: Date.now(), name: 'New Group' });
+// A new group, ready to be named (its chip is focused with the name selected)
+function addGroup() {
+  const g = { id: Date.now(), name: 'New group' };
+  channelGroups.push(g);
   renderGroups();
   refreshGroupDropdowns();
-});
+  const input = document.querySelector(`.group-name-input[data-id="${g.id}"]`);
+  if (input) { input.scrollIntoView({ block: 'center' }); input.focus(); input.select(); }
+  return g;
+}
+$('addGroupBtn').addEventListener('click', () => addGroup());
 
 $('groupsList').addEventListener('input', e => {
   const id = parseInt(e.target.dataset.id);
   const g  = channelGroups.find(g => g.id === id);
   if (!g) return;
-  if (e.target.classList.contains('group-name-input')) { g.name = e.target.value; refreshGroupDropdowns(); }
+  if (e.target.classList.contains('group-name-input')) { g.name = e.target.value; e.target.size = Math.max(6, Math.min(24, g.name.length + 1)); refreshGroupDropdowns(); }
 });
 
 $('groupsList').addEventListener('click', e => {
@@ -1042,8 +1228,13 @@ function refreshGroupDropdowns() {
     const opts = channelGroups.map(g =>
       `<option value="${g.id}" ${gid == g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
     ).join('');
-    sel.innerHTML = `<option value="" ${!gid ? 'selected' : ''}>No group</option>${opts}`;
+    sel.innerHTML = `<option value="" ${!gid ? 'selected' : ''}>No group</option>${opts}<option value="__new">+ New group…</option>`;
   });
+  // How many channels each group has, on its chip
+  for (const chip of document.querySelectorAll('.group-chip')) {
+    const id = parseInt(chip.querySelector('.group-name-input').dataset.id);
+    chip.querySelector('.group-count').textContent = Object.values(channelOverrides).filter(ov => ov && ov.groupId === id).length;
+  }
 }
 
 // ── Channel order helpers ─────────────────────────────────────────────────
@@ -1101,6 +1292,7 @@ function renderChannels() {
       <select class="ch-group-select" data-ch="${ch}" aria-label="Channel ${ch} group">
         <option value="" ${!ov.groupId ? 'selected' : ''}>No group</option>
         ${groupOpts}
+        <option value="__new">+ New group…</option>
       </select>
       <input type="checkbox" class="toggle ch-enabled" data-ch="${ch}" ${enabled ? 'checked' : ''} aria-label="Show channel ${ch}" />
     `;
@@ -1152,7 +1344,12 @@ $('channelsList').addEventListener('change', e => {
   if (!ch) return;
   const ov = channelOverrides[ch] || (channelOverrides[ch] = { enabled: true });
   if (e.target.classList.contains('ch-label-input'))  ov.label   = e.target.value;
-  if (e.target.classList.contains('ch-group-select')) ov.groupId = e.target.value ? parseInt(e.target.value) : null;
+  if (e.target.classList.contains('ch-group-select')) {
+    // "+ New group…": make one, put this channel in it, and go and name it
+    if (e.target.value === '__new') { const g = addGroup(); ov.groupId = g.id; refreshGroupDropdowns(); return; }
+    ov.groupId = e.target.value ? parseInt(e.target.value) : null;
+    refreshGroupDropdowns();
+  }
   if (e.target.classList.contains('ch-enabled'))      ov.enabled = e.target.checked;
 });
 
@@ -1283,6 +1480,9 @@ function applyConfig(cfg) {
   pcoSavedRolePicks = rolePicksFrom(cfg);
   pcoPicksForSavedType = { team: pcoSavedTeamId, roles: rolePicksFrom(cfg) };
   renderPcoPositionsFallback();
+  loadPcoAlt(cfg.pcoAlt);
+  $('pcoAltEnabled').checked = !!pcoAlt.enabled;
+  updatePcoAltFields();
   updateConsoleTypeFields();
   isDemoMode = !!cfg.demoMode;
   $('demoMode').checked = isDemoMode;
@@ -1379,6 +1579,7 @@ function collectConfig() {
   out.pcoPhoneAssignments = $('pcoPhoneAssignments').checked;
   out.pcoUpdateAuxNames = $('pcoUpdateAuxNames').checked;
   out.pcoPositionMapping  = pcoPositionMapping;
+  out.pcoAlt              = collectPcoAlt();
   out.pcoGreenRoomHidden  = pcoGreenRoomHidden;
   out.demoMode            = $('demoMode').checked;
   out.dliveTlsEnabled     = $('dliveTlsEnabled').checked;
@@ -1425,6 +1626,51 @@ async function refreshPort80Status() {
   setStatus(isRunning);
 }
 
+// ── Get started: setup in order ───────────────────────────────────────────
+// Read from what Settings already holds; redrawn whenever status or the
+// saved settings change.
+function renderSetupSteps() {
+  const list = $('setupSteps'); if (!list) return;
+  const typeName = $('consoleType').selectedOptions[0]?.textContent || 'console';
+  const named = Object.values(channelOverrides).filter(ov => ov && ov.label).length;
+  const auxCount = parseInt($('auxes').value) || 0;
+  const hidden = Object.entries(auxOverrides).filter(([n, ov]) => Number(n) <= auxCount && ov && ov.enabled === false).length;
+  const pcoReady = !!($('pcoAppId').value && $('pcoSecret').value && pcoSavedServiceTypeId);
+  const roles = Object.values(pcoSavedRolePicks || {}).filter(r => r && r.position).length;
+  const base = getBaseUrl();
+  const steps = [
+    { done: consoleConnectedNow, tab: 'console', title: 'Connect your console',
+      text: consoleConnectedNow ? (isDemoMode ? 'Demo mode is on: a simulated console.' : `Connected to the ${typeName}. Its names are filled in for you.`) : 'Not connected. Choose your console and enter its address, or turn on Demo mode to try things out. Names are filled in from the console once it’s connected.' },
+    { done: channelGroups.length > 0 || named > 0, optional: true, tab: 'channels', title: 'Name and group your channels',
+      text: (channelGroups.length || named ? `${channelGroups.length} group${channelGroups.length === 1 ? '' : 's'}, ${named} channel${named === 1 ? '' : 's'} renamed in JPMixer. ` : '') + 'The console’s channel names are used unless you type your own. Groups let performers show one part of the band at a time.' },
+    { done: auxCount > 0, tab: 'auxes', title: 'Check your aux mixes',
+      text: auxCount ? `${auxCount} mix${auxCount === 1 ? '' : 'es'}${hidden ? `, ${hidden} hidden from performers` : ', all shown to performers'}. Hide the ones that aren’t monitor mixes, and rename any you like.` : 'No mixes yet.' },
+    { done: !!base, tab: 'performers', title: 'Give performers the address',
+      text: base ? `Performers open ${base} on their phones and pick their mix.` : 'Start the server (above) to get the address.' },
+    { done: pcoReady, optional: true, tab: 'pco', title: 'Connect Planning Center',
+      text: pcoReady ? 'Connected. Performer names, the Green Room and the Home pages follow the schedule.' : 'Optional: performer names on mixes, the Green Room display, and who’s on today on the Home pages.' },
+    { done: roles > 0, optional: true, tab: 'pco', jump: 'pco-home-pages', title: 'Set up the production team’s Home pages',
+      text: roles ? `${roles} of 4 Home pages welcome a scheduled person (FOH, ProPresenter, Lighting, Switcher).` : 'Optional, after Planning Center: who each Home page welcomes.' },
+  ];
+  list.replaceChildren(...steps.map((st, i) => {
+    const li = document.createElement('li');
+    li.className = 'setup-step' + (st.done ? ' is-done' : st.optional ? ' is-optional' : ' is-todo');
+    li.innerHTML = `<span class="setup-step-mark" aria-hidden="true">${st.done ? '✓' : i + 1}</span>
+      <div class="setup-step-body"><div class="setup-step-title">${escHtml(st.title)}${st.optional && !st.done ? ' <span class="setup-step-tag">Optional</span>' : ''}</div><div class="sub">${escHtml(st.text)}</div></div>`;
+    const go = document.createElement('button');
+    go.className = 'btn btn-sm'; go.type = 'button'; go.textContent = st.done ? 'Open' : 'Set up';
+    go.setAttribute('aria-label', `${st.title}: open settings`);
+    go.addEventListener('click', () => {
+      document.querySelector(`.tab[data-tab="${st.tab}"]`)?.click();
+      const jump = st.jump && $(st.jump);
+      if (jump) requestAnimationFrame(() => jump.scrollIntoView({ block: 'start' }));
+    });
+    li.appendChild(go);
+    return li;
+  }));
+}
+document.querySelector('.tab[data-tab="start"]')?.addEventListener('click', renderSetupSteps);
+
 let consoleConnectedNow = false;
 function setConsoleStatus(connected) {
   consoleConnectedNow = !!connected;
@@ -1433,6 +1679,8 @@ function setConsoleStatus(connected) {
   $('consolePillLabel').textContent   = demo ? 'Demo' : (connected ? 'Connected' : 'Offline');
   $('consoleStatusLabel').textContent = demo ? 'Demo mode — simulated console'
     : (connected ? 'Connected to console' : 'Not connected');
+  renderSetupSteps();
+  renderWelcomes();
 }
 
 function setDeviceCount(count) {
@@ -1456,6 +1704,7 @@ function setStatus(running) {
   $('statusLabel').textContent = running ? 'Running' : 'Stopped';
   const base = getBaseUrl();
   $('serverUrl').textContent = base || 'Not running';
+  renderSetupSteps();
   $('serverUrlHint').style.display = (running && port80.matches && localIP) ? '' : 'none';
   for (const [urlId, buttonId, hintId, route] of [
     ['homePickerViewUrl', 'openHomePickerViewBtn', 'homePickerViewHint', '/home.html'],
@@ -1532,8 +1781,28 @@ for (const [buttonId, hintId, open] of [
   });
 }
 for (const button of document.querySelectorAll('[data-settings-target]')) {
-  button.addEventListener('click', () => document.querySelector(`.tab[data-tab="${button.dataset.settingsTarget}"]`)?.click());
+  button.addEventListener('click', () => {
+    document.querySelector(`.tab[data-tab="${button.dataset.settingsTarget}"]`)?.click();
+    // …and straight to one section of it
+    const jump = button.dataset.settingsJump && $(button.dataset.settingsJump);
+    if (jump) requestAnimationFrame(() => jump.scrollIntoView({ block: 'start' }));
+  });
 }
+
+// Pages: who each Home page welcomes, chosen on the Planning Center tab
+function renderWelcomes() {
+  const pcoReady = !!($('pcoAppId').value && $('pcoSecret').value);
+  for (const r of PCO_ROLE_PAGES) {
+    const el = $(`welcomes${r.key}`); if (!el) continue;
+    const pos = $(`pco${r.key}Position`).value || pcoSavedRolePicks[r.key]?.position || '';
+    const teamSel = $(`pco${r.key}Team`);
+    const team = teamSel.value ? (teamSel.selectedOptions[0]?.textContent || '') : '';
+    el.textContent = pos ? (team ? `${pos} · ${team}` : pos) : (pcoReady ? 'Nobody yet: choose a role' : 'Connect Planning Center first');
+    el.classList.toggle('is-unset', !pos);
+  }
+}
+document.querySelector('.tab[data-tab="views"]')?.addEventListener('click', renderWelcomes);
+for (const r of PCO_ROLE_PAGES) for (const which of ['Team', 'Position']) $(`pco${r.key}${which}`).addEventListener('change', renderWelcomes);
 
 $('toggleBtn').addEventListener('click', async () => {
   if (isRunning) await window.jpm.stopServer();
@@ -1960,6 +2229,7 @@ $('saveBtn').addEventListener('click', async () => {
   pcoSavedTeamId        = out.pcoTeamId;
   pcoSavedRolePicks = rolePicksFrom(out);
   pcoPicksForSavedType = { team: out.pcoTeamId, roles: rolePicksFrom(out) };
+  loadPcoAlt(out.pcoAlt);
   renderChannels();
   renderAuxes();
   // The login item can need approval in System Settings, or be refused

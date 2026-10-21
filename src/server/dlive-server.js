@@ -34,7 +34,10 @@
 //   ✗ Built-in aux EQ — same story as pan: config always reports
 //     `eqEnabled: false`, so mixer.js's existing gate already hides the EQ
 //     menu item; the request-aux-eq stub below is unreachable in practice.
-//   ✗ Console Controller (main faders/DCAs/groups), OSC/MIDI log recording,
+//   ✓ Console Controller: input, aux and DCA faders and mutes, input and
+//     DCA solo (the desk's own solo — see consoleWrite below). Not the
+//     channel processing panel.
+//   ✗ OSC/MIDI log recording,
 //     iPad relay — not implemented; exported stubs only so main.js's shared
 //     calls don't crash if invoked while dLive is active. Console
 //     Controller's messages for these (console-fader, aux-fader, cg-fader,
@@ -45,11 +48,12 @@
 //     pools; every JPMixer-configured aux is mapped to a *mono* aux send
 //     (1-62 available), which covers the overwhelmingly common case
 //
-// UNVERIFIED ASSUMPTION (flagged in dlive-client.js too): that dLive pushes
-// an unsolicited Send Level message when a send changes, the way it's
-// documented to do for Fader/Mute/Assignment. Needs real hardware to confirm.
-// Until then, two independent mechanisms keep send levels in sync, both
-// controllable from Settings:
+// Send-level push: dLive sends an unsolicited Send Level message when a send
+// changes, the way it's documented to for Fader/Mute/Assignment. Confirmed
+// 2026-10-21 against dLive Director 2.12 running offline (System → Offline →
+// "Enable Director Connections to MixRack IP Controllers"): a change made by
+// another MIDI controller reached JPMixer at once. Not yet seen on a real
+// MixRack, so both mechanisms stay, controllable from Settings:
 //   - Push  (dliveListenSendLevels, default on) — trust the console's own
 //     unsolicited echoes, same as the DiGiCo path relies on for everything.
 //     Free to leave on even if it turns out to do nothing.
@@ -141,7 +145,105 @@ const premuteState = {}; // premuteState[aux][ch] = dB saved before silencing
 // practice — dLive's mono aux pool tops out at 62, but Settings' generic
 // Auxes field allows up to 64 for any console type.
 function channelCoord(baseN, ch) { try { return P.coordinate(baseN, 'input', ch); } catch (_) { return null; } }
-function auxCoord(baseN, aux)    { try { return P.coordinate(baseN, 'monoAux', aux); } catch (_) { return null; } }
+// ── The console's mixes ───────────────────────────────────────────────────
+// dLive keeps mono (1-62) and stereo (1-31) aux mixes in separate pools,
+// as many of each as the show's bus setup has. On connect JPMixer asks for
+// every slot's name; only mixes that exist answer (seen on dLive Director
+// 2.12). JPMixer's aux N is then the Nth: the mono mixes, then the stereo
+// ones. A console that answers none (older firmware) keeps the old mapping,
+// aux N = mono aux N, with Settings' Auxes count.
+let mixMap = null;    // [{ stereo, n }] by JPMixer aux - 1, or null
+let mixProbe = null;  // { mono: Map n->name, stereo: Map n->name } while asking
+const auxCountNow = () => mixMap ? mixMap.length : (serverCfg.auxes || 16);
+function auxCoord(baseN, aux) {
+  try {
+    if (!mixMap) return P.coordinate(baseN, 'monoAux', aux);
+    const mix = mixMap[aux - 1];
+    return mix ? P.coordinate(baseN, mix.stereo ? 'stereoAux' : 'monoAux', mix.n) : null;
+  } catch (_) { return null; }
+}
+// JPMixer's aux number for a coordinate in the aux bank, or null
+function auxFor(baseN, midiCh, ch) {
+  if (midiCh !== baseN + 2) return null;
+  const stereo = ch >= 0x40, n = stereo ? ch - 0x40 + 1 : ch + 1;
+  if (!mixMap) return !stereo && n <= 62 ? n : null;
+  const i = mixMap.findIndex(m => m.stereo === stereo && m.n === n);
+  return i === -1 ? null : i + 1;
+}
+function dcaCoord(baseN, dca)    { try { return P.coordinate(baseN, 'dca', dca); } catch (_) { return null; } }
+
+// ── Console Controller ─────────────────────────────────────────────────────
+// Its strips and dLive's channels: inputs, aux masters (the mono auxes the
+// musician mixer uses) and DCAs (shown as control groups, up to 24 — as many
+// as Settings' Control Groups count).
+const STRIP_PATH = { input: 'Input_Channels', aux: 'Aux_Outputs', cg: 'Control_Groups' };
+const dcaCount = () => Math.max(0, Math.min(24, Number.isInteger(serverCfg.groups) ? serverCfg.groups : 8));
+const consoleState = new Map(); // "input:3" / "aux:2" / "cg:1" -> { gain, mute, solo }
+let consolePrimed = false;      // the console's faders/mutes have been asked for
+function stripCoord(baseN, kind, n) {
+  if (kind === 'input') return n <= (serverCfg.channels || 48) ? channelCoord(baseN, n) : null;
+  if (kind === 'aux') return n <= auxCountNow() ? auxCoord(baseN, n) : null;
+  return n <= dcaCount() ? dcaCoord(baseN, n) : null;
+}
+// The strip a dLive coordinate is, or null if the Console Controller doesn't show it
+function stripFor(baseN, midiCh, ch) {
+  if (midiCh === baseN && ch <= 127) return { kind: 'input', n: ch + 1 };
+  const aux = auxFor(baseN, midiCh, ch);
+  if (aux) return { kind: 'aux', n: aux };
+  if (midiCh === baseN + 4 && ch >= 0x36 && ch < 0x36 + 24) return { kind: 'cg', n: ch - 0x36 + 1 };
+  return null;
+}
+function stripState(kind, n) {
+  const key = `${kind}:${n}`;
+  if (!consoleState.has(key)) consoleState.set(key, { gain: null, mute: false, solo: false });
+  return consoleState.get(key);
+}
+// -inf can't go in JSON: -150, the "off" every page already uses
+const jsonDb = db => (db === -Infinity || db === null || db === undefined) ? -150 : db;
+function primeConsole(baseN) {
+  if (consolePrimed || !client) return;
+  consolePrimed = true;
+  for (const [kind, count] of [['input', serverCfg.channels || 48], ['aux', auxCountNow()], ['cg', dcaCount()]]) {
+    for (let n = 1; n <= count; n++) {
+      const c = stripCoord(baseN, kind, n); if (!c) continue;
+      enqueuePrime(() => client && client.requestFader(c));
+      enqueuePrime(() => client && client.requestMute(c));
+    }
+  }
+  startPriming();
+}
+function sendConsoleState(ws) {
+  const out = [];
+  for (const [key, t] of consoleState) {
+    const [kind, n] = key.split(':');
+    const base = `/${STRIP_PATH[kind]}/${n}`;
+    if (t.gain !== null) out.push({ address: `${base}/fader`, args: [jsonDb(t.gain)] });
+    out.push({ address: `${base}/mute`, args: [t.mute ? 1 : 0] });
+    if (kind !== 'aux') out.push({ address: `${base}/solo`, args: [t.solo ? 1 : 0] });
+  }
+  for (const m of out) { try { ws.send(JSON.stringify(m)); } catch (_) {} }
+}
+// A Console Controller move: to the console, and to the other pages. The
+// console confirms it to every controller, JPMixer included.
+function consoleWrite(ws, baseN, kind, nRaw, what, value) {
+  const n = parseInt(nRaw, 10);
+  const c = Number.isInteger(n) && n >= 1 ? stripCoord(baseN, kind, n) : null;
+  if (!c || !client) return;
+  const t = stripState(kind, n), base = `/${STRIP_PATH[kind]}/${n}`;
+  if (what === 'fader') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    const db = value <= -90 ? -Infinity : Math.min(10, value);
+    t.gain = db;
+    client.setFader(c, db);
+    broadcastToClients({ address: `${base}/fader`, args: [jsonDb(db)] }, ws);
+  } else if (what === 'mute') {
+    t.mute = !!value;
+    client.setMute(c, t.mute);
+  } else if (what === 'solo' && kind !== 'aux') {
+    t.solo = !!value;
+    client.setSolo(c, t.solo);
+  }
+}
 
 function levelKey(ch, aux) { return `${ch}:${aux}`; }
 
@@ -278,7 +380,7 @@ function broadcastDevicesUpdate() {
 // ── Config builder — same shape osc-server.js's buildConfig() produces ────
 
 function buildConfig() {
-  const auxCount = serverCfg.auxes || 16;
+  const auxCount = auxCountNow();
   const chCount  = serverCfg.channels || 48;
   const cfgAuxOverrides = serverCfg.auxOverrides || {};
 
@@ -290,7 +392,9 @@ function buildConfig() {
       enabled:   ov.enabled !== false,
       label:     ov.label || liveName || `AUX ${i}`,
       channel:   i,
-      stereo:    false, // see file header — mono-only in this pass
+      // A stereo mix is mixed like a mono one: dLive's MIDI control has no
+      // per-send pan, so phones don't offer pan either way
+      stereo:    false,
       colour:    ov.colour || colourCache.get(`aux:${i}`) || '#e8a020',
       icon:      '',
       eqEnabled: false, // aux EQ not implemented for dLive yet
@@ -305,7 +409,8 @@ function buildConfig() {
     config: {
       channels,
       aux: auxilaries,
-      controlGroups: [], // control groups not implemented for dLive yet
+      controlGroups: Array.from({ length: dcaCount() }, (_, i) => ({ channel: i + 1, label: nameCache.get(`dca:${i + 1}`) || `DCA ${i + 1}` })),
+      channelProcessing: false, // the Console Controller's EQ/dynamics panel is DiGiCo-only
       snapshot: currentSceneNumber != null ? String(currentSceneNumber) : '—',
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
       earScenes: serverCfg.performerEarScenes !== false, // Settings: Ear Scenes on performer phones
@@ -389,7 +494,7 @@ function reassertSilencing(baseN) {
 
 function setMute(auxRaw, chRaw, muted) {
   const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
-  const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
+  const chMax = serverCfg.channels || 48, auxMax = auxCountNow();
   if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
   if (!muteState[aux]) muteState[aux] = {};
   muteState[aux][ch] = !!muted;
@@ -399,7 +504,7 @@ function setMute(auxRaw, chRaw, muted) {
 
 function setSolo(auxRaw, chRaw, soloed) {
   const aux = parseInt(auxRaw, 10), ch = parseInt(chRaw, 10);
-  const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
+  const chMax = serverCfg.channels || 48, auxMax = auxCountNow();
   if (isNaN(aux) || aux < 1 || aux > auxMax || isNaN(ch) || ch < 1 || ch > chMax) return false;
   if (!soloState[aux]) soloState[aux] = {};
   soloState[aux][ch] = !!soloed;
@@ -425,7 +530,7 @@ function setChannelLabel(n, label) {
 }
 
 function setAuxLabel(n, label) {
-  return shared.relabel(serverCfg, 'aux', n, label, serverCfg.auxes || 16, broadcastToClients);
+  return shared.relabel(serverCfg, 'aux', n, label, auxCountNow(), broadcastToClients);
 }
 
 // ── Scene (Ear Scene) recall — keyed by scene NUMBER, not name ───────────
@@ -497,6 +602,46 @@ function applySceneForSceneNumber(baseN, sceneNumber) {
 // its own dbToSlider for that) — a server-side copy would just be dead code.
 const sliderToDb = shared.sliderToDb; // one clamped copy for every backend
 
+let mixProbeTimer = null;
+function startMixProbe(baseN) {
+  clearInterval(mixProbeTimer);
+  mixProbe = { mono: new Map(), stereo: new Map() };
+  const slots = [...Array.from({ length: 62 }, (_, i) => P.coordinate(baseN, 'monoAux', i + 1)), ...Array.from({ length: 31 }, (_, i) => P.coordinate(baseN, 'stereoAux', i + 1))];
+  mixProbeTimer = setInterval(() => {
+    const c = slots.shift();
+    if (c) { if (client) client.requestName(c); return; }
+    clearInterval(mixProbeTimer); mixProbeTimer = null;
+    setTimeout(() => finishMixProbe(baseN), 600); // the last answers
+  }, 20);
+}
+// The mix layout's answers are in: build the mix list, then names and
+// colours for it, and give pages the new layout
+function finishMixProbe(baseN) {
+  const probe = mixProbe; mixProbe = null;
+  if (!probe || !client) return;
+  const mono = [...probe.mono.keys()].sort((a, b) => a - b), stereo = [...probe.stereo.keys()].sort((a, b) => a - b);
+  if (!mono.length && !stereo.length) {
+    logEvent('mix-layout', `no answer — using Settings' ${serverCfg.auxes || 16} mono auxes`);
+    mixMap = null;
+    for (let i = 1; i <= (serverCfg.auxes || 16); i++) {
+      const c = auxCoord(baseN, i); if (!c) continue;
+      enqueuePrime(() => client && client.requestName(c));
+      enqueuePrime(() => client && client.requestColour(c));
+    }
+  } else {
+    mixMap = [...mono.map(n => ({ stereo: false, n })), ...stereo.map(n => ({ stereo: true, n }))];
+    logEvent('mix-layout', `${mono.length} mono + ${stereo.length} stereo aux mixes`);
+    mixMap.forEach((m, i) => {
+      nameCache.set(`aux:${i + 1}`, (m.stereo ? probe.stereo : probe.mono).get(m.n));
+      const c = auxCoord(baseN, i + 1);
+      if (c) enqueuePrime(() => client && client.requestColour(c));
+    });
+  }
+  startPriming();
+  rebuildSendLevelPollQueue();
+  if (wss) { const msg = JSON.parse(buildConfig()); msg.config.liveUpdate = true; broadcastToClients(msg); }
+}
+
 // ── Server lifecycle ───────────────────────────────────────────────────────
 
 function start(cfg) {
@@ -508,6 +653,8 @@ function start(cfg) {
   pacer.clear();
   nameCache.clear();
   colourCache.clear();
+  consoleState.clear(); consolePrimed = false;
+  mixMap = null; mixProbe = null;
   clearMuteSolo();
 
   // 0-11 per the console's own Utility → Control → MIDI setting — coordinate()
@@ -672,6 +819,21 @@ function start(cfg) {
       if (msg.type === 'set-solo') { setSolo(msg.aux, msg.ch, msg.soloed); return; }
       if (msg.type === 'fire-snapshot') { fireSnapshot(msg.action); return; }
 
+      // Console Controller
+      if (msg.type === 'request-console-state') { sendConsoleState(ws); primeConsole(baseN); return; }
+      if (msg.type === 'console-fader') { consoleWrite(ws, baseN, 'input', msg.ch, 'fader', msg.db); return; }
+      if (msg.type === 'console-mute')  { consoleWrite(ws, baseN, 'input', msg.ch, 'mute', msg.muted); return; }
+      if (msg.type === 'console-solo')  { consoleWrite(ws, baseN, 'input', msg.ch, 'solo', msg.soloed); return; }
+      if (msg.type === 'aux-fader')     { consoleWrite(ws, baseN, 'aux', msg.aux, 'fader', msg.db); return; }
+      if (msg.type === 'aux-mute')      { consoleWrite(ws, baseN, 'aux', msg.aux, 'mute', msg.muted); return; }
+      if (msg.type === 'cg-fader')      { consoleWrite(ws, baseN, 'cg', msg.cg, 'fader', msg.db); return; }
+      if (msg.type === 'cg-mute')       { consoleWrite(ws, baseN, 'cg', msg.cg, 'mute', msg.muted); return; }
+      if (msg.type === 'cg-solo')       { consoleWrite(ws, baseN, 'cg', msg.cg, 'solo', msg.soloed); return; }
+      if (msg.type === 'request-channel-detail') {
+        try { ws.send(JSON.stringify({ type: 'channel-detail', ch: msg.ch, params: {}, values: {}, unsupported: true })); } catch (_) {}
+        return;
+      }
+
       // Raw OSC-address-shaped messages from mixer.js (send_level / send_pan)
       const oscMsg = msg;
       if (!oscMsg.address) return;
@@ -758,12 +920,18 @@ function start(cfg) {
       const c = channelCoord(baseN, i);
       if (c) enqueuePrime(() => client.requestName(c));
     }
-    for (let i = 1; i <= (serverCfg.auxes || 16); i++) {
-      const c = auxCoord(baseN, i);
-      if (!c) continue;
-      enqueuePrime(() => client.requestName(c));
-      enqueuePrime(() => client.requestColour(c));
+    // Which mixes the show has: every mono and stereo aux slot's name.
+    // Names, colours and the mix list follow once the answers are in.
+    // On a lane of its own (93 small requests, one per 20 ms) so it doesn't
+    // hold up everything else queued for the first seconds after connecting
+    startMixProbe(baseN);
+    for (let i = 1; i <= dcaCount(); i++) {
+      const c = dcaCoord(baseN, i);
+      if (c) enqueuePrime(() => client.requestName(c));
     }
+    // A Console Controller already open: its faders and mutes again (a
+    // console that restarted may have changed)
+    if (consolePrimed) { consolePrimed = false; primeConsole(baseN); }
     startPriming();
     rebuildSendLevelPollQueue();
     startSendLevelPolling(baseN);
@@ -775,6 +943,7 @@ function start(cfg) {
     if (onConsoleStatusChange) onConsoleStatusChange(false);
     stopPriming();
     stopSendLevelPolling();
+    clearInterval(mixProbeTimer); mixProbeTimer = null; mixProbe = null; // asked again on reconnect
   });
 
   client.on('error', (err) => {
@@ -790,19 +959,13 @@ function start(cfg) {
     // the destination's is what keeps a Group's send from getting
     // misattributed and broadcast as some unrelated input channel's level.
     if (ev.midiCh !== baseN) return;              // source isn't an Input channel
-    if (ev.sndMidiCh !== baseN + 2) return;       // destination isn't in the aux+FX bank at all
-    if (ev.sndCh >= 0x40) return;                 // destination is a *stereo* aux (0x40-0x5E) —
-    // mono (0-61) and stereo (0x40-0x5E) aux sends share this same midiCh
-    // bank, so the check above alone can't tell them apart. Without this,
-    // a stereo aux's send level gets reversed into a bogus mono aux number
-    // (ch+1 past 62) and broadcast/cached as if it were real — the 'name'
-    // and 'colour' handlers below already guard the same ambiguity with the
-    // same ev.ch < 0x40 check; this one was missing it.
-    // ev.ch/ev.sndCh are coordinate bytes, not JPMixer channel numbers
-    // directly — for the mono, baseN-aligned mapping this pass uses, input
-    // coordinate byte === channel number - 1, and aux coordinate byte within
-    // the monoAux bank === aux number - 1. Reverse that here.
-    const ch = ev.ch + 1, aux = ev.sndCh + 1;
+    // The destination's JPMixer aux: mono and stereo aux sends share one
+    // bank (stereo at 0x40+), so this goes through the console's mix list —
+    // a stereo mix the show doesn't use, or any stereo mix on a console
+    // whose layout wasn't read, is ignored rather than taken for a mono one.
+    const aux = auxFor(baseN, ev.sndMidiCh, ev.sndCh);
+    if (!aux) return;
+    const ch = ev.ch + 1;
     const input = channelCoord(baseN, ch), snd = auxCoord(baseN, aux);
     if (!input || !snd) return;
     const key = levelKey(ch, aux);
@@ -835,11 +998,58 @@ function start(cfg) {
 
   client.on('name', (ev) => {
     // Disambiguate input vs aux by which bank the coordinate's midiCh falls in.
-    if (ev.midiCh === baseN) nameCache.set(`input:${ev.ch + 1}`, ev.name);
-    else if (ev.midiCh === baseN + 2 && ev.ch < 0x40) nameCache.set(`aux:${ev.ch + 1}`, ev.name);
+    // A name that changes (renamed on the console, or first read on connect)
+    // is announced to phones, a Settings label still winning — as DiGiCo
+    // and LV1 do. They used to keep the old name until they reloaded.
+    if (ev.midiCh === baseN) {
+      const n = ev.ch + 1, key = `input:${n}`;
+      if (nameCache.get(key) === ev.name) return;
+      nameCache.set(key, ev.name);
+      if (n > (serverCfg.channels || 48)) return;
+      const label = serverCfg.channelOverrides?.[String(n)]?.label;
+      broadcastToClients({ type: 'channel-relabeled', channel: n, label: label || ev.name });
+    } else if (ev.midiCh === baseN + 4 && ev.ch >= 0x36 && ev.ch < 0x36 + 24) {
+      const n = ev.ch - 0x36 + 1, key = `dca:${n}`;
+      if (nameCache.get(key) === ev.name) return;
+      nameCache.set(key, ev.name);
+      broadcastToClients({ address: `/Control_Groups/${n}/name`, args: [ev.name || `DCA ${n}`] });
+    } else if (ev.midiCh === baseN + 2) {
+      // While the mix layout is being read, an answer is a mix that exists
+      if (mixProbe) {
+        (ev.ch >= 0x40 ? mixProbe.stereo : mixProbe.mono).set(ev.ch >= 0x40 ? ev.ch - 0x40 + 1 : ev.ch + 1, ev.name);
+        return;
+      }
+      const n = auxFor(baseN, ev.midiCh, ev.ch); if (!n) return;
+      const key = `aux:${n}`;
+      if (nameCache.get(key) === ev.name) return;
+      nameCache.set(key, ev.name);
+      if (n > auxCountNow()) return;
+      const label = serverCfg.auxOverrides?.[String(n)]?.label;
+      broadcastToClients({ type: 'aux-relabeled', aux: n, label: label || ev.name || `AUX ${n}` });
+    }
   });
+  // The console's own faders, mutes and solos, for the Console Controller —
+  // replies to its requests, and changes made anywhere (the surface,
+  // Director, another controller)
+  client.on('fader', (ev) => {
+    const strip = stripFor(baseN, ev.midiCh, ev.ch); if (!strip) return;
+    stripState(strip.kind, strip.n).gain = ev.db;
+    broadcastToClients({ address: `/${STRIP_PATH[strip.kind]}/${strip.n}/fader`, args: [jsonDb(ev.db)] });
+  });
+  client.on('mute', (ev) => {
+    const strip = stripFor(baseN, ev.midiCh, ev.ch); if (!strip) return;
+    stripState(strip.kind, strip.n).mute = ev.on;
+    broadcastToClients({ address: `/${STRIP_PATH[strip.kind]}/${strip.n}/mute`, args: [ev.on ? 1 : 0] });
+  });
+  client.on('solo', (ev) => {
+    const strip = stripFor(baseN, ev.midiCh, ev.ch); if (!strip || strip.kind === 'aux') return;
+    stripState(strip.kind, strip.n).solo = ev.on;
+    broadcastToClients({ address: `/${STRIP_PATH[strip.kind]}/${strip.n}/solo`, args: [ev.on ? 1 : 0] });
+  });
+
   client.on('colour', (ev) => {
-    if (ev.midiCh === baseN + 2 && ev.ch < 0x40) colourCache.set(`aux:${ev.ch + 1}`, ev.hex);
+    const n = auxFor(baseN, ev.midiCh, ev.ch);
+    if (n) colourCache.set(`aux:${n}`, ev.hex);
   });
 
   client.connect();
@@ -847,6 +1057,7 @@ function start(cfg) {
 
 function stop() {
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+  clearInterval(mixProbeTimer); mixProbeTimer = null; mixProbe = null;
   stopPriming();
   stopSendLevelPolling();
   pacer.flush(); // queued writes are the state people asked for
@@ -914,7 +1125,9 @@ function applyConfigLive(cfg) {
 }
 
 function getChannelCount() { return null; }
-function getAuxCount() { return null; }
+// Known once the console's mix layout has been read (Settings then shows it
+// and locks the field, as for DiGiCo and LV1)
+function getAuxCount() { return mixMap ? mixMap.length : null; }
 
 function isConsoleConnected() { return consoleConnected; }
 function setConsoleStatusCallback(cb) { onConsoleStatusChange = cb; }

@@ -12,7 +12,7 @@ const definitions = [
   ['auxes', 'Aux layout & access', 'Mix names, colors, visibility, private links, and EQ access.', ['auxOverrides']],
   ['ipads', 'iPad relay connections', 'Configured OSC relay devices and ports.', ['ipadConnections']],
   ['behavior', 'Startup & backup behavior', 'Automatic startup, demo mode, snapshot recall, and backup schedule.', ['autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','autoBackupIntervalDays']],
-  ['pco', 'Planning Center setup', 'Service, team, day, aux mappings, room displays, and phone assignment.', ['pcoServiceTypeId','pcoTeamId','pcoDay','pcoPositionMapping','pcoIncludeUnconfirmed','pcoGreenRoomHidden','pcoUpdateAuxNames','pcoFohPositionName','pcoFohTeamId','pcoProPresenterPositionName','pcoProPresenterTeamId','pcoLightingPositionName','pcoLightingTeamId','pcoSwitcherPositionName','pcoSwitcherTeamId','pcoPhoneAssignments']],
+  ['pco', 'Planning Center setup', 'Service, team, day, aux mappings, second service, room displays, and phone assignment.', ['pcoServiceTypeId','pcoTeamId','pcoDay','pcoPositionMapping','pcoAlt','pcoIncludeUnconfirmed','pcoGreenRoomHidden','pcoUpdateAuxNames','pcoFohPositionName','pcoFohTeamId','pcoProPresenterPositionName','pcoProPresenterTeamId','pcoLightingPositionName','pcoLightingTeamId','pcoSwitcherPositionName','pcoSwitcherTeamId','pcoPhoneAssignments']],
   ['pcoCredentials', 'Planning Center credentials', 'Application ID and Secret. Kept unless you explicitly select this option.', ['pcoAppId','pcoSecret']],
   ['branding', 'Branding', 'Accent color for the pages JPMixer serves. The logo image isn’t in backups; upload it again in Settings → Branding.', ['brandAccent']],
   ['access', 'FOH Home access code', 'The code other devices enter to open FOH Home.', ['fohAccessCode']],
@@ -20,7 +20,7 @@ const definitions = [
   ['api', 'Control API', 'API enablement, port, and access token.', ['apiEnabled','apiPort','apiToken']]
 ];
 const types = {
-  channelGroups:'array', ipadConnections:'array', pcoGreenRoomHidden:'array', channelOverrides:'object', auxOverrides:'object', pcoPositionMapping:'object'
+  channelGroups:'array', ipadConnections:'array', pcoGreenRoomHidden:'array', channelOverrides:'object', auxOverrides:'object', pcoPositionMapping:'object', pcoAlt:'object'
 };
 const booleans = new Set(['autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled']);
 const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,64],groups:[0,64],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],autoBackupIntervalDays:[1,365] };
@@ -37,6 +37,11 @@ function validateConfig(config) {
   if (config.ipadConnections?.some(device => !object(device) || typeof device.ip !== 'string' || !Number.isInteger(device.sendPort) || device.sendPort < 1 || device.sendPort > 65535)) throw new Error('Invalid iPad connections.');
   if (config.pcoGreenRoomHidden?.some(name => typeof name !== 'string')) throw new Error('Invalid hidden Planning Center positions.');
   if (config.pcoPositionMapping && Object.values(config.pcoPositionMapping).some(aux => !Number.isInteger(Number(aux)) || Number(aux) < 1 || Number(aux) > 64)) throw new Error('Invalid Planning Center aux mapping.');
+  // The second service: 0 in its mapping takes a position off the mixes
+  const alt = config.pcoAlt;
+  if (alt && ((alt.positionMapping !== undefined && !object(alt.positionMapping)) || (alt.roles !== undefined && !object(alt.roles))
+    || Object.values(alt.positionMapping || {}).some(aux => !Number.isInteger(Number(aux)) || Number(aux) < 0 || Number(aux) > 64)
+    || ['serviceTypeId', 'teamId'].some(k => alt[k] !== undefined && typeof alt[k] !== 'string'))) throw new Error('Invalid second Planning Center service.');
 }
 function validateScenes(scenes) {
   if (!object(scenes)) throw new Error('Invalid Ear Scenes.');

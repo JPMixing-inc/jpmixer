@@ -55,8 +55,11 @@ class Lv1Client extends EventEmitter {
       socket.removeAllListeners('close'); socket.removeAllListeners('data'); socket.removeAllListeners('connect'); socket.on('error', () => {});
       // Still connecting: nothing to deliver, so don't let it finish and
       // turn up at LV1 as a second JPMixer
+      // Otherwise a moment before closing, so LV1 reads the last writes (the
+      // mutes released on shutdown) before the close arrives — dLive
+      // Director dropped writes ended straight after
       if (socket.connecting) socket.destroy();
-      else { socket.end(); setTimeout(() => socket.destroy(), 1000).unref(); }
+      else { setTimeout(() => { try { socket.end(); } catch (_) {} }, 250); setTimeout(() => socket.destroy(), 1500).unref(); }
       if (this.connected) { this.connected = false; this.emit('disconnected'); }
       return;
     }

@@ -26,17 +26,18 @@
   </header>
 
   <nav class="tab-nav">
-    <span class="nav-section-label">SETUP</span>
-    <button class="tab active" data-tab="general"><span class="nav-symbol" aria-hidden="true">◎</span>General</button>
+    <button class="tab active" data-tab="start"><span class="nav-symbol" aria-hidden="true">✓</span>Get started</button>
+    <span class="nav-section-label nav-section-second">SETUP</span>
     <button class="tab" data-tab="console"><span class="nav-symbol" aria-hidden="true">⌁</span>Console</button>
     <button class="tab" data-tab="channels"><span class="nav-symbol" aria-hidden="true">☷</span>Channels</button>
     <button class="tab" data-tab="auxes"><span class="nav-symbol" aria-hidden="true">◫</span>Aux mixes</button>
     <span class="nav-section-label nav-section-second">PEOPLE &amp; PAGES</span>
     <button class="tab" data-tab="performers"><span class="nav-symbol" aria-hidden="true">♫</span>Performers</button>
+    <button class="tab" data-tab="pco"><span class="nav-symbol" aria-hidden="true">◷</span>Planning Center</button>
     <button class="tab" data-tab="views"><span class="nav-symbol" aria-hidden="true">▦</span>Pages</button>
     <button class="tab" data-tab="branding"><span class="nav-symbol" aria-hidden="true">◐</span>Branding</button>
-    <button class="tab" data-tab="pco"><span class="nav-symbol" aria-hidden="true">◷</span>Planning Center</button>
     <span class="nav-section-label nav-section-second">SYSTEM</span>
+    <button class="tab" data-tab="general"><span class="nav-symbol" aria-hidden="true">◎</span>General</button>
     <button class="tab" data-tab="backup"><span class="nav-symbol" aria-hidden="true">↻</span>Backup &amp; restore</button>
     <button class="tab" data-tab="api"><span class="nav-symbol" aria-hidden="true">⌘</span>Control API</button>
     <button class="tab" data-tab="osclog"><span class="nav-symbol" aria-hidden="true">≋</span>OSC Log</button>
@@ -44,10 +45,10 @@
   </nav>
 
   <main>
-    <div class="page-intro"><p class="page-eyebrow">JPMIXER / SETTINGS</p><h1 id="settingsPageTitle">General</h1><p id="settingsPageDescription">The web server, and what JPMixer does when this computer starts.</p></div>
+    <div class="page-intro"><p class="page-eyebrow">JPMIXER / SETTINGS</p><h1 id="settingsPageTitle">Get started</h1><p id="settingsPageDescription">The address phones connect to, and each part of setting JPMixer up, in order.</p></div>
 
-    <!-- ── General: web server, startup, demo ── -->
-    <div class="tab-panel active" id="tab-general">
+    <!-- ── Get started: the address, and setup in order ── -->
+    <div class="tab-panel active" id="tab-start">
 
       <section class="card" id="setup-server">
         <div class="settings-heading"><h2>Web server</h2><p class="sub">The address performers’ phones and the engineer pages connect to.</p></div>
@@ -65,11 +66,31 @@
           <button class="btn btn-sm" id="port80Btn" title="Forward port 80 → server port (requires administrator privileges)">Use Port 80</button>
           <span class="ip-status" id="port80Status"></span>
         </div>
+      </section>
+
+      <section class="card" id="setup-checklist">
+        <div class="settings-heading"><h2>Setting up JPMixer</h2><p class="sub">Work down the list. Each step opens the right place; the optional ones only matter if you use them.</p></div>
+        <div class="setup-names-note">
+          <strong>Names fill themselves in.</strong>
+          <p>Once your console is connected, JPMixer reads its channel names, mix names, and control groups (DCAs on dLive and LV1) straight from the console, so there’s nothing to type in. When the console changes a name, JPMixer follows. (KLANG and WING send channel names only, so name their mixes on the Aux mixes tab.)</p>
+          <p>Want a different name? Type your own on the <button type="button" class="settings-text-link" data-settings-target="channels">Channels</button> or <button type="button" class="settings-text-link" data-settings-target="auxes">Aux mixes</button> tab. It overrides the console’s name in JPMixer only (the console isn’t changed), and clearing it goes back to the console’s name. Control group and DCA names always come from the console.</p>
+        </div>
+        <ol class="setup-steps" id="setupSteps"></ol>
+      </section>
+
+    </div>
+
+    <!-- ── General: startup & power, the web server's port ── -->
+    <div class="tab-panel" id="tab-general">
+
+      <section class="card" id="setup-port">
+        <div class="settings-heading"><h2>Web server port</h2><p class="sub">The port phones and the pages use. Leave it unless something else on this computer needs it; phones would need the new address.</p></div>
         <div class="field-row">
           <label for="serverPort">Web server port</label>
           <input type="number" id="serverPort" min="1024" max="65535" /><p class="sub">The port used by performer and engineer web pages.</p>
         </div>
       </section>
+
 
       <section class="card" id="setup-behavior">
         <div class="settings-heading"><h2>Startup &amp; power</h2><p class="sub">What JPMixer does when this computer starts, and while the server runs.</p></div>
@@ -91,19 +112,16 @@
         </div>
       </section>
 
-      <section class="card" id="setup-demo">
-        <div class="card-row"><div><h2>Demo mode</h2><p class="sub">Explore a simulated console. Fader moves stay local and nothing is sent to hardware.</p></div><input type="checkbox" id="demoMode" class="toggle" /></div>
-      </section>
 
     </div>
 
     <!-- ── Console: type, connection, scenes, iPad relay ── -->
     <div class="tab-panel" id="tab-console">
 
-<nav class="settings-section-nav" aria-label="Console sections"><a href="#setup-console">Console</a><a href="#setup-network">Connection</a><a href="#setup-scenes">Snapshots</a><a href="#setup-ipads">iPad relay</a></nav>
+<nav class="settings-section-nav" aria-label="Console sections"><a href="#setup-console">Console</a><a href="#setup-network">Connection</a><a href="#setup-counts">Channels &amp; mixes</a><a href="#setup-ipads">iPad relay</a></nav>
       <section class="card" id="setup-console">
         <div class="card-row space-between">
-          <div class="settings-heading"><h2>Console</h2><p class="sub">Choose your console and the number of channels and mixes to display.</p></div>
+          <div class="settings-heading"><h2><span class="step-num">1</span>Console</h2><p class="sub">Which console JPMixer controls. No console yet? Turn on Demo mode to try everything with a simulated one.</p></div>
           <div class="console-status">
             <div class="status-pill" id="consolePill">
               <span class="dot" id="consoleDot"></span>
@@ -124,25 +142,17 @@
           </select>
         </div>
 
-        <div class="field-row three-col">
+        <div class="card-row settings-setting-row" id="setup-demo">
           <div>
-            <label for="channels">Channels</label>
-            <input type="number" id="channels" min="1" max="256" />
+            <label class="toggle-label" for="demoMode">Demo mode</label>
+            <div class="sub">A simulated console: explore every page with nothing connected. Fader moves stay in JPMixer and nothing is sent to hardware.</div>
           </div>
-          <div>
-            <label for="auxes">Auxes / Buses</label>
-            <input type="number" id="auxes" min="0" max="64" />
-          </div>
-          <div id="groupsField">
-            <label for="groups">Control Groups</label>
-            <input type="number" id="groups" min="0" max="64" />
-          </div>
+          <input type="checkbox" id="demoMode" class="toggle" />
         </div>
-        <p class="sub" id="countsHint" hidden></p>
       </section>
 
       <section class="card" id="setup-network">
-        <div class="settings-heading"><h2>Console connection</h2><p class="sub">Use addresses on the same network as this Mac.</p></div>
+        <div class="settings-heading"><h2><span class="step-num">2</span>Connection</h2><p class="sub">Where to find the console, on the same network as this computer.</p></div>
         <div class="field-row">
           <label for="deskIp" id="deskIpLabel">Console IP Address</label>
           <input type="text" id="deskIp" placeholder="192.168.1.100" />
@@ -194,7 +204,7 @@
         </div>
 
         <div class="settings-stack" id="dliveFieldsRow" style="display:none">
-          <div class="settings-notice sub" id="dliveWarningText">⚠️ dLive support is new and hasn't been validated on real hardware yet. Aux send levels, mute, and scene recall work; per-send pan, EQ, and the Console Controller are not implemented for dLive.</div>
+          <div class="settings-notice sub" id="dliveWarningText">⚠️ dLive support has been tested against dLive Director running offline, not yet a real MixRack. Aux send levels, mute, solo, scene recall, Ear Scenes, live names and the Console Controller (channel, aux and DCA faders, mutes and solos) work; per-send pan and EQ are not available over dLive’s MIDI control. To try it without a console, run dLive Director offline with System → Offline → “Enable Director Connections to MixRack IP Controllers” ticked, and use this computer’s address with Director’s MIDI channel.</div>
           <details class="settings-help"><summary>Enable MIDI control on the dLive console</summary><div class="settings-help-body"><div class="sub"><strong>On the console:</strong> Utility → Control → MIDI has its own On/Off/Secure Mode switch for MIDI/TCP — it must be turned on there before JPMixer (or anything else) can connect, the same way DiGiCo consoles need DiGiCo Pad enabled. Unlike DiGiCo Pad, though, dLive doesn't limit this to one connection at a time — JPMixer can run alongside Director, MixPad, and other control apps without conflict.</div></div></details>
           <div class="field-row two-col">
             <div>
@@ -242,16 +252,25 @@
         </div>
       </section>
 
-      <section class="card" id="setup-scenes">
-        <div class="settings-heading"><h2>Snapshots &amp; Ear Scenes</h2><p class="sub">What happens when the console changes snapshots.</p></div>
-        <div class="card-row settings-setting-row">
+      <section class="card" id="setup-counts">
+        <div class="settings-heading"><h2><span class="step-num">3</span>Channels &amp; mixes</h2><p class="sub">How many channels and mixes JPMixer shows. DiGiCo, dLive and LV1 fill these in themselves once connected.</p></div>
+        <div class="field-row three-col">
           <div>
-            <label class="toggle-label" for="sceneRecallEnabled">Auto-recall scenes on snapshot change</label>
-            <div class="sub">When enabled, saved ear mixes are pushed to the console whenever the snapshot changes.</div>
+            <label for="channels">Channels</label>
+            <input type="number" id="channels" min="1" max="256" />
           </div>
-          <input type="checkbox" id="sceneRecallEnabled" class="toggle" />
+          <div>
+            <label for="auxes">Auxes / Buses</label>
+            <input type="number" id="auxes" min="0" max="64" />
+          </div>
+          <div id="groupsField">
+            <label for="groups">Control Groups</label>
+            <input type="number" id="groups" min="0" max="64" />
+          </div>
         </div>
+        <p class="sub" id="countsHint" hidden></p>
       </section>
+
 
       <section class="card" id="setup-ipads">
         <div class="card-row space-between">
@@ -270,8 +289,19 @@
     <!-- ── Channels tab ── -->
     <div class="tab-panel" id="tab-channels">
 
+      <!-- Groups first: channels are put in them below -->
+      <section class="card groups-card" id="channel-groups">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2><span class="step-num">1</span>Groups</h2><p class="sub">Make the groups your channels go in, like Drums, Vocals or Band. Performers can show one group at a time. Optional.</p></div>
+          <button class="btn btn-sm" id="addGroupBtn">+ Add group</button>
+        </div>
+        <div id="groupsList" class="groups-list groups-chips">
+          <div class="empty-hint">No groups yet. Click + Add group, or pick “+ New group…” on a channel below.</div>
+        </div>
+      </section>
+
       <section class="card channels-card">
-        <div class="settings-heading"><h2>Channel layout</h2><p class="sub">Drag the handle to reorder. Choose an icon, name, group, and whether each channel is shown.</p><a class="settings-inline-link" href="#channel-groups">Manage channel groups ↓</a></div>
+        <div class="settings-heading"><h2><span class="step-num">2</span>Channels</h2><p class="sub">Name each channel, pick its icon and group, and choose whether performers see it. Drag the handle to change the order.</p></div>
         <div class="ch-editor-header">
           <span></span>
           <span>#</span>
@@ -282,19 +312,6 @@
         </div>
         <div id="channelsList" class="channels-editor"></div>
       </section>
-
-      <details class="card groups-card" id="channel-groups">
-        <summary>Channel groups <span>Create and rename groups</span></summary>
-        <div class="groups-content">
-          <div class="card-row space-between">
-            <p class="sub">Use groups to organize channels in the performer mixer.</p>
-            <button class="btn btn-sm" id="addGroupBtn">+ Add Group</button>
-          </div>
-          <div id="groupsList" class="groups-list">
-            <div class="empty-hint">No groups yet — click + Add Group to create one.</div>
-          </div>
-        </div>
-      </details>
 
       <details class="card settings-maintenance" id="channel-reset"><summary>Reset channel layout &amp; icons<span>Clear channel customization</span></summary><div class="settings-stack settings-details-body">
         <div class="sub">Clears all channel groups, icon assignments, and label overrides — restoring the Channels tab to its default state. Console network settings, aux visibility, and saved ear mixes are not affected.</div>
@@ -310,7 +327,7 @@
     <div class="tab-panel" id="tab-auxes">
 
       <section class="card aux-card">
-        <div class="settings-heading"><h2>Mixes</h2><p class="sub">Names come from the console. Pick a color for each mix's button and what performers can do with it.</p></div>
+        <div class="settings-heading"><h2>Mixes</h2><p class="sub">Names come from the console. Type a name to use your own instead (only in JPMixer; leave it empty for the console’s). Pick a color for each mix's button and what performers can do with it.</p></div>
         <dl class="aux-key">
           <div><dt>Show</dt><dd>Listed in the performer mix picker</dd></div>
           <div id="auxKeyEq"><dt>EQ</dt><dd>Performers can adjust this mix's EQ</dd></div>
@@ -333,13 +350,20 @@
     <div class="tab-panel" id="tab-performers">
 
       <section class="card" id="performer-phones">
-        <div class="settings-heading"><h2>Performer phones</h2><p class="sub">What performers see on the mixer page.</p></div>
+        <div class="settings-heading"><h2>Ear Scenes</h2><p class="sub">A performer’s mix saved for a console snapshot or scene, brought back when that snapshot comes up.</p></div>
         <div class="card-row settings-setting-row">
           <div>
             <label class="toggle-label" for="performerEarScenes">Show Ear Scenes on performer phones</label>
             <div class="sub">Turn off to hide Ear Scenes and the Saved / Not Saved button from performers. Saved Ear Scenes are kept.</div>
           </div>
           <input type="checkbox" id="performerEarScenes" class="toggle" />
+        </div>
+        <div class="card-row settings-setting-row" id="setup-scenes">
+          <div>
+            <label class="toggle-label" for="sceneRecallEnabled">Recall Ear Scenes when the console changes snapshot</label>
+            <div class="sub">Each performer’s saved mix for the new snapshot or scene is sent to the console straight away.</div>
+          </div>
+          <input type="checkbox" id="sceneRecallEnabled" class="toggle" />
         </div>
       </section>
       <section class="card">
@@ -365,9 +389,7 @@
     <!-- ── Pages: every page JPMixer serves, with each Home page's own setup ── -->
     <div class="tab-panel" id="tab-views">
 
-      <div class="views-section-heading"><h2>Production team</h2><p>One link per station. Each Home page welcomes whoever Planning Center has scheduled in the team and role you pick here.</p>
-        <div class="views-section-actions"><button type="button" class="btn btn-sm" id="pagesRefreshPcoBtn">Refresh team &amp; role lists</button><button type="button" class="btn btn-sm" data-settings-target="pco">Planning Center setup</button><span class="sub" id="pagesPcoStatus" role="status"></span></div>
-      </div>
+      <div class="views-section-heading"><h2>Production team</h2><p>One link per station. Each Home page welcomes whoever Planning Center has scheduled in its role; choose the roles in <button type="button" class="settings-text-link" data-settings-target="pco" data-settings-jump="pco-home-pages">Planning Center</button>.</p></div>
       <div class="views-directory">
         <section class="card view-directory-card" data-engineer-view="home">
           <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></span><h2>Home page picker</h2></div>
@@ -381,12 +403,9 @@
           <p class="sub view-directory-description">Your customizable dashboard: live service items, team roster, order of service, and quick links.</p>
           <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openFohViewBtn">Open FOH Home</button></div>
           <p class="sub view-directory-hint" id="fohViewHint" role="status">Start the server first to open.</p>
+          <div class="view-welcomes"><span class="view-welcomes-label">Welcomes</span><span class="view-welcomes-who" id="welcomesFoh">—</span><button type="button" class="settings-text-link" data-settings-target="pco" data-settings-jump="pco-home-pages">Change</button></div>
           <div class="view-page-setup">
-            <p class="view-page-setup-title">Who it welcomes</p>
-            <div class="pco-field-grid">
-              <div class="field-row"><label for="pcoFohTeam">Team</label><select id="pcoFohTeam"><option value="">— Select Team —</option></select></div>
-              <div class="field-row"><label for="pcoFohPosition">Role</label><select id="pcoFohPosition"><option value="">— None —</option></select></div>
-            </div>
+            <p class="view-page-setup-title">Access</p>
             <div class="field-row pco-access-code">
               <label for="fohAccessCode">Access code</label>
               <input type="text" id="fohAccessCode" maxlength="32" autocomplete="off" spellcheck="false" placeholder="None — anyone on the network can open it" />
@@ -400,13 +419,7 @@
           <p class="sub view-directory-description">Welcome, live service item, team and order of service for the lyrics and slides operator.</p>
           <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openProPresenterViewBtn">Open ProPresenter Home</button></div>
           <p class="sub view-directory-hint" id="propresenterViewHint" role="status">Start the server first to open.</p>
-          <div class="view-page-setup">
-            <p class="view-page-setup-title">Who it welcomes</p>
-            <div class="pco-field-grid">
-              <div class="field-row"><label for="pcoProPresenterTeam">Team</label><select id="pcoProPresenterTeam"><option value="">— Select Team —</option></select></div>
-              <div class="field-row"><label for="pcoProPresenterPosition">Role</label><select id="pcoProPresenterPosition"><option value="">— None —</option></select></div>
-            </div>
-          </div>
+          <div class="view-welcomes"><span class="view-welcomes-label">Welcomes</span><span class="view-welcomes-who" id="welcomesProPresenter">—</span><button type="button" class="settings-text-link" data-settings-target="pco" data-settings-jump="pco-home-pages">Change</button></div>
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="propresenterViewUrl">—</span></div>
         </section>
         <section class="card view-directory-card" data-engineer-view="lighting">
@@ -414,13 +427,7 @@
           <p class="sub view-directory-description">Welcome, live service item, team and order of service for the lighting operator.</p>
           <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openLightingViewBtn">Open Lighting Home</button></div>
           <p class="sub view-directory-hint" id="lightingViewHint" role="status">Start the server first to open.</p>
-          <div class="view-page-setup">
-            <p class="view-page-setup-title">Who it welcomes</p>
-            <div class="pco-field-grid">
-              <div class="field-row"><label for="pcoLightingTeam">Team</label><select id="pcoLightingTeam"><option value="">— Select Team —</option></select></div>
-              <div class="field-row"><label for="pcoLightingPosition">Role</label><select id="pcoLightingPosition"><option value="">— None —</option></select></div>
-            </div>
-          </div>
+          <div class="view-welcomes"><span class="view-welcomes-label">Welcomes</span><span class="view-welcomes-who" id="welcomesLighting">—</span><button type="button" class="settings-text-link" data-settings-target="pco" data-settings-jump="pco-home-pages">Change</button></div>
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="lightingViewUrl">—</span></div>
         </section>
         <section class="card view-directory-card" data-engineer-view="switcher">
@@ -428,13 +435,7 @@
           <p class="sub view-directory-description">Welcome, live service item, team and order of service for the video switcher operator.</p>
           <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openSwitcherViewBtn">Open Switcher Home</button></div>
           <p class="sub view-directory-hint" id="switcherViewHint" role="status">Start the server first to open.</p>
-          <div class="view-page-setup">
-            <p class="view-page-setup-title">Who it welcomes</p>
-            <div class="pco-field-grid">
-              <div class="field-row"><label for="pcoSwitcherTeam">Team</label><select id="pcoSwitcherTeam"><option value="">— Select Team —</option></select></div>
-              <div class="field-row"><label for="pcoSwitcherPosition">Role</label><select id="pcoSwitcherPosition"><option value="">— None —</option></select></div>
-            </div>
-          </div>
+          <div class="view-welcomes"><span class="view-welcomes-label">Welcomes</span><span class="view-welcomes-who" id="welcomesSwitcher">—</span><button type="button" class="settings-text-link" data-settings-target="pco" data-settings-jump="pco-home-pages">Change</button></div>
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="switcherViewUrl">—</span></div>
         </section>
       </div>
@@ -538,7 +539,7 @@
     <div class="tab-panel" id="tab-pco">
 
       <nav class="pco-section-nav" aria-label="Planning Center sections">
-        <a href="#pco-connection">Connection</a><a href="#pco-schedule">Service &amp; team</a><a href="#pco-mapping">Aux mapping</a><a href="#pco-sync">Sync</a>
+        <a href="#pco-connection">Connection</a><a href="#pco-schedule">Service &amp; team</a><a href="#pco-mapping">Aux mapping</a><a href="#pco-sync">Sync</a><a href="#pco-home-pages">Home pages</a><a href="#pco-alt">Second service</a>
       </nav>
 
       <details class="card pco-card pco-connection" id="pco-connection" open>
@@ -587,11 +588,80 @@
         <div class="pco-section-heading"><div><h2 id="pcoSyncHeading">Sync aux names</h2><p class="sub">Use scheduled names to identify each performer’s mix.</p></div></div>
         <div class="pco-setting-row"><div><label class="toggle-label" for="pcoUpdateAuxNames">Show performer names on aux mixes</label><p class="sub">Names each mix after who’s scheduled on it, like “Vocal 1 - Sam”, on the aux picker and in Settings. Turn off to keep the mixes’ own names; names already added come off when you save. Planning Center still runs the Green Room and the production Home pages either way.</p></div><input type="checkbox" id="pcoUpdateAuxNames" class="toggle" /></div>
         <div class="pco-setting-row"><div><label class="toggle-label" for="pcoPhoneAssignments">Assign phones by Planning Center performer</label><p class="sub">Performers choose their name once. JPMixer selects their mapped aux and keeps My Mixes under their Planning Center identity, so a changed device ID can recover them. If browser data is cleared, choose the name again.</p><p class="sub" id="pcoPhoneAssignmentsNote" hidden>Turn on performer names above to use this.</p></div><input type="checkbox" id="pcoPhoneAssignments" class="toggle" /></div>
-        <p class="sub">When enabled, names update at startup and after Save &amp; Apply. Sync Now applies the current mappings immediately. Unmapped positions are listed in the results.</p>
+        <p class="sub">When enabled, names follow the schedule by themselves: 10 seconds after JPMixer opens, after Save &amp; Apply, and every 5 minutes while it runs. A mix nobody is scheduled on goes back to its own name. Sync Now does it straight away; unmapped positions are listed in the results.</p>
         <div class="pco-sync-action"><p class="sub" id="pcoSyncStatus" role="status"></p><button type="button" class="btn btn-primary" id="pcoSyncNowBtn">Sync Now</button></div>
         <div id="pcoSyncResults" aria-live="polite"></div>
       </section>
-      <p class="sub">Who each Home page welcomes is set on the <button type="button" class="settings-text-link" data-settings-target="views">Pages</button> tab.</p>
+      <section class="card pco-card" id="pco-home-pages" aria-labelledby="pcoHomePagesHeading">
+        <div class="pco-section-heading"><div><h2 id="pcoHomePagesHeading">Production team Home pages</h2><p class="sub">Each Home page welcomes whoever is scheduled in the role you pick: their name, the live service item and the order of service. Open the pages from the <button type="button" class="settings-text-link" data-settings-target="views">Pages</button> tab.</p></div><button type="button" class="btn" id="pagesRefreshPcoBtn">Refresh lists</button></div>
+        <p class="sub" id="pagesPcoStatus" role="status"></p>
+        <div class="pco-team-pages">
+          <div class="pco-team-page-row">
+            <span class="pco-team-page-name">FOH Home</span>
+            <div class="field-row"><label for="pcoFohTeam">Team</label><select id="pcoFohTeam"><option value="">— Select Team —</option></select></div>
+            <div class="field-row"><label for="pcoFohPosition">Role</label><select id="pcoFohPosition"><option value="">— None —</option></select></div>
+          </div>
+          <div class="pco-team-page-row">
+            <span class="pco-team-page-name">ProPresenter Home</span>
+            <div class="field-row"><label for="pcoProPresenterTeam">Team</label><select id="pcoProPresenterTeam"><option value="">— Select Team —</option></select></div>
+            <div class="field-row"><label for="pcoProPresenterPosition">Role</label><select id="pcoProPresenterPosition"><option value="">— None —</option></select></div>
+          </div>
+          <div class="pco-team-page-row">
+            <span class="pco-team-page-name">Lighting Home</span>
+            <div class="field-row"><label for="pcoLightingTeam">Team</label><select id="pcoLightingTeam"><option value="">— Select Team —</option></select></div>
+            <div class="field-row"><label for="pcoLightingPosition">Role</label><select id="pcoLightingPosition"><option value="">— None —</option></select></div>
+          </div>
+          <div class="pco-team-page-row">
+            <span class="pco-team-page-name">Switcher Home</span>
+            <div class="field-row"><label for="pcoSwitcherTeam">Team</label><select id="pcoSwitcherTeam"><option value="">— Select Team —</option></select></div>
+            <div class="field-row"><label for="pcoSwitcherPosition">Role</label><select id="pcoSwitcherPosition"><option value="">— None —</option></select></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card pco-card" id="pco-alt" aria-labelledby="pcoAltHeading">
+        <div class="pco-section-heading"><div><h2 id="pcoAltHeading">Second service <span class="setup-step-tag">Optional</span></h2><p class="sub">For a Wednesday night, a youth night or another event planned under its own Service Type, with its own teams.</p></div></div>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoAltEnabled">Use a second service</label><p class="sub">The main service above always comes first. On a day when the second service has a plan and the main one doesn’t, its people go on the mixes, phones, the Green Room and the Home pages instead. Every other day, nothing changes.</p></div><input type="checkbox" id="pcoAltEnabled" class="toggle" /></div>
+        <div id="pcoAltFields" class="pco-alt-fields" hidden>
+          <div class="pco-field-action">
+            <div class="field-row"><label for="pcoAltServiceType">Service type</label><select id="pcoAltServiceType"><option value="">— load service types —</option></select></div>
+            <button type="button" class="btn" id="pcoAltRefreshBtn">Refresh lists</button>
+          </div>
+          <p class="sub pco-field-status" id="pcoAltStatus" role="status"></p>
+          <div class="field-row"><label for="pcoAltTeam">Team</label><select id="pcoAltTeam"><option value="">— All Teams —</option></select></div>
+          <p class="sub">Whose people the Green Room and the Home pages’ team card show on that day, and which positions are listed below.</p>
+
+          <h3 class="pco-alt-subheading">Position → aux mapping</h3>
+          <p class="sub">A position left on “Same as main service” uses the main service’s mix for a position with the same name. Hide from Green Room is shared with the main service.</p>
+          <div class="pco-mapping-head" aria-hidden="true"><span>Team position</span><span>Aux mix</span><span>Green Room</span></div>
+          <div id="pcoAltPositionsList">Choose a service type, then Refresh lists.</div>
+
+          <h3 class="pco-alt-subheading">Home pages</h3>
+          <p class="sub">Who each Home page welcomes on that day. A page left on “Same as main service” looks for the main service’s role name in this plan.</p>
+          <div class="pco-team-pages">
+            <div class="pco-team-page-row">
+              <span class="pco-team-page-name">FOH Home</span>
+              <div class="field-row"><label for="pcoAltFohTeam">Team</label><select id="pcoAltFohTeam"><option value="">— Select Team —</option></select></div>
+              <div class="field-row"><label for="pcoAltFohPosition">Role</label><select id="pcoAltFohPosition"><option value="">Same as main service</option></select></div>
+            </div>
+            <div class="pco-team-page-row">
+              <span class="pco-team-page-name">ProPresenter Home</span>
+              <div class="field-row"><label for="pcoAltProPresenterTeam">Team</label><select id="pcoAltProPresenterTeam"><option value="">— Select Team —</option></select></div>
+              <div class="field-row"><label for="pcoAltProPresenterPosition">Role</label><select id="pcoAltProPresenterPosition"><option value="">Same as main service</option></select></div>
+            </div>
+            <div class="pco-team-page-row">
+              <span class="pco-team-page-name">Lighting Home</span>
+              <div class="field-row"><label for="pcoAltLightingTeam">Team</label><select id="pcoAltLightingTeam"><option value="">— Select Team —</option></select></div>
+              <div class="field-row"><label for="pcoAltLightingPosition">Role</label><select id="pcoAltLightingPosition"><option value="">Same as main service</option></select></div>
+            </div>
+            <div class="pco-team-page-row">
+              <span class="pco-team-page-name">Switcher Home</span>
+              <div class="field-row"><label for="pcoAltSwitcherTeam">Team</label><select id="pcoAltSwitcherTeam"><option value="">— Select Team —</option></select></div>
+              <div class="field-row"><label for="pcoAltSwitcherPosition">Role</label><select id="pcoAltSwitcherPosition"><option value="">Same as main service</option></select></div>
+            </div>
+          </div>
+        </div>
+      </section>
 
     </div>
 

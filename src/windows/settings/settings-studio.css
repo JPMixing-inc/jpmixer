@@ -217,8 +217,6 @@ main::-webkit-scrollbar-thumb { background: var(--jp-muted); border: 2px solid v
 #tab-general .btn, #tab-console .btn, #tab-backup .btn, #tab-api .btn, #tab-performers .btn { min-height: 38px; }
 #serverUrl { user-select: text; -webkit-user-select: text; overflow-wrap: anywhere; }
 #setup-server > .ip-row { margin: 0; }
-#setup-demo > .card-row { align-items: center; }
-#setup-demo h2 { margin-bottom: 6px; }
 #setup-console > .card-row > .settings-heading { flex: 1; min-width: 180px; }
 .console-status { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
 .console-status .sub { text-align: right; }
@@ -390,3 +388,70 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .companion-status .dot.on { background: #34c759; box-shadow: 0 0 6px rgba(52, 199, 89, .6); }
 .companion-status .dot.warn { background: #e0b25a; }
 @media (max-width: 900px) { .companion-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); } .companion-host { grid-column: 1 / -1; } }
+
+/* Channels: groups as a row of named chips above the channel list */
+.groups-chips { flex-direction: row; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.groups-chips .empty-hint { width: 100%; text-align: left; padding: 4px 0; }
+.group-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 4px 4px 6px; border: 1px solid var(--jp-edge); border-radius: 999px; background: var(--jp-surface); }
+.group-chip .group-name-input { flex: none; width: auto; min-width: 0; border: 1px solid transparent; background: transparent; border-radius: 999px; padding: 5px 8px; font-weight: 550; }
+.group-chip .group-name-input:hover { border-color: var(--jp-line); }
+.group-chip .group-name-input:focus { border-color: var(--accent); background: var(--bg); }
+.group-count { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: var(--jp-border); color: var(--jp-label); font-size: 11px; text-align: center; }
+.group-remove { width: 26px; height: 26px; border: none; border-radius: 50%; background: none; color: var(--jp-label); font-size: 16px; line-height: 1; cursor: pointer; }
+.group-remove:hover { background: rgba(255, 69, 58, .15); color: var(--red); }
+/* A numbered step in a heading ("1 Groups", "2 Channels") */
+.step-num { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 10px; border-radius: 50%; background: rgba(var(--jp-accent-rgb), .18); color: var(--text); font-size: 12px; font-weight: 700; vertical-align: 2px; }
+
+/* Get started: the setup checklist */
+.setup-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 2px; }
+.setup-step { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 4px; border-top: 1px solid var(--jp-line); }
+.setup-step:first-child { border-top: none; }
+.setup-step-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--jp-edge); color: var(--jp-label); font-size: 12px; font-weight: 700; }
+.setup-step.is-done .setup-step-mark { border-color: #3aa85a; background: rgba(58, 168, 90, .16); color: #6fd38f; }
+.setup-step.is-todo .setup-step-mark { border-color: rgba(var(--jp-accent-rgb), .8); color: var(--text); }
+.setup-step-title { color: var(--text); font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.setup-step-tag { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--jp-border); color: var(--jp-label); font-size: 10px; font-weight: 600; letter-spacing: .3px; vertical-align: 1px; }
+.setup-step.is-done .setup-step-title { color: var(--jp-light); }
+
+/* Pages: who a Home page welcomes (set on the Planning Center tab) */
+.view-welcomes { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--jp-line); font-size: 12px; }
+.view-welcomes-label { color: var(--jp-sub); font-size: 10px; font-weight: 650; letter-spacing: 1px; text-transform: uppercase; }
+.view-welcomes-who { color: var(--text); font-weight: 550; }
+.view-welcomes-who.is-unset { color: var(--jp-label); font-weight: 400; }
+
+/* Planning Center: the production team Home pages, one row per page */
+.pco-team-pages { display: grid; gap: 4px; margin-top: 12px; }
+.pco-team-page-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 12px; padding: 10px 0; border-top: 1px solid var(--jp-line); }
+.pco-team-page-row:first-child { border-top: none; }
+.pco-team-page-name { padding-bottom: 10px; color: var(--text); font-size: 13px; font-weight: 600; }
+.pco-team-page-row .field-row { margin: 0; }
+@media (max-width: 760px) {
+  .pco-team-page-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pco-team-page-name { grid-column: 1 / -1; padding-bottom: 0; }
+}
+
+/* Aux mixes: your own name for a mix (placeholder = the console's name) */
+.aux-row .aux-main .aux-name-label { width: 100%; }
+.aux-row .aux-label-input { flex: 1 1 auto; width: 100%; min-width: 0; max-width: 320px; font-size: 13px; font-weight: 550; color: var(--text); }
+.aux-row.is-off .aux-label-input { color: var(--jp-secondary); }
+
+/* Get started: where names come from */
+.setup-names-note { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--jp-edge); border-left: 3px solid rgba(var(--jp-accent-rgb), .8); border-radius: 8px; background: var(--jp-deep); font-size: 12px; line-height: 1.5; color: var(--jp-label); }
+.setup-names-note strong { display: block; margin-bottom: 4px; color: var(--text); font-size: 13px; font-weight: 600; }
+.setup-names-note p { margin: 0; }
+.setup-names-note p + p { margin-top: 6px; }
+.setup-names-note .settings-text-link { color: var(--text); }
+
+/* Planning Center: the optional second service (same layout as the main mapping) */
+.pco-alt-fields { display: grid; gap: 12px; padding-top: 6px; }
+.pco-alt-fields[hidden] { display: none; }
+.pco-alt-subheading { margin-top: 14px; color: var(--text); font-size: 14px; font-weight: 600; }
+#pcoAltPositionsList { min-width: 0; color: var(--jp-secondary); font-size: 12px; line-height: 1.7; }
+#pcoAltPositionsList .pco-position-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr) 160px; gap: 20px; align-items: center; padding: 18px 0; border-bottom: 1px solid var(--jp-line); }
+#pcoAltPositionsList .pco-position-name { min-width: 0; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
+#pcoAltPositionsList select { min-width: 0; width: 100%; }
+#pcoAltPositionsList .pco-hide-toggle { white-space: normal; line-height: 1.5; font-size: 11px; gap: 8px; cursor: pointer; }
+@container (max-width: 600px) {
+  #pcoAltPositionsList .pco-position-row { grid-template-columns: minmax(0, 1fr) minmax(120px, .85fr); gap: 14px 20px; }
+  #pcoAltPositionsList .pco-position-name { grid-column: 1 / -1; font-weight: 550; }
+}

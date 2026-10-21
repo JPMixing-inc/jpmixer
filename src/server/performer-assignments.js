@@ -2,6 +2,7 @@
 const express = require('express');
 const config = require('./config');
 const pco = require('./pco-client');
+const pcoServices = require('./pco-services');
 const presets = require('./presets');
 const autoBackup = require('./auto-backup');
 let cached = null, pending = null, cacheKey = null, expires = 0;
@@ -27,18 +28,19 @@ async function roster() {
   if (!config.get('pcoPhoneAssignments') || config.get('pcoUpdateAuxNames') === false) return { ok: true, enabled: false, people: [] };
   const appId = config.get('pcoAppId'), secret = config.get('pcoSecret'), service = config.get('pcoServiceTypeId');
   if (!appId || !secret || !service) return { ok: false, enabled: true, error: 'Planning Center is not configured yet.' };
-  const key = JSON.stringify([appId, secret, service, config.get('pcoDay'), config.get('pcoIncludeUnconfirmed'), config.get('pcoPositionMapping'), config.get('auxes'), config.get('auxOverrides')]);
+  const key = JSON.stringify([appId, secret, service, config.get('pcoDay'), config.get('pcoIncludeUnconfirmed'), config.get('pcoPositionMapping'), config.get('pcoAlt'), config.get('auxes'), config.get('auxOverrides')]);
   if (key === cacheKey && cached && Date.now() < expires) return cached;
   if (key === cacheKey && pending) return pending;
   cacheKey = key;
   const work = (async () => {
     try {
-      const creds = { appId, secret }, plan = await pco.nextPlan(service, creds);
+      const creds = { appId, secret };
+      const { service: active, plan } = await pcoServices.activeService(pco, creds);
       if (!plan) return { ok: true, enabled: true, people: [] };
-      const members = await pco.planTeamMembers(service, plan.id, creds);
-      const rawDay = config.get('pcoDay');
-      const day = rawDay === 'auto' ? await pco.resolveAutoDay(service, plan.id, creds) : rawDay;
-      return { ok: true, enabled: true, plan: { id: plan.id, title: plan.title }, people: buildAssignments(members, config.get('pcoPositionMapping') || {}, Number(config.get('auxes')), config.get('auxOverrides') || {}, !!config.get('pcoIncludeUnconfirmed'), day) };
+      const members = await pco.planTeamMembers(active.serviceTypeId, plan.id, creds);
+      const rawDay = active.day;
+      const day = rawDay === 'auto' ? await pco.resolveAutoDay(active.serviceTypeId, plan.id, creds) : rawDay;
+      return { ok: true, enabled: true, plan: { id: plan.id, title: plan.title }, people: buildAssignments(members, active.mapping, Number(config.get('auxes')), config.get('auxOverrides') || {}, !!config.get('pcoIncludeUnconfirmed'), day) };
     } catch { return { ok: false, enabled: true, error: 'Planning Center is unavailable. You can still choose a mix manually.' }; }
   })();
   pending = work;

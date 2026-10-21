@@ -9,7 +9,8 @@ function harness() {
   const context = { module: { exports: {} }, Date, Set, Map, Object, Number, String,
     require(name) {
       if (name === 'express') return { json: () => (_q, _r, next) => next() };
-      if (name === './config') return { get: key => cfg[key] };
+      if (name === './config') return { get: key => cfg[key], getAll: () => ({ ...cfg }) };
+      if (name === './pco-services') { const m = { module: { exports: {} }, Date, Number, Object, Promise, require: () => ({ getAll: () => ({ ...cfg }) }) }; vm.runInNewContext(fs.readFileSync(path.join(root, 'src/server/pco-services.js'), 'utf8'), m); return m.module.exports; }
       if (name === './pco-client') return { nextPlan: async () => { calls.push('plan'); if (fail) throw Error('offline'); return { id: 'plan', title: 'Sunday' }; }, planTeamMembers: async () => members, resolveAutoDay: async () => 'Sunday' };
       if (name === './presets') return { getByDevice: id => store[id] || {}, importMixes: data => { calls.push('import'); Object.assign(store, data); return { ok: true }; } };
       if (name === './auto-backup') return { writeBackup: async () => { calls.push('backup'); if (failBackup) throw Error('disk full'); } };

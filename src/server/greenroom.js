@@ -33,6 +33,7 @@
 
 const config = require('./config');
 const pco = require('./pco-client').shared; // 20s shared cache — see pco-client.js
+const pcoServices = require('./pco-services'); // the main service, or the second one on its day
 
 function mountGreenRoom(app) {
   app.get('/greenroom-data', async (req, res) => {
@@ -47,8 +48,9 @@ function mountGreenRoom(app) {
 
     try {
       const creds = { appId, secret };
-      const plan = await pco.nextPlan(serviceTypeId, creds);
+      const { service, plan } = await pcoServices.activeService(pco, creds);
       if (!plan) { res.json({ ok: true, plan: null, members: [] }); return; }
+      const serviceTypeId = service.serviceTypeId;
 
       const members = await pco.planTeamMembers(serviceTypeId, plan.id, creds);
       const includeUnconfirmed = !!config.get('pcoIncludeUnconfirmed');
@@ -57,7 +59,7 @@ function mountGreenRoom(app) {
       // nothing, same as before this option existed.
       const hidden = new Set((config.get('pcoGreenRoomHidden') || []).map((p) => p.toLowerCase()));
 
-      const teamId = config.get('pcoTeamId');
+      const teamId = service.teamId;
       let positionTeam = null;
       if (teamId) {
         const positions = await pco.listPositions(serviceTypeId, creds);
@@ -67,7 +69,7 @@ function mountGreenRoom(app) {
       // "auto" resolves against this plan's own PlanTimes (whichever is
       // closest to right now), not literally today's calendar date — see
       // pco-client.js's resolveAutoDay() for why that distinction matters.
-      const rawDay = config.get('pcoDay');
+      const rawDay = service.day;
       const day = rawDay === 'auto' ? await pco.resolveAutoDay(serviceTypeId, plan.id, creds) : rawDay;
 
       const relevant = members

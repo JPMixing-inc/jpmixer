@@ -100,6 +100,21 @@ async function main() {
     await new Promise((r) => setTimeout(r, 100));
     assert.equal(server.getChannelNames()['1'], 'Kick', 'the primed name should actually reach getChannelNames()');
     console.log('ok - channel names are actually primed via a real request/reply round trip (regression: startPriming() used to wipe its own queue)');
+
+    // A rename on the console reaches phones (padded the way Director pads it)
+    const watcher = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+    const seen = [];
+    watcher.on('message', (m) => seen.push(JSON.parse(m)));
+    await new Promise((r) => watcher.on('open', r));
+    mockSocket.write(Buffer.from(P.buildNameSet(ch1Coord.midiCh, ch1Coord.ch, 'KICK IN ')));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(seen.some(j => j.type === 'channel-relabeled' && j.channel === 1 && j.label === 'KICK IN'), 'a console rename should reach phones, trimmed');
+    const count = seen.filter(j => j.type === 'channel-relabeled').length;
+    mockSocket.write(Buffer.from(P.buildNameSet(ch1Coord.midiCh, ch1Coord.ch, 'KICK IN')));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(seen.filter(j => j.type === 'channel-relabeled').length, count, 'the same name again is not re-announced');
+    watcher.close();
+    console.log('ok - a console rename reaches phones once, trimmed');
   }
 
   // ── Devices view client sees the musician ────────────────────────────
@@ -364,6 +379,99 @@ async function main() {
     ws6.close();
     server.stop();
     mock6.close();
+  }
+
+  // ── Console Controller: dLive's own faders, mutes and solo ──────────────
+  {
+    const mock7 = net.createServer();
+    let sock7 = null; const got7 = [];
+    mock7.on('connection', (s) => { sock7 = s; s.on('data', (d) => got7.push([...d])); });
+    await new Promise((resolve) => mock7.listen(0, '127.0.0.1', resolve));
+    const origCC7 = net.createConnection;
+    net.createConnection = (opts, cb) => origCC7.call(net, { ...opts, port: mock7.address().port }, cb);
+    await new Promise((resolve) => { server.start({ serverPort: 18205, deskIp: '127.0.0.1', channels: 4, auxes: 2, groups: 2, dliveBaseChannel: 0 }); setTimeout(resolve, 300); });
+    net.createConnection = origCC7;
+    const page = new WebSocket('ws://127.0.0.1:18205'); const seen7 = [];
+    page.on('message', (m) => seen7.push(JSON.parse(m)));
+    await new Promise((resolve) => page.once('open', resolve));
+    await new Promise((r) => setTimeout(r, 100));
+    const cfg7 = seen7.find(j => j.config).config;
+    assert.deepEqual(cfg7.controlGroups.map(g => g.channel), [1, 2], 'DCAs show as control groups, as many as Settings asks for');
+    assert.equal(cfg7.channelProcessing, false);
+
+    const dca2 = P.coordinate(0, 'dca', 2), ch3 = P.coordinate(0, 'input', 3), aux1 = P.coordinate(0, 'monoAux', 1);
+    page.send(JSON.stringify({ type: 'request-console-state' }));
+    const deadline = Date.now() + 2000;
+    while (!containsSubsequence(got7.flat(), P.buildFaderGet(dca2.midiCh, dca2.ch)) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(containsSubsequence(got7.flat(), P.buildFaderGet(ch3.midiCh, ch3.ch)), 'opening the page asks for channel faders');
+    assert.ok(containsSubsequence(got7.flat(), P.buildMuteGet(aux1.midiCh, aux1.ch)), '…aux mutes');
+    assert.ok(containsSubsequence(got7.flat(), P.buildFaderGet(dca2.midiCh, dca2.ch)), '…and DCA faders');
+
+    got7.length = 0;
+    page.send(JSON.stringify({ type: 'console-fader', ch: 3, db: -6 }));
+    page.send(JSON.stringify({ type: 'aux-mute', aux: 1, muted: true }));
+    page.send(JSON.stringify({ type: 'cg-solo', cg: 2, soloed: true }));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(containsSubsequence(got7.flat(), P.buildFaderSet(ch3.midiCh, ch3.ch, P.dbToLv(-6))), 'a channel fader move');
+    assert.ok(containsSubsequence(got7.flat(), P.buildMuteOn(aux1.midiCh, aux1.ch)), 'an aux master mute');
+    assert.ok(containsSubsequence(got7.flat(), P.buildSoloSet(dca2.midiCh, dca2.ch, true)), 'a DCA solo, as the desk\'s own solo');
+
+    seen7.length = 0;
+    sock7.write(Buffer.from(P.buildFaderSet(dca2.midiCh, dca2.ch, P.dbToLv(-12))));
+    sock7.write(Buffer.from(P.buildSoloSet(ch3.midiCh, ch3.ch, true)));
+    sock7.write(Buffer.from(P.buildNameSet(dca2.midiCh, dca2.ch, 'VOX')));
+    await new Promise((r) => setTimeout(r, 150));
+    const addr = (a) => seen7.find(j => j.address === a)?.args[0];
+    assert.equal(addr('/Control_Groups/2/fader'), -12, 'a DCA fader moved on the console reaches the page');
+    assert.equal(addr('/Input_Channels/3/solo'), 1, 'and a solo');
+    assert.equal(addr('/Control_Groups/2/name'), 'VOX', 'and a DCA rename');
+    console.log('ok - Console Controller: dLive channel, aux and DCA faders, mutes and solo, both ways');
+    page.close(); server.stop(); mock7.close();
+  }
+
+  // ── The console's mix layout: mono mixes, then stereo ones ───────────────
+  {
+    const mock8 = net.createServer();
+    let sock8 = null; let bytes8 = [];
+    // A show with mono aux 1 and 2 and stereo aux 1: only those answer a name request
+    const shows = [[P.coordinate(0, 'monoAux', 1), 'IEM 1'], [P.coordinate(0, 'monoAux', 2), 'IEM 2'], [P.coordinate(0, 'stereoAux', 1), 'BAND ST']];
+    const answered = new Set();
+    mock8.on('connection', (s) => {
+      sock8 = s;
+      s.on('data', (d) => {
+        bytes8 = bytes8.concat([...d]);
+        for (const [c, name] of shows) {
+          const k = `${c.midiCh}:${c.ch}`;
+          if (!answered.has(k) && containsSubsequence(bytes8, P.buildNameGet(c.midiCh, c.ch))) { answered.add(k); s.write(Buffer.from(P.buildNameSet(c.midiCh, c.ch, name))); }
+        }
+      });
+    });
+    await new Promise((resolve) => mock8.listen(0, '127.0.0.1', resolve));
+    const origCC8 = net.createConnection;
+    net.createConnection = (opts, cb) => origCC8.call(net, { ...opts, port: mock8.address().port }, cb);
+    await new Promise((resolve) => { server.start({ serverPort: 18206, deskIp: '127.0.0.1', channels: 4, auxes: 16, dliveBaseChannel: 0 }); setTimeout(resolve, 300); });
+    net.createConnection = origCC8;
+    const ph8 = new WebSocket('ws://127.0.0.1:18206'); const seen8 = [];
+    ph8.on('message', (m) => seen8.push(JSON.parse(m)));
+    await new Promise((resolve) => ph8.once('open', resolve));
+    const deadline8 = Date.now() + 6000;
+    while (server.getAuxCount() === null && Date.now() < deadline8) await new Promise((r) => setTimeout(r, 100));
+    assert.equal(server.getAuxCount(), 3, 'the console\'s 3 mixes, not Settings\' 16');
+    await new Promise((r) => setTimeout(r, 100));
+    const cfg8 = seen8.filter(j => j.config).at(-1).config;
+    assert.deepEqual(cfg8.aux.map(a => a.label), ['IEM 1', 'IEM 2', 'BAND ST'], 'mono mixes, then stereo, with their names');
+
+    // aux 3 is stereo aux 1, both ways
+    const ch2 = P.coordinate(0, 'input', 2), st1 = P.coordinate(0, 'stereoAux', 1);
+    bytes8 = [];
+    ph8.send(JSON.stringify({ address: '/Input_Channels/2/Aux_Send/3/send_level', args: [-10] }));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(containsSubsequence(bytes8, P.buildSendLevelSet(ch2.midiCh, ch2.ch, st1, P.dbToLv(-10))), 'a fader in mix 3 goes to stereo aux 1');
+    sock8.write(Buffer.from(P.buildSendLevelSet(ch2.midiCh, ch2.ch, st1, P.dbToLv(-20))));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(seen8.some(j => j.address === '/Input_Channels/2/Aux_Send/3/send_level' && j.args[0] === -20), 'and stereo aux 1 on the console reaches mix 3 on phones');
+    console.log('ok - the console\'s mono and stereo aux mixes are read and mapped both ways');
+    ph8.close(); server.stop(); mock8.close();
   }
 
   console.log('\nAll dlive-server end-to-end checks passed');
