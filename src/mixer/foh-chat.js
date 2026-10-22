@@ -57,10 +57,21 @@
   function flagUnread() { unread++; document.title = `(${unread}) ${baseTitle()}`; }
   document.addEventListener('visibilitychange', () => { if (!document.hidden && unread) { unread = 0; document.title = baseTitle(); } });
 
+  // The chat clears itself when the service moves on (chat.js); `generation`
+  // tells a page that missed the clear (asleep, reconnecting) to empty too
+  let generation = null;
+  function clearLog() {
+    log.textContent = '';
+    seen.clear();
+    log.dataset.empty = 'No messages yet. Say hi to the team.';
+  }
+
   async function loadHistory() {
     try {
       const res = await fetch('/chat/history', { cache: 'no-store' });
       const data = await res.json();
+      if (generation !== null && data.generation !== generation) clearLog();
+      generation = data.generation ?? generation;
       for (const msg of data.messages || []) add(msg);
       if (!log.children.length) log.dataset.empty = 'No messages yet. Say hi to the team.';
       log.scrollTop = log.scrollHeight;
@@ -71,6 +82,7 @@
     if (!window.EventSource) return;
     const source = new EventSource('/chat/stream');
     source.addEventListener('message', (e) => { try { add(JSON.parse(e.data)); } catch (_) {} });
+    source.addEventListener('clear', (e) => { try { generation = JSON.parse(e.data).generation; } catch (_) {} clearLog(); });
     // EventSource reconnects by itself; catch anything sent while it was down
     source.addEventListener('open', loadHistory);
   }

@@ -205,14 +205,22 @@ body.fh-locked .fh-main > :not(.fh-lock), body.fh-locked .fh-header-actions { di
 
 /* Companion card (foh-companion.js): this page's Companion Satellite surface.
    Out of the way while Companion buttons are off, except in Arrange mode. */
-.fh-companion-off { display: none; }
-.fh-editing .fh-companion-off { display: flex; }
+.fh-companion-off, .fh-card-off { display: none; }
+.fh-editing .fh-companion-off, .fh-editing .fh-card-off { display: flex; }
 .fh-companion { display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; }
 .fh-companion-status { color: var(--jp-secondary); font-size: 12px; line-height: 1.5; }
 .fh-companion-status[hidden] { display: none; }
 .fh-companion-grid { display: grid; grid-template-columns: repeat(var(--cols, 8), minmax(0, 1fr)); gap: 6px; }
 .fh-companion-grid.is-offline { opacity: .4; pointer-events: none; }
-.fh-companion-key { position: relative; aspect-ratio: 1; min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--jp-edge); border-radius: 8px; background: #000; color: #fff; font: inherit; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: transform .06s ease, filter .06s ease; }
+/* In the Home page grid the buttons fit the card (foh-companion.js fitKeys): the
+   grid takes the card's remaining space and each button is sized to fit it */
+.fh-layout-card .fh-card-body.fh-companion { overflow: hidden; padding-right: 0; }
+.fh-layout-card .fh-companion-grid { flex: 1; min-height: 0; }
+.fh-companion-grid.is-fitted { justify-content: center; align-content: start; }
+.fh-companion-grid.is-cramped { visibility: hidden; }
+.fh-companion-grid.is-fitted .fh-companion-key { aspect-ratio: auto; width: 100%; height: 100%; border-radius: var(--key-radius, 8px); }
+.fh-companion-grid.is-fitted .fh-companion-text { font-size: var(--key-font, 12px); inset: 6%; }
+.fh-companion-key { position: relative; aspect-ratio: 1; min-width: 0; min-height: 0; padding: 0; overflow: hidden; border: 1px solid var(--jp-edge); border-radius: 8px; background: #000; color: #fff; font: inherit; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: transform .06s ease, filter .06s ease; }
 .fh-companion-key img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: auto; pointer-events: none; }
 .fh-companion-key img[hidden] { display: none; }
 .fh-companion-text { position: absolute; inset: 4px; display: grid; place-items: center; font-size: clamp(8px, 1.1vw, 12px); line-height: 1.15; text-align: center; white-space: pre-line; overflow: hidden; overflow-wrap: anywhere; pointer-events: none; }

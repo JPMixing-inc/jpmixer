@@ -35,7 +35,40 @@ const config = require('./config');
 const pco = require('./pco-client').shared; // 20s shared cache — see pco-client.js
 const pcoServices = require('./pco-services'); // the main service, or the second one on its day
 
+// What Planning Center Live is on now and the next item, for the TV's Now /
+// Up next strip. Its own route so the strip can follow the service every few
+// seconds while the team refreshes every 2 minutes. The live item isn't in
+// the shared 20 s cache (FOH Home follows it live too), so it's kept here for
+// a few seconds: every Green Room screen asking at once makes one request.
+const LIVE_CACHE_MS = 8000;
+let liveCache = { at: 0, key: '', value: null };
+const itemOut = (it) => it && { title: it.title, keyName: it.keyName, length: it.length, type: it.type };
+async function liveNow(creds) {
+  const { service, plan } = await pcoServices.activeService(pco, creds);
+  if (!plan) return null;
+  const key = `${service.serviceTypeId}:${plan.id}`;
+  if (liveCache.key === key && Date.now() - liveCache.at < LIVE_CACHE_MS) return liveCache.value;
+  const [items, liveId] = await Promise.all([
+    pco.listPlanItems(service.serviceTypeId, plan.id, creds),
+    pco.getLiveItemId(service.serviceTypeId, plan.id, creds),
+  ]);
+  const at = liveId ? items.findIndex((it) => it.id === liveId) : -1;
+  // Up next skips section headers ("WORSHIP"), as FOH Home's Live card does
+  const next = at < 0 ? null : items.slice(at + 1).find((it) => it.type !== 'header') || null;
+  const value = at < 0 ? null : { now: itemOut(items[at]), next: itemOut(next) };
+  liveCache = { at: Date.now(), key, value };
+  return value;
+}
+
 function mountGreenRoom(app) {
+  app.get('/greenroom-live', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const appId = config.get('pcoAppId'), secret = config.get('pcoSecret');
+    if (!appId || !secret || !config.get('pcoServiceTypeId')) { res.json({ ok: true, live: null }); return; }
+    try { res.json({ ok: true, live: await liveNow({ appId, secret }) }); }
+    catch (err) { res.json({ ok: false, live: null, error: err.message }); }
+  });
+
   app.get('/greenroom-data', async (req, res) => {
     const appId = config.get('pcoAppId');
     const secret = config.get('pcoSecret');
@@ -83,10 +116,23 @@ function mountGreenRoom(app) {
           if (positionTeam && positionTeam.get((m.positionName || '').toLowerCase()) !== teamId) return false;
           if (day && m.days.length > 0 && !m.days.includes(day)) return false;
           return true;
-        })
-        .map((m) => ({ name: m.personName, position: m.positionName || 'Team', photoUrl: m.photoUrl }));
+        });
 
-      res.json({ ok: true, plan: { title: plan.title, date: plan.date }, members: relevant });
+      // One card per person: someone on two positions (Vocal 2 and Acoustic
+      // Guitar) shows once with both, in schedule order. Matched by their
+      // Planning Center id, or by name when there's no id.
+      const people = new Map();
+      for (const m of relevant) {
+        const key = m.personId ? `id:${m.personId}` : `name:${String(m.personName || '').toLowerCase()}`;
+        const role = m.positionName || 'Team';
+        const person = people.get(key);
+        if (!person) people.set(key, { name: m.personName, position: role, positions: [role], photoUrl: m.photoUrl });
+        else {
+          if (!person.positions.includes(role)) person.positions.push(role);
+          if (!person.photoUrl && m.photoUrl) person.photoUrl = m.photoUrl;
+        }
+      }
+      res.json({ ok: true, plan: { title: plan.title, date: plan.date }, members: [...people.values()] });
     } catch (err) {
       res.json({ ok: false, error: err.message, status: err.status || null });
     }

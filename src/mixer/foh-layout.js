@@ -46,7 +46,7 @@
   const isPhone = () => innerWidth <= PHONE;
   // A card the page has turned off (Companion while it's off) takes no space
   // in a new layout; it's placed when it first appears.
-  const inUse = (id) => editing || !nodes.get(id).classList.contains('fh-companion-off');
+  const inUse = (id) => editing || !(nodes.get(id).classList.contains('fh-companion-off') || nodes.get(id).classList.contains('fh-card-off'));
 
   // ── Geometry ──────────────────────────────────────────────────────────
   const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
@@ -203,7 +203,8 @@
       const c = layout.cards[id];
       const [w, h] = c ? [c.w, c.h] : sizeOf(id);
       const bottom = placed.reduce((m, p) => Math.max(m, p.y + p.h + GAP_ROWS), 0);
-      layout.cards[id] = { hidden: c ? c.hidden : false, x: 0, y: bottom, w, h };
+      // auto: parked while off; moved into a free spot when it turns on (see placeWhenOn)
+      layout.cards[id] = { hidden: c ? c.hidden : false, x: 0, y: bottom, w, h, auto: true };
       placed.push(layout.cards[id]);
     }
     for (const c of Object.values(layout.cards)) { delete c.fresh; fit(c); }
@@ -485,8 +486,26 @@
   window.addEventListener('pagehide', cancelGesture);
 
   // ── Arrange mode ──────────────────────────────────────────────────────
+  // A card the page switched off (Companion) was parked below
+  // everything; the first time it turns on it takes the first free spot among
+  // the cards that are showing, instead of sitting under a gap. Once someone
+  // arranges the page, cards stay where they put them.
+  function placeWhenOn(id) {
+    const card = layout.cards[id];
+    if (!card || !card.auto || card.hidden || editing || !inUse(id)) return;
+    const placed = Object.entries(layout.cards).filter(([other, c]) => other !== id && !c.hidden && inUse(other)).map(([, c]) => c);
+    const at = firstFit(placed, card.w, card.h);
+    card.x = at.x; card.y = at.y;
+    delete card.auto;
+    settle(layout.cards, id);
+    apply(); save();
+  }
+  const offWatcher = new MutationObserver((changes) => { for (const change of changes) placeWhenOn(change.target.dataset.fhCard); });
+  for (const node of nodes.values()) offWatcher.observe(node, { attributes: true, attributeFilter: ['class'] });
+
   function setEditing(value) {
     cancelGesture();
+    if (!value) for (const c of Object.values(layout.cards)) delete c.auto; // arranged by hand now
     editing = value;
     document.body.classList.toggle('fh-editing', editing);
     arrange.setAttribute('aria-pressed', String(editing)); arrange.textContent = editing ? 'Done arranging' : 'Arrange page';

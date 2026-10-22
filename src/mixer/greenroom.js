@@ -5,6 +5,79 @@ let lastRoster = '';
 let lastSuccess = null;
 let hasRoster = false;
 const REFRESH_MS = 120000; // 2 min — this page is meant to sit unattended on a green-room iPad/TV
+const LIVE_MS = 15000;      // the Now / Up next strip follows Planning Center Live more closely
+const tvLayout = matchMedia('(orientation: landscape) and (min-width: 900px)');
+
+// ── Fitting the team on one screen ──────────────────────────────────────
+// On a TV the grid has a fixed box. Try every column count, keep the one
+// that gives each card the most room (cards a little taller than wide), and
+// size the photo and text from the card. Phones scroll instead.
+function fitGrid() {
+  const grid = document.getElementById('grGrid');
+  const count = grid.children.length;
+  if (!tvLayout.matches || !count || grid.hidden) { grid.style.removeProperty('--gr-cols'); grid.style.removeProperty('--gr-rows'); grid.style.removeProperty('--gr-photo'); grid.style.removeProperty('--gr-name'); grid.style.removeProperty('--gr-pos'); return; }
+  const W = grid.clientWidth, H = grid.clientHeight;
+  if (!W || !H) return;
+  const gap = Math.round(innerHeight * 0.016);
+  let best = null;
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const w = (W - gap * (cols - 1)) / cols, h = (H - gap * (rows - 1)) / rows;
+    // Room for a card about 0.85 as wide as it is tall; fewer empty cells win ties
+    const size = Math.min(w, h * 0.85), empty = cols * rows - count;
+    if (!best || size > best.size + 0.5 || (Math.abs(size - best.size) <= 0.5 && empty < best.empty)) best = { cols, rows, w, h, size, empty };
+  }
+  // Cards with more than one role need room for a second line of labels
+  const manyRoles = [...grid.children].some(card => card.querySelectorAll('.gr-position').length > 1);
+  const photo = Math.max(36, Math.min(best.w * 0.62, best.h * (manyRoles ? 0.4 : 0.5), innerHeight * 0.2));
+  const name = Math.max(12, Math.min(photo * 0.2, best.w * 0.1, innerHeight * 0.032));
+  grid.style.setProperty('--gr-gap', `${gap}px`);
+  grid.style.setProperty('--gr-cols', best.cols);
+  grid.style.setProperty('--gr-rows', best.rows);
+  grid.style.setProperty('--gr-photo', `${Math.round(photo)}px`);
+  grid.style.setProperty('--gr-name', `${name.toFixed(1)}px`);
+  grid.style.setProperty('--gr-pos', `${Math.max(10, name * 0.62).toFixed(1)}px`);
+}
+new ResizeObserver(() => fitGrid()).observe(document.getElementById('grGrid'));
+tvLayout.addEventListener('change', fitGrid);
+
+// ── Clock ───────────────────────────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).formatToParts(now);
+  const ampm = parts.find(p => p.type === 'dayPeriod');
+  document.getElementById('grTime').textContent = parts.filter(p => p.type !== 'dayPeriod').map(p => p.value).join('').trim();
+  document.getElementById('grAmPm').textContent = ampm ? ampm.value : '';
+  document.getElementById('grToday').textContent = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+}
+tick();
+setInterval(tick, 1000);
+
+// ── Now / Up next, while Planning Center Live is running ────────────────
+const clockLength = (sec) => (Number.isFinite(sec) && sec > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : '');
+const itemMeta = (it) => [it.keyName ? `Key ${it.keyName}` : '', clockLength(it.length)].filter(Boolean).join(' · ');
+async function refreshLive() {
+  try {
+    const res = await fetch('/greenroom-live', { cache: 'no-store' });
+    const data = await res.json();
+    const live = data.ok ? data.live : null;
+    const box = document.getElementById('grLive');
+    const wasHidden = box.hidden;
+    box.hidden = !live;
+    if (live) {
+      document.getElementById('grNowTitle').textContent = live.now.title || 'Untitled item';
+      document.getElementById('grNowMeta').textContent = itemMeta(live.now);
+      document.getElementById('grNextBox').hidden = !live.next;
+      if (live.next) {
+        document.getElementById('grNextTitle').textContent = live.next.title || 'Untitled item';
+        document.getElementById('grNextMeta').textContent = itemMeta(live.next);
+      }
+    }
+    if (wasHidden !== box.hidden) fitGrid(); // the strip takes room from the team
+  } catch (_) { /* keep what's showing; try again shortly */ }
+}
+refreshLive();
+setInterval(refreshLive, LIVE_MS);
 
 function initials(name) {
   return name.split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
@@ -43,10 +116,16 @@ function buildCard(member) {
   name.textContent = member.name;
   details.appendChild(name);
 
-  const position = document.createElement('div');
-  position.className = 'gr-position';
-  position.textContent = member.position;
-  details.appendChild(position);
+  // Everything they're serving as (one card per person; see greenroom.js on the server)
+  const roles = document.createElement('div');
+  roles.className = 'gr-positions';
+  for (const role of member.positions || [member.position]) {
+    const position = document.createElement('span');
+    position.className = 'gr-position';
+    position.textContent = role;
+    roles.appendChild(position);
+  }
+  details.appendChild(roles);
   card.appendChild(details);
 
   return card;
@@ -72,6 +151,7 @@ function showGrid(members) {
     grid.replaceChildren(...members.map(buildCard));
     lastRoster = signature;
   }
+  fitGrid();
   document.getElementById('grMemberCount').textContent = members.length;
   document.getElementById('grCountLabel').textContent = members.length === 1 ? 'person scheduled' : 'people scheduled';
   document.getElementById('grCount').hidden = false;

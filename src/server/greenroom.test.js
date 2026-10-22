@@ -105,7 +105,7 @@ async function main() {
     assert.equal(data.ok, true);
     assert.equal(data.plan.title, 'Sunday Service');
     assert.equal(data.members.length, 1, 'unconfirmed (status U) should be excluded by default');
-    assert.deepEqual(data.members[0], { name: 'John Smith', position: 'Acoustic Guitar', photoUrl: 'https://example.com/john.jpg' });
+    assert.deepEqual(data.members[0], { name: 'John Smith', position: 'Acoustic Guitar', positions: ['Acoustic Guitar'], photoUrl: 'https://example.com/john.jpg' });
     t('a configured setup returns the plan + confirmed members only, in the display shape');
   }
 
@@ -192,6 +192,73 @@ async function main() {
     assert.ok(data.members.some((m) => m.name === 'Pending Pat'), 'pending (unconfirmed) is exactly what includeUnconfirmed is meant to add');
     t('a declined team member is excluded even with includeUnconfirmed:true, unlike a merely-pending one');
     global.fetch = declineFetch;
+  }
+
+  // ── Someone serving more than one role: one card with both ───────────
+  {
+    const scheduleMock = global.fetch;
+    const saved = config.getAll();
+    config.save({ ...saved, pcoTeamId: '', pcoDay: '', pcoIncludeUnconfirmed: true });
+    global.fetch = async (url) => {
+      if (url.includes('/team_members')) {
+        return { ok: true, text: async () => JSON.stringify({ data: [
+          { id: 'a', attributes: { name: 'Sam Lee', team_position_name: 'Vocal 2', status: 'C' }, relationships: { person: { data: { id: 'p-sam' } } } },
+          { id: 'b', attributes: { name: 'Ana Ruiz', team_position_name: 'Keys', status: 'C', photo_thumbnail_url: 'https://example.com/ana.jpg' }, relationships: { person: { data: { id: 'p-ana' } } } },
+          { id: 'c', attributes: { name: 'Sam Lee', team_position_name: 'Acoustic Guitar', status: 'C', photo_thumbnail_url: 'https://example.com/sam.jpg' }, relationships: { person: { data: { id: 'p-sam' } } } },
+          { id: 'd', attributes: { name: 'Sam Lee', team_position_name: 'Vocal 2', status: 'C' }, relationships: { person: { data: { id: 'p-sam' } } } },
+          { id: 'e', attributes: { name: 'Sam Lee', team_position_name: 'Drums', status: 'C' }, relationships: { person: { data: { id: 'p-other-sam' } } } },
+        ] }) };
+      }
+      return scheduleMock(url);
+    };
+    const data = await get(port, '/greenroom-data');
+    const sam = data.members.find((m) => m.positions.includes('Vocal 2'));
+    assert.deepEqual(sam.positions, ['Vocal 2', 'Acoustic Guitar'], 'both roles, in schedule order, listed once');
+    assert.equal(sam.photoUrl, 'https://example.com/sam.jpg', 'a photo from any of their entries');
+    assert.equal(data.members.length, 3, 'a different person with the same name keeps their own card');
+    global.fetch = scheduleMock;
+    config.save(saved);
+    t('someone serving two roles is one card with both roles');
+  }
+
+  // ── Now / Up next from Planning Center Live ──────────────────────────
+  {
+    const scheduleMock = global.fetch;
+    let liveItem = 'i2';
+    global.fetch = async (url) => {
+      if (url.includes('/items')) {
+        return { ok: true, text: async () => JSON.stringify({ data: [
+          { id: 'i1', attributes: { item_type: 'song', title: 'Amazing Grace', key_name: 'G', length: 300, sequence: 1 } },
+          { id: 'i2', attributes: { item_type: 'song', title: 'How Great Thou Art', key_name: 'Bb', length: 360, sequence: 2 } },
+          { id: 'i3', attributes: { item_type: 'header', title: 'MESSAGE', sequence: 3 } },
+          { id: 'i4', attributes: { item_type: 'item', title: 'Sermon', length: 1800, sequence: 4 } },
+        ] }) };
+      }
+      if (url.includes('/live-item-time')) return { ok: true, text: async () => JSON.stringify({ data: { relationships: { item: { data: { id: liveItem } } } } }) };
+      if (url.includes('/live')) return { ok: true, text: async () => JSON.stringify({ data: { links: { current_item_time: liveItem ? 'https://api.planningcenteronline.com/services/v2/live-item-time' : null } } }) };
+      return scheduleMock(url);
+    };
+    let data = await get(port, '/greenroom-live');
+    assert.equal(data.ok, true);
+    assert.deepEqual(data.live.now, { title: 'How Great Thou Art', keyName: 'Bb', length: 360, type: 'song' });
+    assert.equal(data.live.next.title, 'Sermon', 'Up next skips section headers');
+    t('/greenroom-live shows the live item and the next one, skipping headers');
+
+    liveItem = null;
+    await new Promise((r) => setTimeout(r, 8100)); // past the few-second live cache
+    data = await get(port, '/greenroom-live');
+    assert.equal(data.live, null);
+    t('/greenroom-live is empty when Planning Center Live isn’t running');
+    global.fetch = scheduleMock;
+  }
+
+  {
+    const saved = config.getAll();
+    config.save({ ...saved, pcoAppId: '', pcoSecret: '' });
+    const data = await get(port, '/greenroom-live');
+    assert.deepEqual(data, { ok: true, live: null });
+    config.save(saved);
+    t('/greenroom-live answers quietly when Planning Center isn’t set up');
   }
 
   global.fetch = origFetch;

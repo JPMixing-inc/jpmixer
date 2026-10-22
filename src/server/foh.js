@@ -111,6 +111,7 @@ function tooManyTries(address) {
 
 function mountFoh(app, status) {
   require('./chat').mountChat(app); // the Home pages' Team chat card (chat.js)
+  require('./device-stage').mountDeviceStage(app); // the Devices page's shared stage arrangement
   // The Home pages' Companion card (companion-satellite.js); FOH's needs its access code
   require('./companion-satellite').mountCompanion(app, { canUse: (req, role) => role !== 'foh' || hasFohAccess(req) });
   app.get('/foh-data', async (req, res) => {

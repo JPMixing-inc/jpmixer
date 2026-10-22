@@ -1,7 +1,13 @@
 'use strict';
 
-// Stage preferences are local display state. This module has no socket or
-// console commands; the existing device cards keep their live subscriptions.
+// Stage display for the Devices page. No console commands here; the device
+// cards keep their own live subscriptions. The arrangement (positions, hidden
+// auxes, stage height) is shared: saved on the JPMixer computer
+// (device-stage.js) so every browser that opens this page shows it. Only a
+// deliberate change is shared (a drag, an arrow-key move, Auto arrange, Undo,
+// hiding or showing auxes); placing a new phone and growing the stage to fit
+// this screen stay local, so screens of different sizes don't keep
+// overwriting each other. Stage or Grid stays with this browser.
 (() => {
   const byId = id => document.getElementById(id);
   // View/height are just canvas prefs — not console-specific, kept under one
@@ -26,7 +32,9 @@
   const hiddenAuxes = new Set();
   let auxes = [], phantom = false;
   let positions = new Map(), view = 'stage', arranging = false, drag = null;
-  let canSave = true;
+  let canSave = true, shared = 'loading'; // 'loading' | 'ok' | 'offline'
+  const clientId = Math.random().toString(36).slice(2, 12);
+  let shareTimer = null;
   let stageHeight = 720;
   const history = [];
   const clamp = (value, max = 1) => Math.max(0, Math.min(max, value));
@@ -39,16 +47,40 @@
   const auxKey = channel => `stage-aux:${channel}`;
   const positionKey = key => cards.get(key)?.positionKey || key;
 
-  function loadLayout() {
+  function applyArrangement(saved) {
     positions = new Map();
     hiddenAuxes.clear();
+    if (Array.isArray(saved.hiddenAuxes)) for (const channel of saved.hiddenAuxes) if (Number.isInteger(channel)) hiddenAuxes.add(channel);
+    for (const [key, point] of Object.entries(saved.positions || {})) {
+      if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) positions.set(key, { x: clamp(point.x), y: clamp(point.y) });
+    }
+    if (Number.isFinite(saved.height)) { stageHeight = Math.max(720, Math.min(20000, saved.height)); surface.style.height = `${stageHeight}px`; }
+  }
+  // This browser's copy first, so the stage draws at once, then the shared one
+  function loadLayout() {
+    let local = {};
+    try { local = JSON.parse(localStorage.getItem(layoutKey) || '{}'); } catch (_) {}
+    applyArrangement(local);
+    fetchShared(true);
+  }
+  async function fetchShared(first) {
+    const signature = layoutSignature;
     try {
-      const saved = JSON.parse(localStorage.getItem(layoutKey) || '{}');
-      if (Array.isArray(saved.hiddenAuxes)) for (const channel of saved.hiddenAuxes) if (Number.isInteger(channel)) hiddenAuxes.add(channel);
-      for (const [key, point] of Object.entries(saved.positions || {})) {
-        if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) positions.set(key, { x: clamp(point.x), y: clamp(point.y) });
+      const res = await fetch(`/device-stage?signature=${encodeURIComponent(signature)}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (signature !== layoutSignature || !data.ok) return;
+      shared = 'ok';
+      if (data.layout) {
+        if (drag) return; // a card is in this browser's hands; the next save wins
+        history.length = 0;
+        applyArrangement(data.layout);
+        save();
+        reconcile(); layout(); renderVisibility();
+      } else if (first && positions.size) {
+        share(); // the first browser to open the shared page brings its arrangement
       }
-    } catch (_) {}
+    } catch (_) { shared = 'offline'; }
+    updateUI();
   }
 
   function reconcile() {
@@ -140,7 +172,8 @@
     byId('stageHint').textContent = view === 'grid' ? 'Live mix selection, connection status, and performer activity.'
       : phantom ? 'Drag cards to position auxes. Hide unused cards here; Aux visibility brings them back. This only changes the editor.'
       : arranging ? 'Drag anywhere on a card to move it. Arrow keys move a focused handle; Shift moves in smaller steps.'
-      : canSave ? 'Arrange devices to match your stage. Positions save in this browser.' : 'Stage layout is available, but this browser could not save its positions.';
+      : shared === 'offline' ? 'Can’t reach JPMixer to share this arrangement. Changes are kept in this browser for now.'
+      : 'Arrange devices to match your stage. The arrangement is shared with every device that opens this page.';
     byId('stageEmptyTitle').textContent = phantom ? 'No phantom auxes are visible.' : 'Devices appear here as performers connect.';
     byId('stageEmptyDescription').textContent = phantom ? 'Open Aux visibility and choose Show all to restore them.' : 'Choose Arrange stage to move their cards into position.';
   }
@@ -150,6 +183,23 @@
       if (layoutKey) localStorage.setItem(layoutKey, JSON.stringify({ hiddenAuxes: [...hiddenAuxes], positions: Object.fromEntries(positions) }));
       canSave = true;
     } catch (_) { canSave = false; }
+  }
+  // A deliberate change: saved here and on the JPMixer computer
+  function share() {
+    save();
+    clearTimeout(shareTimer);
+    shareTimer = setTimeout(async () => {
+      const signature = layoutSignature;
+      if (!signature) return;
+      try {
+        const res = await fetch('/device-stage', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+          body: JSON.stringify({ signature, clientId, layout: { positions: Object.fromEntries(positions), hiddenAuxes: [...hiddenAuxes], height: Math.round(stageHeight) } }),
+        });
+        shared = res.ok ? 'ok' : 'offline';
+      } catch (_) { shared = 'offline'; }
+      updateUI();
+    }, 250);
   }
   function remember(snapshot = new Map(positions)) {
     history.push(snapshot);
@@ -179,7 +229,7 @@
   function setAuxHidden(channel, hidden) {
     finishDrag();
     if (hidden) hiddenAuxes.add(channel); else hiddenAuxes.delete(channel);
-    reconcile(); layout(); renderVisibility(); save(); updateUI();
+    reconcile(); layout(); renderVisibility(); share(); updateUI();
   }
   function bounds(card) {
     return { x: Math.max(0, layer.clientWidth - card.offsetWidth), y: Math.max(0, layer.clientHeight - card.offsetHeight) };
@@ -257,7 +307,7 @@
     document.body.classList.remove('stage-drag-active');
     if (!commit && current.moved) { positions = current.before; history.pop(); }
     if (current.card.hasPointerCapture(current.pointerId)) current.card.releasePointerCapture(current.pointerId);
-    save();
+    if (commit && current.moved) share(); else save();
     layout();
   }
   function announce(card) { byId('stageAnnouncement').textContent = `${card.querySelector('.dev-card-tag').textContent} position saved.`; }
@@ -300,7 +350,7 @@
       const max = bounds(card), current = positions.get(positionKey(key)), step = event.shiftKey ? 2 : 12;
       const next = { x: clamp(current.x + (max.x ? direction[0] * step / max.x : 0)), y: clamp(current.y + (max.y ? direction[1] * step / max.y : 0)) };
       if (next.x === current.x && next.y === current.y) return;
-      remember(); positions.set(positionKey(key), next); place(key, card); save(); updateUI(); announce(card);
+      remember(); positions.set(positionKey(key), next); place(key, card); share(); updateUI(); announce(card);
     });
     return handle;
   }
@@ -316,12 +366,12 @@
   for (const button of document.querySelectorAll('[data-device-view]')) button.addEventListener('click', () => setView(button.dataset.deviceView));
   byId('arrangeStageBtn').addEventListener('click', () => { finishDrag(); arranging = !arranging; if (!arranging && phantom) setPhantom(false); updateUI(); });
   byId('phantomModeCheckbox').addEventListener('change', event => setPhantom(event.target.checked));
-  byId('showAllStageAuxes').addEventListener('click', () => { finishDrag(); hiddenAuxes.clear(); reconcile(); layout(); renderVisibility(); save(); updateUI(); });
+  byId('showAllStageAuxes').addEventListener('click', () => { finishDrag(); hiddenAuxes.clear(); reconcile(); layout(); renderVisibility(); share(); updateUI(); });
   byId('hideDisconnectedStageAuxes').addEventListener('click', () => {
     finishDrag();
     const connected = new Set([...liveCards.values()].map(entry => entry.aux));
     for (const aux of auxes) if (!connected.has(aux.channel)) hiddenAuxes.add(aux.channel);
-    reconcile(); layout(); renderVisibility(); save(); updateUI();
+    reconcile(); layout(); renderVisibility(); share(); updateUI();
   });
   function positionVisibilityMenu() {
     const control = byId('auxVisibilityControl');
@@ -334,8 +384,20 @@
   byId('auxVisibilityControl').addEventListener('toggle', positionVisibilityMenu);
   document.addEventListener('click', event => { if (!byId('auxVisibilityControl').contains(event.target)) byId('auxVisibilityControl').open = false; });
   document.addEventListener('keydown', event => { if (event.key === 'Escape') byId('auxVisibilityControl').open = false; });
-  byId('autoArrangeBtn').addEventListener('click', () => { remember(); for (const key of cards.keys()) positions.delete(positionKey(key)); layout(); save(); updateUI(); });
-  byId('undoStageBtn').addEventListener('click', () => { finishDrag(false); if (!history.length) return; positions = history.pop(); layout(); save(); updateUI(); });
+  byId('autoArrangeBtn').addEventListener('click', () => { remember(); for (const key of cards.keys()) positions.delete(positionKey(key)); layout(); share(); updateUI(); });
+  byId('undoStageBtn').addEventListener('click', () => { finishDrag(false); if (!history.length) return; positions = history.pop(); layout(); share(); updateUI(); });
+  // Another screen saved an arrangement: show it here too
+  try {
+    const stream = new EventSource('/device-stage/stream');
+    stream.addEventListener('layout', (event) => {
+      let msg = {};
+      try { msg = JSON.parse(event.data); } catch (_) { return; }
+      if (msg.by === clientId || msg.signature !== layoutSignature) return;
+      fetchShared(false);
+    });
+    // After a dropped connection (Wi-Fi, a JPMixer restart), catch up
+    stream.addEventListener('open', () => { if (layoutSignature && shared !== 'loading') fetchShared(false); });
+  } catch (_) {}
   window.addEventListener('resize', layout);
   window.addEventListener('resize', positionVisibilityMenu);
   window.addEventListener('blur', () => finishDrag());

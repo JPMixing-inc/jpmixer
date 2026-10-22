@@ -27,15 +27,18 @@
     </div>
   </header>
   <main class="gr-main">
-    <section class="gr-plan" aria-label="Service details">
-      <div><p class="gr-eyebrow">THE TEAM</p><h1 id="grPlanTitle">Green Room</h1><p class="gr-date" id="grPlanDate"></p></div>
-      <div class="gr-count" id="grCount" hidden><strong id="grMemberCount">0</strong><span id="grCountLabel">people scheduled</span></div>
+    <section class="gr-top" aria-label="Service details">
+      <div class="gr-plan-info"><p class="gr-eyebrow">THE TEAM</p><h1 id="grPlanTitle">Green Room</h1><p class="gr-date" id="grPlanDate"></p></div>
+      <div class="gr-clock" role="timer" aria-label="Current time"><div class="gr-time"><span id="grTime">--:--</span><span class="gr-ampm" id="grAmPm"></span></div><div class="gr-today" id="grToday"></div></div>
     </section>
-    <div class="gr-roster-heading"><h2>Who's serving</h2><span>Planning Center schedule</span></div>
+    <section class="gr-live" id="grLive" aria-label="Planning Center Live" aria-live="polite" hidden>
+      <div class="gr-live-item gr-live-now"><span class="gr-live-tag"><i aria-hidden="true"></i>NOW</span><strong id="grNowTitle"></strong><span class="gr-live-meta" id="grNowMeta"></span></div>
+      <div class="gr-live-item gr-live-next" id="grNextBox"><span class="gr-live-tag">UP NEXT</span><strong id="grNextTitle"></strong><span class="gr-live-meta" id="grNextMeta"></span></div>
+    </section>
     <p class="gr-notice" id="grNotice" role="status" hidden></p>
+    <div class="gr-roster-heading"><h2>Who's serving</h2><span class="gr-count" id="grCount" hidden><strong id="grMemberCount">0</strong> <span id="grCountLabel">people scheduled</span></span></div>
     <section class="gr-grid" id="grGrid" aria-label="Scheduled team members" aria-busy="true"></section>
     <div class="gr-empty" id="grEmpty" role="status"><img class="jp-empty-logo" src="brand/jp-monogram.svg" alt="" width="56" height="28" /><h2 id="grEmptyTitle">Getting the team together</h2><p id="grEmptyMessage">Loading the upcoming service and scheduled team.</p></div>
-    <footer class="gr-footer"><span>GREEN ROOM</span><span>Schedule refreshes every 2 minutes</span></footer>
   </main>
   <script src="greenroom.js"></script>
 </body>

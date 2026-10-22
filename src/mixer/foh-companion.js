@@ -40,6 +40,34 @@
     return url;
   }
 
+  // Buttons always fit the card, never scroll: in the Home page grid each
+  // button is the largest square that lets every row and column fit the
+  // space the card has, whatever size the card is dragged to. Phones stack
+  // cards at their natural height, so there the buttons just fill the width.
+  const stacked = matchMedia('(max-width: 700px)');
+  function fitKeys() {
+    if (stacked.matches) { grid.classList.remove('is-fitted'); grid.style.removeProperty('grid-template-columns'); grid.style.removeProperty('grid-auto-rows'); return; }
+    const W = grid.clientWidth, H = grid.clientHeight;
+    if (!W) return;
+    // A card dragged too short to hold any button shows just its message
+    grid.classList.toggle('is-cramped', H < rows * 6);
+    if (H < rows * 6) return;
+    let gap = 6, size = 0;
+    for (let pass = 0; pass < 2; pass++) { // the gap shrinks with the buttons
+      size = Math.floor(Math.min((W - gap * (columns - 1)) / columns, (H - gap * (rows - 1)) / rows));
+      gap = Math.max(2, Math.min(6, Math.round(size * 0.08)));
+    }
+    size = Math.max(8, size);
+    grid.classList.add('is-fitted');
+    grid.style.gap = `${gap}px`;
+    grid.style.gridTemplateColumns = `repeat(${columns}, ${size}px)`;
+    grid.style.gridAutoRows = `${size}px`;
+    grid.style.setProperty('--key-font', `${Math.max(7, Math.min(16, size * 0.16)).toFixed(1)}px`);
+    grid.style.setProperty('--key-radius', `${Math.max(3, Math.min(8, size * 0.1)).toFixed(1)}px`);
+  }
+  new ResizeObserver(() => fitKeys()).observe(grid);
+  stacked.addEventListener('change', fitKeys);
+
   function buildGrid() {
     grid.textContent = '';
     keys.clear();
@@ -60,6 +88,7 @@
       grid.appendChild(btn);
       keys.set(i, btn);
     }
+    fitKeys();
   }
 
   function showKey(k) {
