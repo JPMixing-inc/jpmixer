@@ -128,24 +128,54 @@
       await fetch('/companion/press', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ role: ROLE, key: index, pressed }) });
     } catch (_) {}
   }
-  let down = null; // { index, pointerId }
+  // A mouse presses at once. A finger waits a moment first: on a phone the
+  // cards stack and the page scrolls, and a scroll that started on a button
+  // used to press it. If the finger moves before then, it's a scroll and
+  // nothing is sent; lifted before then, it's a tap (press + release).
+  const TOUCH_WAIT_MS = 100, TOUCH_SLOP_PX = 10;
+  let down = null; // { index, pointerId, btn, sent, timer, x, y }
   grid.addEventListener('pointerdown', (e) => {
     const btn = e.target.closest('.fh-companion-key');
     if (!btn || grid.classList.contains('is-offline') || document.body.classList.contains('fh-editing')) return;
-    e.preventDefault();
     if (down) release();
-    down = { index: Number(btn.dataset.key), pointerId: e.pointerId, btn };
+    down = { index: Number(btn.dataset.key), pointerId: e.pointerId, btn, sent: false, timer: null, x: e.clientX, y: e.clientY };
     btn.classList.add('is-down');
-    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
-    press(down.index, true);
+    if (e.pointerType === 'mouse') {
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+      send();
+    } else {
+      down.timer = setTimeout(send, TOUCH_WAIT_MS);
+    }
   });
-  function release() {
+  function send() {
+    if (!down || down.sent) return;
+    clearTimeout(down.timer);
+    down.sent = true;
+    press(down.index, true);
+  }
+  // A finger that moves before the press is a scroll: let it go, send nothing
+  grid.addEventListener('pointermove', (e) => {
+    if (!down || down.sent || e.pointerId !== down.pointerId) return;
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > TOUCH_SLOP_PX) cancelTouch();
+  });
+  function cancelTouch() {
     if (!down) return;
+    clearTimeout(down.timer);
     down.btn.classList.remove('is-down');
-    press(down.index, false);
     down = null;
   }
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) grid.addEventListener(type, (e) => { if (down && e.pointerId === down.pointerId) release(); });
+  function release() {
+    if (!down) return;
+    clearTimeout(down.timer);
+    down.btn.classList.remove('is-down');
+    if (down.sent) press(down.index, false);
+    down = null;
+  }
+  // Lifted: a tap that hadn't pressed yet presses and releases now
+  grid.addEventListener('pointerup', (e) => { if (!down || e.pointerId !== down.pointerId) return; send(); release(); });
+  // The browser took the touch for scrolling (or capture was lost): release only what was pressed
+  for (const type of ['pointercancel', 'lostpointercapture']) grid.addEventListener(type, (e) => { if (!down || e.pointerId !== down.pointerId) return; if (down.sent) release(); else cancelTouch(); });
   window.addEventListener('blur', release);
   document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
   // Keyboard: Space/Enter press and release like a tap
@@ -173,6 +203,11 @@
       if (source.readyState === EventSource.CLOSED) setTimeout(connect, 5000);
     });
   }
+  // A phone that slept or a tab that was in the background may have lost the
+  // live connection without noticing: reconnect when the page is back
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) connect(); });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) connect(); });
+
   buildGrid();
   note.textContent = 'Loading Companion buttons…';
   connect();
