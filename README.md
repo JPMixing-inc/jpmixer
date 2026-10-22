@@ -148,61 +148,126 @@ sudo xattr -rd com.apple.quarantine /Applications/JPMixer.app
 ---
 
 <a id="features"></a>
+<a id="screenshots"></a>
 
 ## 🎯 Features
 
-### For musicians
-- **Their own mix, from their own phone:** levels, mute, solo and pan for their mix only, in any browser on the network. It installs as a full-screen app on iPhone and iPad.
-- **Group chips:** show just Drums, Vocals or any group in one tap. Each mix can open to the groups that performer uses.
-- **My Mixes:** personal saved mixes, backed up by JPMixer and recoverable on a new phone with **Find My Mixes**.
-- **Ear Scenes:** a mix saved per snapshot that comes back when the console recalls that snapshot.
+**Jump to:** [For musicians](#for-musicians) · [For engineers](#for-engineers) · [For the production team](#for-the-production-team) · [Planning Center & setup](#planning-center-and-setup) · [And more](#and-more)
+
+<a id="for-musicians"></a>
+
+## 🎧 For musicians
+
+### Their own mix, from their own phone
+
+Musicians open a web address and pick their mix. No app to install. They set the level of every channel in their own in-ears or wedge, with **mute**, **solo** and **pan** that only touch their mix. On iPhone and iPad it can be added to the Home Screen as a full-screen app.
+
+<p align="center">
+  <img src="docs/musician/img/m-picker.png" alt="Pick your mix: a button for each monitor mix" width="230" />&nbsp;&nbsp;
+  <img src="docs/musician/img/m-mute.png" alt="A mix with one channel muted" width="230" />&nbsp;&nbsp;
+  <img src="docs/musician/img/m-pan.png" alt="Pan sliders for a stereo mix" width="230" />
+</p>
+<p align="center"><sub>Pick a mix · mute a channel · pan in a stereo mix</sub></p>
+
+### Find any channel in a tap
+
+**Group chips** show just Drums, Vocals or any group, and each mix can open straight to the groups that performer uses. **Favorites** keep the channels they adjust most one tap away, and **search** finds anything by name.
+
+<p align="center">
+  <img src="docs/musician/img/m-groups.png" alt="Only the Vocals group showing" width="230" />&nbsp;&nbsp;
+  <img src="docs/musician/img/m-search.png" alt="Searching finds the two guitars" width="230" />
+</p>
+<p align="center"><sub>One group at a time · search by name</sub></p>
+
+### My Mixes and Ear Scenes
+
+**My Mixes** are named mixes a performer can load any week. JPMixer keeps a copy, so **Find My Mixes** brings them back on a new phone. **Ear Scenes** save a mix for each song (each console snapshot) and bring it back when the console goes to that song, then lock the faders so they can't be bumped.
+
+<p align="center">
+  <img src="docs/musician/img/m-mymixes.png" alt="My Mixes with three saved mixes" width="230" />&nbsp;&nbsp;
+  <img src="docs/musician/img/m-locked.png" alt="A mix locked to its Ear Scene" width="230" />
+</p>
+<p align="center"><sub>Saved mixes · a mix locked to its Ear Scene</sub></p>
+
+<a id="for-engineers"></a>
+
+## 🎚️ For engineers
+
+### Monitor Engineer
+
+Every monitor mix side by side, grouped the same way as the phones. Trim a whole mix in ±0.5 dB steps, mute or solo anything in anyone's mix, find channels, see who's connected to each mix, and step through snapshots.
+
+<p align="center"><img src="docs/manual/img/monitor.png" alt="Monitor Engineer: every mix side by side" width="880" /></p>
+
+### Console Controller and channel processing
+
+The console's own faders, mutes and solos for inputs, control groups or DCAs, and aux outputs, from any browser (DiGiCo, dLive and LV1). On DiGiCo, each channel opens a **processing panel**: gain, 48V, filters, a draggable 4-band EQ and dynamics.
+
+<p align="center"><img src="docs/manual/img/console-eq.png" alt="Console Controller with the channel processing panel open" width="880" /></p>
+
+### Devices on stage
+
+Every connected phone and iPad, the mix it's on and its latest activity, placed on a map of your stage. The arrangement is saved on the JPMixer computer, so every screen shows the same stage.
+
+<p align="center"><img src="docs/manual/img/devices.png" alt="Devices on stage: each phone on a stage map" width="880" /></p>
+
+<a id="for-the-production-team"></a>
+
+## 🏠 For the production team
+
+### A Home page for every station
+
+FOH, ProPresenter, Lighting and Switcher each get a page that welcomes whoever Planning Center scheduled in that role, with the live service item, the team, the order of service and the next few plans. Arrange the cards and **save a layout per person**; it follows them to any device. FOH Home can sit behind an access code.
+
+<p align="center"><img src="docs/manual/img/foh-home.png" alt="FOH Home: welcome, live item, team, order of service, Planning Center and team chat" width="880" /></p>
+
+### One link for the whole team
+
+**Production View Select** lists every station with who's on today. Each card opens that station's Home page.
+
+<p align="center"><img src="docs/manual/img/home-select.png" alt="Production View Select: four stations with who is on today" width="720" /></p>
+
+### Team chat and Companion buttons
+
+**Team chat** connects all four stations live and clears itself when the next service begins. **Bitfocus Companion** buttons appear on each station's page, live with Companion's own images. Tap to press, hold to hold.
+
+<p align="center"><img src="docs/manual/img/role-propresenter.png" alt="ProPresenter Home with team chat between stations" width="880" /></p>
+
+### Green Room TV
+
+A full-screen display for the green room: the team with photos and roles, a large clock, and **Now / Up next** from Planning Center Live. It fits a 16:9 TV with nothing to scroll, however big the team.
+
+<p align="center"><img src="docs/manual/img/green-room.png" alt="Green Room on a TV: clock, Now and Up next, and the team" width="880" /></p>
+
+<a id="planning-center-and-setup"></a>
+
+## 📅 Planning Center & setup
+
+### Planning Center does the names
+
+Map each team position to a mix once, and every mix is named after who's on it, like "Keys - Priya Nair". JPMixer keeps it current by itself, gives mixes their own names back when nobody's scheduled, and can open each performer's phone straight to their mix. An optional **second service** handles a Wednesday night or another event with its own teams.
+
+<p align="center"><img src="docs/manual/img/settings-pco-mapping.png" alt="Planning Center: each team position mapped to a mix" width="720" /></p>
+
+### Setup that walks you through it
+
+Settings opens on a **Get started** checklist: the address to give performers and every step in order, each with a button to the right place. Channel names, mixes and control groups fill themselves in from the console.
+
+<p align="center"><img src="docs/manual/img/settings-checklist.png" alt="Get started: the setup checklist" width="720" /></p>
+
+<a id="and-more"></a>
+
+### And more
+
 - **Built-in aux EQ:** an optional 8-band EQ per mix (DiGiCo).
 - **Private mixes:** hide a mix from the picker and share it by direct link.
-
-### For engineers
-- **Monitor Engineer:** every mix at once, grouped, with ±0.5 dB mix trims, channel search, who’s connected, and snapshot controls.
-- **Console Controller:** inputs, control groups or DCAs, and aux outputs (DiGiCo, dLive, LV1), plus a **channel processing panel** with gain, 48V, filters, a 4-band EQ graph and dynamics (DiGiCo).
-- **Devices on stage:** every connected phone and the mix it’s on, arranged to match your stage.
 - **iPad relay:** run the DiGiCo iPad app through JPMixer alongside the phones.
-
-### For the production team
-- **Home pages for FOH, ProPresenter, Lighting and Switcher:** the scheduled person, the live service item, the team and the order of service.
-- **Production View Select:** one link for the whole team, showing who’s on at each station.
-- **Arrange and save:** place and size cards anywhere, and save a layout per person that follows them to any device.
-- **Team chat and Companion buttons** on every station. FOH Home can sit behind an access code.
-- **Green Room display:** the team with photos and roles, for a TV or iPad.
-
-### Planning Center, Companion & more
-- **Planning Center:** names each mix after who’s on it, keeps itself current, assigns phones by performer, and runs the Green Room and Home pages, with an optional **second service** for midweek events.
-- **Bitfocus Companion:** a Satellite surface per station, plus a token-protected **Control API** for Companion, Stream Deck and HTTP tools.
+- **Control API:** a token-protected HTTP API for Companion, Stream Deck and other tools.
 - **Branding:** your logo and accent color on every page JPMixer serves.
-- **Backups:** automatic and manual, with a restore that lets you choose what to bring back and rolls back on any failure.
-- **Demo mode** to explore everything without a console.
+- **Backups:** automatic and manual, with a restore that lets you choose what to bring back.
+- **Demo mode:** explore everything without a console.
 
-<a id="screenshots"></a>
-
-<details>
-<summary><b>📸 More screenshots</b></summary>
-<br/>
-<table>
-<tr>
-<td align="center" width="50%"><img src="docs/manual/img/home-select.png" alt="Production View Select" /><br/><sub><b>Production View Select</b></sub></td>
-<td align="center" width="50%"><img src="docs/manual/img/role-propresenter.png" alt="ProPresenter Home with team chat" /><br/><sub><b>ProPresenter Home</b> with team chat</sub></td>
-</tr>
-<tr>
-<td align="center"><img src="docs/manual/img/monitor.png" alt="Monitor Engineer" /><br/><sub><b>Monitor Engineer</b></sub></td>
-<td align="center"><img src="docs/manual/img/console-eq.png" alt="Channel processing" /><br/><sub><b>Channel processing</b> (DiGiCo)</sub></td>
-</tr>
-<tr>
-<td align="center"><img src="docs/manual/img/green-room.png" alt="Green Room" /><br/><sub><b>Green Room</b></sub></td>
-<td align="center"><img src="docs/manual/img/devices.png" alt="Devices on stage" /><br/><sub><b>Devices on stage</b></sub></td>
-</tr>
-<tr>
-<td align="center"><img src="docs/manual/img/settings-checklist.png" alt="Settings: Get started checklist" /><br/><sub><b>Settings</b>: Get started</sub></td>
-<td align="center"><img src="docs/manual/img/settings-pco-alt.png" alt="Settings: second service" /><br/><sub><b>Planning Center</b>: second service</sub></td>
-</tr>
-</table>
-</details>
+Every feature is explained step by step in the **[User Manual](docs/MANUAL.md)**.
 
 ---
 
