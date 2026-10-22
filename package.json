@@ -1,6 +1,6 @@
 {
   "name": "jpmixer",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "JPMixer — browser-based monitor mixes and production Home pages for DiGiCo, dLive, KLANG and WING consoles",
   "main": "main.js",
   "scripts": {
