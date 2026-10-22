@@ -19,7 +19,7 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-7">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-8">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#consoles">Consoles</a> &nbsp;·&nbsp;
@@ -75,22 +75,25 @@
 
 ---
 
-<a id="new-in-2-0-7"></a>
+<a id="new-in-2-0-8"></a>
 
-## 🆕 New in 2.0.7
+## 🆕 New in 2.0.8
 
 | | |
 |---|---|
-| 📖 **User Manual** | A complete manual with screenshots of every page and setting. See [Documentation](#documentation). |
-| 🧭 **Settings that walk you through setup** | A new **Get started** tab with the address to give performers and a checklist of every step. The sidebar is grouped into Setup, People & pages and System, channel groups come first as chips, and Home page roles sit with Planning Center. |
-| ✏️ **Rename any mix** | Type your own name for a mix on the Aux mixes tab. Clear it to go back to the console’s name. The console itself is never changed. |
-| 📅 **Planning Center keeps itself current** | Syncs 10 seconds after JPMixer opens and every 5 minutes while it runs. A mix nobody is scheduled on gets its own name back. |
-| 📆 **Second service** | An optional second Service Type, such as a Wednesday night, with its own teams, mapping and Home page roles. It takes over on days it has a plan and the main service doesn’t. |
-| 🎛️ **dLive Console Controller and stereo mixes** | Inputs, aux masters and DCAs from a browser, the console’s own solo, stereo aux mixes, and console renames that reach phones straight away. |
-| 🛠️ **Fixes** | dLive and LV1 no longer drop the last changes when JPMixer stops, so muted sends always come back. |
+| 📺 **Green Room made for a TV** | Fits a 16:9 screen with nothing to scroll, however big the team. Adds a large clock, and **Now / Up next** from Planning Center Live. Someone serving two roles shows as one card with both. |
+| 🎛️ **Companion buttons always fit** | The buttons on every Home page size themselves to the card, so they never overlap, hide or need scrolling. |
+| 📍 **One Devices arrangement for everyone** | The stage layout on the Devices page is saved on the JPMixer computer, so every computer and iPad shows the same arrangement and follows changes live. |
+| 💬 **Team chat starts fresh each service** | The chat clears itself when Planning Center moves on to the next service. |
 
 <details>
-<summary><b>Earlier releases: 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.7
+- **User Manual** and **Musician Guide**.
+- **Settings that walk you through setup** (Get started checklist), and **rename any mix**.
+- **Planning Center keeps itself current** (10 seconds after opening, then every 5 minutes), plus an optional **second service**.
+- **dLive Console Controller** and stereo mixes.
 
 ### 2.0.5
 - **Waves eMotion LV1**: a fifth console, with levels, mute, solo, pan, live names, Ear Scenes and the Console Controller through LV1’s MyMon remote.

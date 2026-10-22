@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.7 · October 2026**
+**Version 2.0.8 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -390,7 +390,7 @@ On DiGiCo, each strip’s **EQ** button opens the **channel processing panel**: 
 
 <p align="center"><sub>Fig. 9.4 · Devices on stage. Each card is a connected phone or iPad and the mix it’s on.</sub></p>
 
-Every connected phone and iPad, the mix it is on, and its latest activity. Click **Arrange stage** and drag the cards to match where people stand, from upstage to downstage. **Grid** shows the same cards in a plain grid. Positions save in that browser.
+Every connected phone and iPad, the mix it is on, and its latest activity. Click **Arrange stage** and drag the cards to match where people stand, from upstage to downstage. **Grid** shows the same cards in a plain grid. The arrangement is saved on the JPMixer computer, so every computer or iPad that opens the Devices page shows the same stage, and an open Devices page follows changes made on another screen.
 
 ---
 
@@ -513,7 +513,7 @@ A station they have never saved starts from their layout on another station. Unt
 
 ### Team chat
 
-Messages go to all four stations live. Each shows who sent it and from which station.
+Messages go to all four stations live. Each shows who sent it and from which station. The chat clears itself when Planning Center moves on to the next service, for example from Saturday night’s plan to Sunday morning’s, and it starts empty whenever JPMixer opens.
 
 ### Companion buttons
 
@@ -540,14 +540,17 @@ Settings → Pages lists every page JPMixer serves with its direct link. FOH Hom
 
 ## 12. Green Room display
 
-A full-screen, read-only display of who is serving, with photos and roles, for a TV or iPad in the green room.
+A full-screen, read-only display for a TV or iPad in the green room: who is serving, with photos and roles, a large clock, and what’s live in the service right now.
 
 <p align="center"><img src="manual/img/green-room.png" alt="Green Room display with the worship team’s photos, names and roles"></p>
 
-<p align="center"><sub>Fig. 12.1 · The Green Room at `/greenroom.html`.</sub></p>
+<p align="center"><sub>Fig. 12.1 · The Green Room on a 1080p TV, with the clock and Planning Center Live’s current and next item.</sub></p>
 
-- Open `http://192.168.1.20/greenroom.html` on the screen and click **Fullscreen**. It refreshes every 2 minutes, so it can be left open.
-- It shows the team chosen under Planning Center → Service & team (or everyone), minus any position marked Hide from Green Room.
+- Open `http://192.168.1.20/greenroom.html` on the screen and click **Fullscreen**. It can be left open: the team refreshes every 2 minutes.
+- **Made for a 16:9 TV.** On a landscape screen everything fits on one screen with nothing to scroll. The team grid sizes itself so everyone fits, with bigger photos for a small team and smaller ones for a big team. On a phone or portrait screen it becomes a scrolling list.
+- **Clock:** the time and today’s date, top right.
+- **Now and Up next:** while someone runs the service in Planning Center Live, a strip shows the live item and the next one, with their key and length. It follows Live within about 15 seconds and disappears when Live isn’t running.
+- It shows the team chosen under Planning Center → Service & team (or everyone), minus any position marked Hide from Green Room. Someone serving more than one role shows once, with each role under their name.
 - No code is needed. It is information only, not a control surface.
 
 ---

@@ -196,7 +196,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 <header class="cover">
   <div class="wrap">
     <div>
-      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.7 · OCTOBER 2026</span></div>
+      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.8 · OCTOBER 2026</span></div>
       <h1 style="margin-top:34px">JPMixer User Manual</h1>
       <p class="lede">Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.</p>
       <dl class="cover-facts">
@@ -563,7 +563,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 
   <h3>Devices on stage</h3>
   <figure class="shot bleed"><img src="img/devices.png" alt="Devices on stage: seven device cards on a stage plan"><figcaption><b>Fig. 9.4</b>Devices on stage. Each card is a connected phone or iPad and the mix it’s on.</figcaption></figure>
-  <p>Every connected phone and iPad, the mix it is on, and its latest activity. Click <span class="ui">Arrange stage</span> and drag the cards to match where people stand, from upstage to downstage. <span class="ui">Grid</span> shows the same cards in a plain grid. Positions save in that browser.</p>
+  <p>Every connected phone and iPad, the mix it is on, and its latest activity. Click <span class="ui">Arrange stage</span> and drag the cards to match where people stand, from upstage to downstage. <span class="ui">Grid</span> shows the same cards in a plain grid. The arrangement is saved on the JPMixer computer, so every computer or iPad that opens the Devices page shows the same stage, and an open Devices page follows changes made on another screen.</p>
 </section>
 
 <!-- ═════════ 10 ═════════ -->
@@ -649,7 +649,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   <p>A station they have never saved starts from their layout on another station. Until you save, the layout stays in that browser only.</p>
 
   <h3>Team chat</h3>
-  <p>Messages go to all four stations live. Each shows who sent it and from which station.</p>
+  <p>Messages go to all four stations live. Each shows who sent it and from which station. The chat clears itself when Planning Center moves on to the next service, for example from Saturday night’s plan to Sunday morning’s, and it starts empty whenever JPMixer opens.</p>
 
   <h3>Companion buttons</h3>
   <p>JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds one button surface per Home page.</p>
@@ -670,11 +670,14 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 <section class="chapter" id="greenroom">
   <p class="eyebrow">Chapter 12</p>
   <h2 class="ch">Green Room display</h2>
-  <p class="ch-intro">A full-screen, read-only display of who is serving, with photos and roles, for a TV or iPad in the green room.</p>
-  <figure class="shot bleed"><img src="img/green-room.png" alt="Green Room display with the worship team’s photos, names and roles"><figcaption><b>Fig. 12.1</b>The Green Room at <code>/greenroom.html</code>.</figcaption></figure>
+  <p class="ch-intro">A full-screen, read-only display for a TV or iPad in the green room: who is serving, with photos and roles, a large clock, and what’s live in the service right now.</p>
+  <figure class="shot bleed"><img src="img/green-room.png" alt="Green Room display with the worship team’s photos, names and roles"><figcaption><b>Fig. 12.1</b>The Green Room on a 1080p TV, with the clock and Planning Center Live’s current and next item.</figcaption></figure>
   <ul>
-    <li>Open <code>http://192.168.1.20/greenroom.html</code> on the screen and click <span class="ui">Fullscreen</span>. It refreshes every 2 minutes, so it can be left open.</li>
-    <li>It shows the team chosen under Planning Center → Service &amp; team (or everyone), minus any position marked Hide from Green Room.</li>
+    <li>Open <code>http://192.168.1.20/greenroom.html</code> on the screen and click <span class="ui">Fullscreen</span>. It can be left open: the team refreshes every 2 minutes.</li>
+    <li><strong>Made for a 16:9 TV.</strong> On a landscape screen everything fits on one screen with nothing to scroll. The team grid sizes itself so everyone fits, with bigger photos for a small team and smaller ones for a big team. On a phone or portrait screen it becomes a scrolling list.</li>
+    <li><strong>Clock:</strong> the time and today’s date, top right.</li>
+    <li><strong>Now and Up next:</strong> while someone runs the service in Planning Center Live, a strip shows the live item and the next one, with their key and length. It follows Live within about 15 seconds and disappears when Live isn’t running.</li>
+    <li>It shows the team chosen under Planning Center → Service &amp; team (or everyone), minus any position marked Hide from Green Room. Someone serving more than one role shows once, with each role under their name.</li>
     <li>No code is needed. It is information only, not a control surface.</li>
   </ul>
 </section>
@@ -873,7 +876,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 </section>
 
       <footer class="end">
-        <p style="max-width:none">JPMixer User Manual · Version 2.0.7 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
+        <p style="max-width:none">JPMixer User Manual · Version 2.0.8 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
         <p style="max-width:none;font-size:12px">JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer / MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. All trademarks belong to their owners.</p>
       </footer>
     </div>
