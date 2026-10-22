@@ -19,7 +19,7 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-8">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-9">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#consoles">Consoles</a> &nbsp;·&nbsp;
@@ -75,19 +75,23 @@
 
 ---
 
-<a id="new-in-2-0-8"></a>
+<a id="new-in-2-0-9"></a>
 
-## 🆕 New in 2.0.8
+## 🆕 New in 2.0.9
 
 | | |
 |---|---|
-| 📺 **Green Room made for a TV** | Fits a 16:9 screen with nothing to scroll, however big the team. Adds a large clock, and **Now / Up next** from Planning Center Live. Someone serving two roles shows as one card with both. |
-| 🎛️ **Companion buttons always fit** | The buttons on every Home page size themselves to the card, so they never overlap, hide or need scrolling. |
-| 📍 **One Devices arrangement for everyone** | The stage layout on the Devices page is saved on the JPMixer computer, so every computer and iPad shows the same arrangement and follows changes live. |
-| 💬 **Team chat starts fresh each service** | The chat clears itself when Planning Center moves on to the next service. |
+| 📱 **Companion buttons on phones** | Scrolling a Home page on a phone no longer presses the Companion button your finger started on. Taps and holds work as before. |
+| 🔄 **Reconnects after sleep** | When a phone wakes up or you switch back to the browser, the Companion card reconnects straight away. |
 
 <details>
-<summary><b>Earlier releases: 2.0.7, 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.8
+- **Green Room made for a TV**: fits a 16:9 screen, with a large clock, **Now / Up next** from Planning Center Live, and one card per person.
+- **Companion buttons always fit** their card.
+- **One Devices arrangement for everyone**, saved on the JPMixer computer.
+- **Team chat starts fresh each service.**
 
 ### 2.0.7
 - **User Manual** and **Musician Guide**.

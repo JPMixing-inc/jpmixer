@@ -7,7 +7,7 @@
 
 # Your mix, on your phone
 
-**JPMixer Musician Guide · Version 2.0.8**
+**JPMixer Musician Guide · Version 2.0.9**
 
 A quick guide for musicians and singers. JPMixer lets you set the level of every channel in your own in-ears or wedge, without touching the main mix and without installing an app.
 

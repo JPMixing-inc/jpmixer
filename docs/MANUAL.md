@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.8 · October 2026**
+**Version 2.0.9 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -523,7 +523,7 @@ JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds on
 2. In JPMixer, open **Settings → Pages → Companion buttons**, turn it on, enter the Companion computer’s address (`127.0.0.1` if it is this computer) and choose the grid (8 × 4 by default). Click **Save & Apply**; the status should say Connected.
 3. In Companion → Surfaces, give each JPMixer surface (JPMixer FOH Home, JPMixer ProPresenter Home, and so on) the page of buttons that station needs.
 
-The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. JPMixer reconnects by itself if Companion restarts.
+The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. On a phone, a swipe that starts on a button scrolls the page without pressing it. JPMixer reconnects by itself if Companion restarts, and the card reconnects when a phone wakes up.
 
 ### The Pages tab and FOH access code
 
