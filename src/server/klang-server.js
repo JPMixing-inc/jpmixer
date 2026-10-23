@@ -144,7 +144,7 @@ function buildConfig() {
     const ov = cfgAuxOverrides[String(i)] || {};
     auxilaries.push({
       enabled:   ov.enabled !== false,
-      label:     ov.label || `AUX ${i}`,
+      label:     ov.label || shared.consoleNameOr(serverCfg, 'auxes', i, undefined) || `AUX ${i}`,
       channel:   i,
       stereo:    true,  // KLANG's stereo-mode azimuth is a real pan control — see file header
       colour:    ov.colour || '#e8a020',

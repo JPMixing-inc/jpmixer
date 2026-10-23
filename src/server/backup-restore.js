@@ -7,6 +7,7 @@ const own = (value, key) => Object.hasOwn(value, key);
 const copy = value => JSON.parse(JSON.stringify(value));
 const homeLayoutsModule = () => require('./home-layouts'); // loaded when used
 const deviceStageModule = () => require('./device-stage');
+const consoleNamesModule = () => require('./console-names');
 const definitions = [
   ['console', 'Console & network', 'Console type, addresses, ports, and channel/bus counts. Connection changes may restart the server.', ['consoleType','serverPort','deskIp','deskSendPort','deskListenPort','channels','auxes','groups','dliveBaseChannel','dliveTlsEnabled','dliveUsername','dlivePassword','dliveMidiPort','dliveListenSendLevels','dlivePollSendLevels','klangIp','klangPort','wingPort','lv1Port']],
   ['channels', 'Channel layout', 'Channel names, icons, order, visibility, and groups.', ['channelGroups','channelOverrides']],
@@ -60,11 +61,12 @@ function normalize(data, filename) {
   let result;
   if (data?.app === 'JPMixer') {
     if (!['backup','mix-backup'].includes(data.type) || !Number.isInteger(data.version) || data.version < 1 || data.version > (data.type === 'backup' ? 2 : 1)) throw new Error('This backup format is not supported. Update JPMixer if it came from a newer version.');
-    result = { kind: data.type === 'backup' ? 'JPMixer backup' : 'My Mixes backup', appVersion: data.appVersion, config: data.config, presets: data.presets, presetAliases: data.presetAliases, scenes: data.scenes, homeLayouts: data.type === 'backup' ? data.homeLayouts : undefined, deviceStage: data.type === 'backup' ? data.deviceStage : undefined };
+    result = { kind: data.type === 'backup' ? 'JPMixer backup' : 'My Mixes backup', appVersion: data.appVersion, config: data.config, presets: data.presets, presetAliases: data.presetAliases, scenes: data.scenes, homeLayouts: data.type === 'backup' ? data.homeLayouts : undefined, deviceStage: data.type === 'backup' ? data.deviceStage : undefined, consoleNames: data.type === 'backup' ? data.consoleNames : undefined };
   } else if (filename.toLowerCase() === 'config.json' || (object(data) && ['consoleType','serverPort','pcoAppId','channelOverrides'].some(key => own(data,key)))) result = { kind:'Extracted configuration', config:data };
   else if (filename.toLowerCase() === 'scenes.json') result = { kind:'Extracted Ear Scenes', scenes:data };
   else if (filename.toLowerCase() === 'home-layouts.json') result = { kind:'Extracted Home page layouts', homeLayouts:data };
   else if (filename.toLowerCase() === 'device-stage.json') result = { kind:'Extracted Devices stage', deviceStage:data };
+  else if (filename.toLowerCase() === 'console-names.json') result = { kind:'Extracted console names', consoleNames:data };
   else {
     let isScenes = false;
     if (object(data) && Object.keys(data).length) { try { validateScenes(data); isScenes = true; } catch {} }
@@ -80,7 +82,8 @@ function normalize(data, filename) {
   // Home page layouts: an invalid one is skipped rather than refusing the file
   if (result.homeLayouts !== undefined) result.homeLayouts = homeLayoutsModule().cleanAll(result.homeLayouts);
   if (result.deviceStage !== undefined) result.deviceStage = deviceStageModule().cleanAll(result.deviceStage);
-  if (result.config === undefined && result.presets === undefined && result.scenes === undefined && result.homeLayouts === undefined && result.deviceStage === undefined) throw new Error('No recognizable backup content was found.');
+  if (result.consoleNames !== undefined) result.consoleNames = consoleNamesModule().cleanAll(result.consoleNames);
+  if (result.config === undefined && result.presets === undefined && result.scenes === undefined && result.homeLayouts === undefined && result.deviceStage === undefined && result.consoleNames === undefined) throw new Error('No recognizable backup content was found.');
   return result;
 }
 async function read(file) {
@@ -91,16 +94,16 @@ async function read(file) {
     try {
       parsed[name] = JSON.parse(text);
       if (parsed[name]?.app === 'JPMixer') exported.push(name);
-    } catch { if (['config.json','presets.json','preset-aliases.json','scenes.json','home-layouts.json','device-stage.json'].includes(name)) throw new Error('Invalid JSON in ' + name); }
+    } catch { if (['config.json','presets.json','preset-aliases.json','scenes.json','home-layouts.json','device-stage.json','console-names.json'].includes(name)) throw new Error('Invalid JSON in ' + name); }
   }
-  const raw = ['config.json','presets.json','scenes.json','home-layouts.json','device-stage.json'].filter(name => own(parsed,name));
+  const raw = ['config.json','presets.json','scenes.json','home-layouts.json','device-stage.json','console-names.json'].filter(name => own(parsed,name));
   if (exported.length) {
     if (exported.length !== 1 || raw.length) throw new Error('This ZIP contains multiple backups. Choose a single backup file.');
     return normalize(parsed[exported[0]], exported[0]);
   }
   if (!raw.length) throw new Error('No JPMixer settings, saved mixes, or Ear Scenes were found in this ZIP.');
   const data = { app:'JPMixer',type:'backup',version:2 };
-  for (const [name,key] of [['config.json','config'],['presets.json','presets'],['preset-aliases.json','presetAliases'],['scenes.json','scenes'],['home-layouts.json','homeLayouts'],['device-stage.json','deviceStage']]) if (own(parsed,name)) data[key] = parsed[name];
+  for (const [name,key] of [['config.json','config'],['presets.json','presets'],['preset-aliases.json','presetAliases'],['scenes.json','scenes'],['home-layouts.json','homeLayouts'],['device-stage.json','deviceStage'],['console-names.json','consoleNames']]) if (own(parsed,name)) data[key] = parsed[name];
   const result = normalize(data, 'archive'); result.kind = 'Extracted JPMixer files (ZIP)'; return result;
 }
 function describe(data, filename) {
@@ -119,6 +122,7 @@ function describe(data, filename) {
   if (data.presets !== undefined) sections.push({ id:'mixes',label:'My Mixes',description:`${data.mixCount} saved mix(es) across ${data.deviceCount} device/person group(s).${data.droppedMixes ? ` ${data.droppedMixes} with invalid levels will be skipped.` : ''}`, count:data.mixCount });
   if (data.homeLayouts !== undefined) { const n = homeLayoutsModule().count(data.homeLayouts); if (n.layouts) sections.push({ id:'homeLayouts',label:'Home page layouts',description:`${n.layouts} saved layout(s) for ${n.people} team member(s). Replaces the same person’s layout on the same page; everyone else’s are kept.` }); }
   if (data.deviceStage !== undefined) { const n = deviceStageModule().count(data.deviceStage); if (n.arrangements) sections.push({ id:'deviceStage',label:'Devices stage arrangement',description:`Where each phone’s card sits on the Devices page (${n.cards} card(s)). Replaces the arrangement for the same number of mixes; any other is kept.` }); }
+  if (data.consoleNames !== undefined) { const n = consoleNamesModule().count(data.consoleNames); if (n.channels || n.auxes) sections.push({ id:'consoleNames',label:'Console names',description:`The channel and mix names the console last reported (${n.channels} channel(s), ${n.auxes} mix(es)), shown while it’s off. Replaces them for the same console type; names typed in JPMixer are part of Channel and Aux layout.` }); }
   if (data.scenes !== undefined) sections.push({ id:'scenes',label:'Ear Scenes',description:`${Object.keys(data.scenes).length} snapshot(s). Session data; cleared on app restart. Snapshot recall may use these when snapshots change.` });
   if (!sections.length) throw new Error('No supported restore sections were found.');
   return { filename,kind:data.kind,appVersion:typeof data.appVersion === 'string' ? data.appVersion : null,sections };
@@ -130,16 +134,17 @@ function plan(data, selected, mode, current) {
   if (!['merge','replace'].includes(mode)) throw new Error('Choose how to restore My Mixes.');
   const config = copy(current); let configSelected = false;
   for (const [id,,,fields] of definitions) if (selected.includes(id)) for (const key of fields) if (own(data.config,key)) { config[key] = copy(data.config[key]); configSelected = true; }
-  return { config,configSelected,mixes:selected.includes('mixes'),scenes:selected.includes('scenes'),homeLayouts:selected.includes('homeLayouts'),deviceStage:selected.includes('deviceStage'),mode,selected:[...new Set(selected)] };
+  return { config,configSelected,mixes:selected.includes('mixes'),scenes:selected.includes('scenes'),homeLayouts:selected.includes('homeLayouts'),deviceStage:selected.includes('deviceStage'),consoleNames:selected.includes('consoleNames'),mode,selected:[...new Set(selected)] };
 }
 async function apply(data, selected, mode, deps) {
   const { config,presets,scenes,autoBackup } = deps;
   const homeLayouts = deps.homeLayouts || homeLayoutsModule();
   const deviceStage = deps.deviceStage || deviceStageModule();
-  const previous = { config:copy(config.getAll()),presets:copy(presets.getAll()),aliases:copy(presets.getAliases()),scenes:copy(scenes.getAll()),homeLayouts:homeLayouts.getAll(),deviceStage:deviceStage.getAll() };
+  const consoleNames = deps.consoleNames || consoleNamesModule();
+  const previous = { config:copy(config.getAll()),presets:copy(presets.getAll()),aliases:copy(presets.getAliases()),scenes:copy(scenes.getAll()),homeLayouts:homeLayouts.getAll(),deviceStage:deviceStage.getAll(),consoleNames:consoleNames.getAll() };
   const work = plan(data,selected,mode,previous.config);
   const safetyBackup = await autoBackup.writeBackup('before-selected-restore');
-  let wroteConfig = false, wroteMixes = false, wroteScenes = false, wroteLayouts = false, wroteStage = false, mixes;
+  let wroteConfig = false, wroteMixes = false, wroteScenes = false, wroteLayouts = false, wroteStage = false, wroteNames = false, mixes;
   try {
     if (work.configSelected) { if (!config.save(work.config)) throw new Error('Could not save the selected settings.'); wroteConfig = true; }
     if (work.mixes) {
@@ -150,9 +155,11 @@ async function apply(data, selected, mode, deps) {
     if (work.scenes) { if (!scenes.replaceAll(data.scenes)) throw new Error('Could not restore Ear Scenes.'); wroteScenes = true; }
     if (work.homeLayouts) { if (!homeLayouts.importAll(data.homeLayouts)) throw new Error('Could not restore Home page layouts.'); wroteLayouts = true; }
     if (work.deviceStage) { if (!deviceStage.importAll(data.deviceStage)) throw new Error('Could not restore the Devices stage arrangement.'); wroteStage = true; }
+    if (work.consoleNames) { if (!consoleNames.importAll(data.consoleNames)) throw new Error('Could not restore the console names.'); wroteNames = true; }
     return { ok:true,selected:work.selected,configChanged:wroteConfig,scenesChanged:wroteScenes,mixes,previousConfig:previous.config,safetyBackup };
   } catch (error) {
     const rollback = [];
+    if (wroteNames) rollback.push(consoleNames.replaceAll(previous.consoleNames));
     if (wroteStage) rollback.push(deviceStage.replaceAll(previous.deviceStage));
     if (wroteLayouts) rollback.push(homeLayouts.replaceAll(previous.homeLayouts));
     if (wroteScenes) rollback.push(scenes.replaceAll(previous.scenes));

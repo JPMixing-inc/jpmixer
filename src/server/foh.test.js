@@ -169,6 +169,33 @@ async function main() {
     t('someone serving two roles is one Team row with both roles');
   }
 
+  {
+    // A weekend plan (tomorrow 5 PM; the day after, 9 and 11 AM): the card
+    // shows the day being served with its times, and Coming up starts with
+    // the plan's other day before the next plans
+    const scheduleMock = global.fetch;
+    const day = (d, h) => { const x = new Date(); x.setDate(x.getDate() + d); x.setHours(h, 0, 0, 0); return x.toISOString(); };
+    global.fetch = async (url) => {
+      if (url.includes('/plan_times')) return { ok: true, text: async () => JSON.stringify({ data: [
+        { id: 'a', attributes: { time_type: 'service', starts_at: day(1, 17), ends_at: day(1, 18) } },
+        { id: 'b', attributes: { time_type: 'service', starts_at: day(2, 9), ends_at: day(2, 10) } },
+        { id: 'c', attributes: { time_type: 'service', starts_at: day(2, 11) } },
+      ] }) };
+      if (url.includes('filter=future')) return { ok: true, text: async () => JSON.stringify({ data: [
+        { id: '100', attributes: { sort_date: day(1, 13), title: 'Sunday Service' } },
+        { id: '101', attributes: { sort_date: day(8, 13), title: 'Next weekend' } },
+      ] }) };
+      return scheduleMock(url);
+    };
+    const data = await get(port, '/foh-data');
+    assert.equal(data.ok, true);
+    assert.deepEqual(data.plan.times, [day(1, 17)], 'this service: the first day, with its time');
+    assert.equal(data.plan.date, day(1, 17));
+    assert.deepEqual(data.upcoming.map((p) => p.times || p.title), [[day(2, 9), day(2, 11)], 'Next weekend'], 'coming up: the plan\'s other day first, then the next plan');
+    global.fetch = scheduleMock;
+    t('the Planning Center card tells a weekend plan\'s days apart');
+  }
+
   connected = false; deviceCount = 0;
   {
     const data = await get(port, '/foh-data');

@@ -226,20 +226,22 @@ async function roleData(roleId, status) {
     if (!positionName) return notSetUp();
     if (!plan) { return reply({ ok: true, plan: null, engineer: null, roster: [], order: [], liveItem: null, previousItem: null, nextItem: null, consoleConnected, connectionCount }); }
 
-    // "auto" resolves against this plan's own PlanTimes (whichever is
-    // closest to right now), not literally today's calendar date — see
-    // pco-client.js's resolveAutoDay() for why that distinction matters.
-    const rawDay = service.day;
-    const day = rawDay === 'auto' ? await pco.resolveAutoDay(serviceTypeId, plan.id, creds) : rawDay;
-
     // The Planning Center card's next few plans are fetched alongside the
     // rest, not after; a failure there only empties that list
-    const [members, items, liveItemId, upcomingPlans] = await Promise.all([
+    const [members, items, liveItemId, upcomingPlans, planTimes] = await Promise.all([
       pco.planTeamMembers(serviceTypeId, plan.id, creds),
       pco.listPlanItems(serviceTypeId, plan.id, creds),
       pco.getLiveItemId(serviceTypeId, plan.id, creds),
       pco.upcomingPlans(serviceTypeId, creds, 4).catch(() => []),
+      pco.listPlanTimes(serviceTypeId, plan.id, creds),
     ]);
+    // Which day's team, and the day the Planning Center card shows: one
+    // answer from the plan's own times (see pco-client.js serviceDays), so
+    // the roster and the card always agree. "auto" follows the services:
+    // the one on now (until 90 min after it ends), else the next.
+    const rawDay = service.day;
+    const schedule = require('./pco-client').serviceDays(planTimes, rawDay);
+    const day = schedule.day;
     const includeUnconfirmed = !!config.get('pcoIncludeUnconfirmed');
     const fohTeamId = service.roles[roleId].team; // this role's team (named for FOH, which came first)
     const rosterTeamId = service.teamId;
@@ -315,14 +317,21 @@ async function roleData(roleId, status) {
     };
     const previousItem = nearestContentItem(-1);
     const nextItem = nearestContentItem(1);
-    // The Planning Center card: the next few plans after this one
-    const upcoming = upcomingPlans
-      .filter((p) => p.id !== plan.id).slice(0, 3)
-      .map((p) => ({ title: p.title, seriesTitle: p.seriesTitle, date: p.date, url: p.url }));
+    // The Planning Center card. A weekend plan's days (Sat 5 PM; Sun 9 and
+    // 11 AM) are told apart: "This service" is the day being served now, with
+    // its times, and Coming up starts with the plan's later days, then the
+    // next plans.
+    const { days, current } = schedule;
+    const thisDay = current >= 0 ? days[current] : null;
+    const laterDays = current >= 0 ? days.slice(current + 1) : [];
+    const upcoming = [
+      ...laterDays.map((d) => ({ title: plan.title, seriesTitle: plan.seriesTitle, date: d.times[0], times: d.times, url: plan.url })),
+      ...upcomingPlans.filter((p) => p.id !== plan.id).map((p) => ({ title: p.title, seriesTitle: p.seriesTitle, date: p.date, url: p.url })),
+    ].slice(0, 3);
 
     return reply({
       ok: true,
-      plan: { title: plan.title, seriesTitle: plan.seriesTitle || null, date: plan.date, url: plan.url || null },
+      plan: { title: plan.title, seriesTitle: plan.seriesTitle || null, date: thisDay ? thisDay.times[0] : plan.date, times: thisDay ? thisDay.times : [], url: plan.url || null },
       upcoming,
       pcoHome: require('./pco-client').PCO_WEB,
       engineer: match ? { name: match.personName, photoUrl: match.photoUrl, personId: match.personId || null } : null,

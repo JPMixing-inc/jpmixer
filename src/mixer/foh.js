@@ -172,6 +172,13 @@ function showPlans(plan, upcoming, pcoHome) {
   title.className = 'fh-plan-title';
   title.textContent = planDateLabel(plan.date) || 'Next service';
   current.append(label, title);
+  // That day's service times (a weekend plan's Sunday: 9:00 AM · 11:00 AM)
+  if (plan.times && plan.times.length) {
+    const when = document.createElement('p');
+    when.className = 'fh-plan-times';
+    when.textContent = serviceTimesLabel(plan.times);
+    current.append(when);
+  }
   // Series and title, when the plan has them
   const sub = [plan.seriesTitle, plan.title].filter(Boolean).join(' · ');
   if (sub) {
@@ -191,7 +198,7 @@ function showPlans(plan, upcoming, pcoHome) {
       const row = link(p.url, 'fh-plan-row', '');
       const t = document.createElement('span');
       t.className = 'fh-plan-row-title';
-      t.textContent = planDateLabel(p.date);
+      t.textContent = planDateLabel(p.date) + (p.times && p.times.length ? ` · ${serviceTimesLabel(p.times)}` : '');
       row.append(t);
       const detail = [p.seriesTitle, p.title].filter(Boolean).join(' · ');
       if (detail) {
@@ -384,6 +391,8 @@ function showConnection(consoleConnected, connectionCount) {
   deviceBadge.dataset.state = connectionCount > 0 ? 'on' : 'off';
   deviceBadge.textContent = `${connectionCount} device${connectionCount === 1 ? '' : 's'}`;
 }
+
+const serviceTimesLabel = (times) => times.map((t) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })).join(' · ');
 
 function planDateLabel(value) {
   if (!value) return '';

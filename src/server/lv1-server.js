@@ -159,7 +159,7 @@ function buildConfig(extra = {}) {
     const ov = cfgAuxOverrides[String(i)] || {};
     auxilaries.push({
       enabled:   ov.enabled !== false,
-      label:     ov.label || mixes[i - 1]?.name || `AUX ${i}`,
+      label:     ov.label || shared.consoleNameOr(serverCfg, 'auxes', i, mixes[i - 1]?.name) || `AUX ${i}`,
       channel:   i,
       stereo:    mixStereo(i), // a mono mix's sends have no pan
       colour:    ov.colour || '#e8a020',

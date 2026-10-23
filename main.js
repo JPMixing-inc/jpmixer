@@ -376,6 +376,7 @@ app.on('before-quit', (e) => {
   try { require('./src/server/companion-satellite').stop(); } catch (_) {} // tells Companion to drop the surfaces
   try { require('./src/server/smaart').stop(); } catch (_) {}
   try { require('./src/server/shure-wireless').stop(); } catch (_) {}
+  try { require('./src/server/console-names').flush(); } catch (_) {}
   if (quitting || !serverRunning || !server) return;
   e.preventDefault();
   quitting = true;
@@ -671,8 +672,21 @@ ipcMain.handle('get-config', () => config.getAll());
 ipcMain.handle('get-version', () => app.getVersion());
 ipcMain.handle('get-server-status', () => ({ running: serverRunning }));
 ipcMain.handle('get-local-ip', () => getLocalIP());
-ipcMain.handle('get-channel-names',   () => serverRunning ? server.getChannelNames()     : {});
-ipcMain.handle('get-aux-names',       () => serverRunning ? server.getAuxNames()         : {});
+// The console's names for Settings: what it reports now, laid over the ones
+// it last reported (console-names.js), so they're there while it's off too
+const rememberedNames = (kind) => require('./src/server/console-names').all(config.get('consoleType'), kind);
+ipcMain.handle('get-channel-names',   () => ({ ...rememberedNames('channels'), ...(serverRunning ? server.getChannelNames() : {}) }));
+ipcMain.handle('get-aux-names',       () => ({ ...rememberedNames('auxes'), ...(serverRunning ? server.getAuxNames() : {}) }));
+
+// Remember the console's channel and mix names while it's connected, for
+// when it's off (console-names.js). Never demo mode's made-up names.
+setInterval(() => {
+  if (!serverRunning || !server || !config || config.get('demoMode')) return;
+  if (!(server.isConsoleConnected && server.isConsoleConnected())) return;
+  try {
+    require('./src/server/console-names').record(config.get('consoleType'), { channels: server.getChannelNames(), auxes: server.getAuxNames() });
+  } catch (e) { console.error('[JPMixer] console names:', e.message); }
+}, 10000).unref?.();
 ipcMain.handle('get-channel-count',   () => serverRunning ? server.getChannelCount()      : null);
 ipcMain.handle('get-aux-count',       () => serverRunning ? server.getAuxCount()          : null);
 ipcMain.handle('get-console-status',      () => ({ connected: server ? server.isConsoleConnected() : false }));
@@ -1117,9 +1131,9 @@ async function runPcoSync({ serviceTypeId: mainTypeId, mapping: mainMapping, inc
     const { serviceTypeId, mapping, day } = service;
     const offMix = new Set(service.offMix.map(p => p.toLowerCase())); // "Not on a mix" on the second service
 
-    // "auto" resolves against this plan's own PlanTimes (whichever is
-    // closest to right now) rather than literally today's calendar date —
-    // see pco-client.js's resolveAutoDay() for why.
+    // "auto" follows this plan's own services (the one on now, else the
+    // next) rather than literally today's calendar date; see pco-client.js
+    // serviceDays.
     const resolvedDay = day === 'auto' ? await pcoClient.resolveAutoDay(serviceTypeId, plan.id, creds) : day;
 
     const members = await pcoClient.planTeamMembers(serviceTypeId, plan.id, creds);
@@ -1343,7 +1357,7 @@ ipcMain.handle('restore-backup', async (event, request) => {
   restoreBusy = true;
   let dataCommitted = false;
   try {
-    const result = await require('./src/server/backup-restore').apply(pendingRestore.data,request.sections,request.mixMode,{ config,presets,scenes,autoBackup,homeLayouts:require('./src/server/home-layouts'),deviceStage:require('./src/server/device-stage') });
+    const result = await require('./src/server/backup-restore').apply(pendingRestore.data,request.sections,request.mixMode,{ config,presets,scenes,autoBackup,homeLayouts:require('./src/server/home-layouts'),deviceStage:require('./src/server/device-stage'),consoleNames:require('./src/server/console-names') });
     if (!result.ok) return result;
     dataCommitted = true;
     pendingRestore = null;

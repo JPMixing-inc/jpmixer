@@ -46,6 +46,7 @@ function backend(family) {
     express, http: { createServer: () => http }, ws: { Server: SocketServer, OPEN: 1 },
     './performer-assignments': { mountPerformerAssignments() {} },
     './greenroom': { mountGreenRoom() {} }, './branding': { mountBranding() {} }, './foh': { mountFoh() {} }, './config': {}, './presets': {},
+    './console-names': { remembered: () => undefined }, // no names remembered: what the console sends now
     './scenes': { getAll: () => scenes, getScene: (key, aux) => scenes[key]?.[aux] },
     './wing-client': { WingClient: Client }, './klang-client': { KlangClient: Client },
     './dlive-client': { DliveClient: Client }

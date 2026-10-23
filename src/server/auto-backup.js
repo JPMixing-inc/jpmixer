@@ -35,7 +35,8 @@ function buildBackupData({ includeCredentials = true } = {}) {
     presetAliases: presets.getAliases(),
     scenes: scenes.getAll(),
     homeLayouts: require('./home-layouts').getAll(), // Home page layouts per team member
-    deviceStage: require('./device-stage').getAll()  // the Devices page stage arrangement
+    deviceStage: require('./device-stage').getAll(), // the Devices page stage arrangement
+    consoleNames: require('./console-names').getAll() // the console's channel and mix names, remembered
   };
 }
 

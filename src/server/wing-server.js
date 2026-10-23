@@ -141,7 +141,7 @@ function buildConfig() {
     const ov = cfgAuxOverrides[String(i)] || {};
     auxilaries.push({
       enabled:   ov.enabled !== false,
-      label:     ov.label || `AUX ${i}`,
+      label:     ov.label || shared.consoleNameOr(serverCfg, 'auxes', i, undefined) || `AUX ${i}`,
       channel:   i,
       stereo:    true,  // WING has a real per-send pan — see file header
       colour:    ov.colour || '#e8a020',

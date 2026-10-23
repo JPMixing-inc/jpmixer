@@ -576,9 +576,9 @@ function buildConfig(extra) {
   const auxilaries = [];
   for (let i = 0; i < auxCount; i++) {
     const ov = cfgAuxOverrides[String(i + 1)] || {};
-    const consoleName = cache.has(`/Aux_Outputs/${i+1}/Buss_Trim/name`)
+    const consoleName = shared.consoleNameOr(serverCfg, 'auxes', i + 1, cache.has(`/Aux_Outputs/${i+1}/Buss_Trim/name`)
       ? cache.get(`/Aux_Outputs/${i+1}/Buss_Trim/name`).args[0]
-      : `AUX ${i+1}`;
+      : undefined) || `AUX ${i+1}`;
     auxilaries.push({
       enabled:   ov.enabled !== false,
       label:     ov.label || consoleName,
@@ -596,7 +596,7 @@ function buildConfig(extra) {
     ? cache.get('/Console/Input_Channels').args[0]
     : (serverCfg.channels || 48);
 
-  const channels = shared.buildChannelList(chCount, serverCfg, i => cache.has(`/Input_Channels/${i}/Channel_Input/name`) ? cache.get(`/Input_Channels/${i}/Channel_Input/name`).args[0] : '');
+  const channels = shared.buildChannelList(chCount, serverCfg, i => cache.has(`/Input_Channels/${i}/Channel_Input/name`) ? cache.get(`/Input_Channels/${i}/Channel_Input/name`).args[0] : undefined);
 
   const cgCount = cache.has('/Console/Control_Groups')
     ? cache.get('/Console/Control_Groups').args[0]

@@ -75,9 +75,9 @@ const DEFAULTS = {
   pcoServiceTypeId: '',
   pcoTeamId: '',           // '' = all teams. Narrows both the Position mapping table (display only)
                            // and the Green Room display (actually filters who's shown there).
-  pcoDay: 'auto',          // 'auto' = resolve to whichever PlanTime is closest to right now each
-                           // time it's checked (not literally today's date — see pco-client.js's
-                           // resolveAutoDay()). '' = every day. "Saturday"/"Sunday"/etc pins one
+  pcoDay: 'auto',          // 'auto' = follow the plan's services each time it's checked: the one
+                           // on now (until 90 min after it ends), else the next (not literally
+                           // today's date; see pco-client.js serviceDays). '' = every day. "Saturday"/"Sunday"/etc pins one
                            // explicitly. Narrows both the Green Room display and Sync Now's aux
                            // labeling — for a weekend plan with multiple PlanTimes. See pco-client.js.
   pcoPositionMapping: {}, // { "PCO position name": auxNumber }

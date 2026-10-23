@@ -203,11 +203,12 @@ function mountGreenRoom(app) {
         positionTeam = new Map(positions.map((p) => [p.name.toLowerCase(), p.teamId]));
       }
 
-      // "auto" resolves against this plan's own PlanTimes (whichever is
-      // closest to right now), not literally today's calendar date — see
-      // pco-client.js's resolveAutoDay() for why that distinction matters.
+      // Which day's team: one answer from the plan's own times, the same as
+      // the Home pages (pco-client.js serviceDays). "auto" follows the
+      // services: the one on now (until 90 min after it ends), else the next.
       const rawDay = service.day;
-      const day = rawDay === 'auto' ? await pco.resolveAutoDay(serviceTypeId, plan.id, creds) : rawDay;
+      const schedule = require('./pco-client').serviceDays(await pco.listPlanTimes(serviceTypeId, plan.id, creds), rawDay);
+      const day = schedule.day;
 
       const relevant = members
         .filter((m) => {
@@ -242,7 +243,9 @@ function mountGreenRoom(app) {
           if (!person.photoUrl && m.photoUrl) person.photoUrl = m.photoUrl;
         }
       }
-      res.json({ ok: true, plan: { title: plan.title, date: plan.date }, members: [...people.values()], mics: config.get('greenRoomMics') !== false });
+      // The day being served (a weekend plan's Sunday once Saturday is over)
+      const { days, current } = schedule;
+      res.json({ ok: true, plan: { title: plan.title, date: current >= 0 ? days[current].times[0] : plan.date }, members: [...people.values()], mics: config.get('greenRoomMics') !== false });
     } catch (err) {
       res.json({ ok: false, error: err.message, status: err.status || null });
     }

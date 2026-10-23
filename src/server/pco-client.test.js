@@ -278,9 +278,25 @@ async function main() {
         // this response's own `included`.
       },
     },
+    // A weekend plan seen on Saturday night: the 5 PM service ended two hours
+    // ago (1400) or half an hour ago (1500); Sunday's 9 AM is 14 hours away,
+    // still "farther" than Saturday
+    '/services/v2/service_types/14/plans/1400/plan_times': {
+      body: { data: [
+        { id: 'sat', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() - 210 * 60 * 1000).toISOString(), ends_at: new Date(Date.now() - 120 * 60 * 1000).toISOString() } },
+        { id: 'sun9', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString(), ends_at: new Date(Date.now() + 15.5 * 60 * 60 * 1000).toISOString() } },
+        { id: 'sun11', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() + 16 * 60 * 60 * 1000).toISOString() } },
+      ] },
+    },
+    '/services/v2/service_types/15/plans/1500/plan_times': {
+      body: { data: [
+        { id: 'sat', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() - 120 * 60 * 1000).toISOString(), ends_at: new Date(Date.now() - 30 * 60 * 1000).toISOString() } },
+        { id: 'sun9', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString() } },
+      ] },
+    },
     // Relative to Date.now() on purpose (see the nextPlan mocks above) — one
-    // PlanTime an hour in the past, one ten hours in the future, so "closest
-    // to now" has an unambiguous winner regardless of when this test runs.
+    // PlanTime an hour in the past, one ten hours in the future, so the one
+    // still on has an unambiguous win regardless of when this test runs.
     '/services/v2/service_types/6/plans/600/plan_times': {
       body: { data: [
         { id: 'near', type: 'PlanTime', attributes: { starts_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString() } },
@@ -430,7 +446,45 @@ async function main() {
     const expected = new Date(Date.now() - 1 * 60 * 60 * 1000).toLocaleDateString('en-US', { weekday: 'long' });
     const day = await pco.resolveAutoDay('6', '600', creds);
     assert.equal(day, expected, 'the PlanTime an hour in the past is closer to right now than the one ten hours out, regardless of which is chronologically first');
-    t('resolveAutoDay picks whichever PlanTime is closest to right now, not literally today\'s date');
+    t('resolveAutoDay keeps a service that started an hour ago (still on), not literally today\'s date');
+  }
+
+  {
+    const expected = new Date(Date.now() + 14 * 60 * 60 * 1000).toLocaleDateString('en-US', { weekday: 'long' });
+    assert.equal(await pco.resolveAutoDay('14', '1400', creds), expected, 'Saturday ended two hours ago, so Sunday\'s team is next, though Saturday is closer in time');
+    const saturday = new Date(Date.now() - 120 * 60 * 1000).toLocaleDateString('en-US', { weekday: 'long' });
+    assert.equal(await pco.resolveAutoDay('15', '1500', creds), saturday, 'half an hour after its scheduled end (it may be running long), Saturday keeps its team');
+    t('resolveAutoDay moves to the next day\'s team once a service is over, not while it may still be running long');
+  }
+
+  {
+    // A weekend plan: Saturday 5 PM; Sunday 9 and 11 AM (a real schedule's shape)
+    const at = (d, h) => new Date(2026, 9, d, h).toISOString();
+    const weekend = [
+      { timeType: 'service', startsAt: at(24, 17), endsAt: at(24, 18) },
+      { timeType: 'rehearsal', startsAt: at(22, 19) },
+      { timeType: 'service', startsAt: at(25, 9), endsAt: at(25, 10) },
+      { timeType: 'service', startsAt: at(25, 11) },
+    ];
+    const friday = pco.serviceDays(weekend, 'auto', new Date(2026, 9, 23, 12).getTime());
+    assert.deepEqual(friday.days.map((d) => [d.weekday, d.times.length]), [['Saturday', 1], ['Sunday', 2]], 'services by day, rehearsals left out');
+    assert.equal(friday.days[friday.current].weekday, 'Saturday');
+    const runningLong = pco.serviceDays(weekend, 'auto', new Date(2026, 9, 24, 19).getTime());
+    assert.equal(runningLong.days[runningLong.current].weekday, 'Saturday', 'an hour after its scheduled end, Saturday may still be running');
+    const saturdayNight = pco.serviceDays(weekend, 'auto', new Date(2026, 9, 24, 20).getTime());
+    assert.equal(saturdayNight.days[saturdayNight.current].weekday, 'Sunday', 'Saturday is over: Sunday is the service now');
+    assert.equal(saturdayNight.day, 'Sunday', 'and Sunday\'s team is who the pages show');
+    const sundayService = pco.serviceDays(weekend, 'auto', new Date(2026, 9, 25, 9, 30).getTime());
+    assert.equal(sundayService.days[sundayService.current].weekday, 'Sunday');
+    assert.equal(pco.serviceDays(weekend, 'Saturday', new Date(2026, 9, 25, 9, 30).getTime()).current, 0, 'a day pinned in Settings wins');
+    const everyDay = pco.serviceDays(weekend, '', new Date(2026, 9, 24, 20).getTime());
+    assert.equal(everyDay.day, '', '"every day" filters nobody out');
+    assert.equal(everyDay.days[everyDay.current].weekday, 'Sunday', 'and the card still shows the day being served');
+    // A plan with the same weekday twice (two Sundays): a pinned Sunday is the one still to come
+    const twoSundays = [{ timeType: 'service', startsAt: at(18, 9), endsAt: at(18, 10) }, { timeType: 'service', startsAt: at(25, 9), endsAt: at(25, 10) }];
+    const pinned = pco.serviceDays(twoSundays, 'Sunday', new Date(2026, 9, 20, 12).getTime());
+    assert.equal(pinned.days[pinned.current].times[0], at(25, 9), 'the first Sunday has passed');
+    t('serviceDays groups a weekend plan by day and knows which day is being served');
   }
 
   {

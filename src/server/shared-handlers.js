@@ -161,6 +161,15 @@ function auxGroupNames(ov, cfg) {
 // overrides applied, sorted by group then custom order, with each group's
 // name as a heading on its first channel. `consoleName(n)` gives the desk's
 // own name for channel n. This used to be copied into all four backends.
+// A console name for channel or mix n: the live one the console reported
+// (even '' — a name it cleared), else the one it last reported, remembered
+// on this computer while the console is off (console-names.js), else
+// undefined. A name typed in JPMixer is laid over this by the callers.
+function consoleNameOr(cfg, kind, n, live) {
+  if (live !== undefined && live !== null) return live;
+  return require('./console-names').remembered(cfg && cfg.consoleType || 'digico', kind, n);
+}
+
 function buildChannelList(chCount, cfg, consoleName) {
   const groups = cfg.channelGroups || [];
   const overrides = cfg.channelOverrides || {};
@@ -173,7 +182,7 @@ function buildChannelList(chCount, cfg, consoleName) {
     raw.push({
       channel: i,
       enabled: ov.enabled !== false,
-      label:   ov.label || consoleName(i) || '',
+      label:   ov.label || consoleNameOr(cfg, 'channels', i, consoleName(i)) || '',
       icon:    ov.icon || '',
       groupId: ov.groupId || null,
       order:   ov.order !== undefined ? ov.order : i,
@@ -197,4 +206,4 @@ function buildChannelList(chCount, cfg, consoleName) {
   });
 }
 
-module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb, guarded, buildChannelList, auxGroupNames };
+module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb, guarded, buildChannelList, auxGroupNames, consoleNameOr };

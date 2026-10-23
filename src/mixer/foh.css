@@ -312,6 +312,7 @@ body.fh-locked .fh-main > :not(.fh-lock), body.fh-locked .fh-header-actions { di
 .fh-plans > .fh-plan-label { margin-top: 8px; }
 .fh-plan-title { font-size: 16px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .fh-plan-meta { font-size: 12px; color: var(--jp-secondary); }
+.fh-plan-times { font-size: 13px; font-weight: 600; color: var(--jp-label); font-variant-numeric: tabular-nums; }
 .fh-plan-open { align-self: flex-start; margin-top: 8px; padding: 8px 14px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; text-decoration: none; }
 .fh-plan-open:hover { filter: brightness(1.1); }
 .fh-plan-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--jp-line); color: var(--text); text-decoration: none; }

@@ -93,6 +93,7 @@ function serverHarness() {
     './branding': { mountBranding() {} },
     './digico-channel': require('../src/server/digico-channel'),
     './foh': { mountFoh() {} },
+    './console-names': { remembered: () => undefined }, // no names remembered: what the console sends now
     './scenes': {
       getAll: () => scenes, getScene: (name, aux) => scenes[name]?.[aux],
       saveScene(name, aux, values) { (scenes[name] ||= {})[aux] = values; return true; }, // the real one reports whether it stored

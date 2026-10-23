@@ -6,12 +6,12 @@ const sample={ app:'JPMixer',type:'backup',version:2,appVersion:'1.8.0',config:{
 function harness(t){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'jpm-selected-restore-')); t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   const stores={};
-  function load(name){ const context={module:{exports:{}},console:{error(){}},require(request){if(request==='electron')return {app:{getPath:()=>dir,getVersion:()=> '1.8.0'}};if(request.startsWith('./')&&stores[request.slice(2)])return stores[request.slice(2)];return require(request.startsWith('./')?path.join(root,'src/server',request):request);}};vm.runInNewContext(fs.readFileSync(path.join(root,'src/server',name+'.js'),'utf8'),context);return context.module.exports; }
-  const config=stores.config=load('config'),presets=stores.presets=load('presets'),scenes=stores.scenes=load('scenes'),homeLayouts=stores['home-layouts']=load('home-layouts'),deviceStage=stores['device-stage']=load('device-stage'),autoBackup=stores['auto-backup']=load('auto-backup');
+  function load(name){ const context={module:{exports:{}},console:{error(){}},setTimeout,clearTimeout,require(request){if(request==='electron')return {app:{getPath:()=>dir,getVersion:()=> '1.8.0'}};if(request.startsWith('./')&&stores[request.slice(2)])return stores[request.slice(2)];return require(request.startsWith('./')?path.join(root,'src/server',request):request);}};vm.runInNewContext(fs.readFileSync(path.join(root,'src/server',name+'.js'),'utf8'),context);return context.module.exports; }
+  const config=stores.config=load('config'),presets=stores.presets=load('presets'),scenes=stores.scenes=load('scenes'),homeLayouts=stores['home-layouts']=load('home-layouts'),deviceStage=stores['device-stage']=load('device-stage'),consoleNames=stores['console-names']=load('console-names'),autoBackup=stores['auto-backup']=load('auto-backup');
   config.save({...config.getAll(),pcoAppId:'current-app',pcoSecret:'current-secret',pcoServiceTypeId:'current-service',apiToken:'current-token'});
   presets.savePreset('existing','Keep',{1:0.2},{1:0.3});presets.replaceAll(plain(presets.getAll()),{});scenes.saveScene('Current',1,{1:0.3});
   const files=()=>Object.fromEntries(['config.json','presets.json','preset-aliases.json','scenes.json'].map(name=>[name,fs.readFileSync(path.join(dir,name),'utf8')]));
-  return {dir,config,presets,scenes,homeLayouts,deviceStage,autoBackup,files};
+  return {dir,config,presets,scenes,homeLayouts,deviceStage,consoleNames,autoBackup,files};
 }
 function failWriteOnce(match,fn){ const original=fs.writeFileSync; let failed=false;fs.writeFileSync=function(file,...args){if(!failed&&String(file).includes(match)){failed=true;throw Error('simulated disk failure');}return original.call(this,file,...args);};return Promise.resolve().then(fn).finally(()=>{fs.writeFileSync=original;}); }
 
@@ -219,6 +219,39 @@ test('a device-stage.json copied out of the app folder restores as the Devices s
   const data=restore.normalize({8:{positions:{'phone-a':{x:0.5,y:0.5}},hiddenAuxes:[],height:720,rev:3,savedAt:'2026-10-01T00:00:00Z'}},'device-stage.json');
   assert.equal(data.kind,'Extracted Devices stage');
   assert.deepEqual(restore.describe(data,'').sections.map(s=>s.id),['deviceStage']);
+});
+
+test('the console names JPMixer remembers are in backups, and a restore replaces them for that console only',async t=>{
+  const h=harness(t);
+  h.consoleNames.record('digico',{channels:{1:'Kick',2:'Snare'},auxes:{1:'Maya IEM'}});
+  h.consoleNames.record('dlive',{channels:{1:'Lead Vox'}});
+  h.consoleNames.flush();
+  const backup=h.autoBackup.buildBackupData();
+  assert.equal(plain(backup.consoleNames).digico.channels['1'],'Kick');
+  // Since then: the DiGiCo renamed channel 1
+  h.consoleNames.record('digico',{channels:{1:'Kick In',3:'Hi-Hat'}});
+  const bad=plain(backup);bad.consoleNames.digico.channels.x='junk';bad.consoleNames['../evil']={channels:{1:'x'}};
+  const data=restore.normalize(bad,'backup.json'),section=restore.describe(data,'').sections.find(s=>s.id==='consoleNames');
+  assert.match(section.description,/3 channel\(s\), 1 mix\(es\)/,'junk is skipped');
+  const result=await restore.apply(data,['consoleNames'],'merge',h);
+  assert.equal(result.ok,true);
+  assert.deepEqual(plain(h.consoleNames.all('digico','channels')),{1:'Kick',2:'Snare'},'the DiGiCo names come back as they were in the backup');
+  assert.deepEqual(plain(h.consoleNames.all('dlive','channels')),{1:'Lead Vox'},'another console type is kept');
+  assert.equal(h.config.get('pcoSecret'),'current-secret','only the chosen section is restored');
+});
+
+test('a failed console-names write undoes the rest of the restore and keeps the names as they were',async t=>{
+  const h=harness(t);
+  h.consoleNames.record('digico',{channels:{1:'Kick'}}); h.consoleNames.flush();
+  h.homeLayouts.set('foh','555','Sam Sound',{order:['live']});
+  const backup=plain(h.autoBackup.buildBackupData());
+  h.consoleNames.record('digico',{channels:{1:'Kick In'}}); h.consoleNames.flush();
+  h.homeLayouts.set('foh','555','Sam Sound',{order:['team']});
+  const data=restore.normalize(backup,'backup.json');
+  const result=await failWriteOnce('console-names',()=>restore.apply(data,['homeLayouts','consoleNames'],'merge',h));
+  assert.equal(result.ok,false);
+  assert.equal(h.consoleNames.remembered('digico','channels',1),'Kick In');
+  assert.deepEqual(plain(h.homeLayouts.get('foh','555').layout.order),['team']);
 });
 
 test('a home-layouts.json copied out of the app folder restores as layouts, not as My Mixes',()=>{

@@ -257,30 +257,70 @@ async function listPlanTimes(serviceTypeId, planId, creds) {
 }
 
 // Settings' Day selector can be set to "auto" instead of a fixed weekday.
-// Resolves to whichever of the plan's own PlanTimes is closest to right
-// now — right vs. literally "today's calendar date" — because this app is
-// sometimes booted ahead of the actual show (e.g. prepping gear on a
-// weekday for a Sat/Sun service): literal "today" would resolve to a day
-// nobody is scheduled for and filter out everyone. Same "closest to now"
-// reasoning nextPlan() already uses to pick the plan itself, just applied
-// one level down to its individual service times. Returns '' (no
-// filtering) if the plan has no PlanTimes at all — a single-service plan
-// with no day split, where "auto" has nothing to resolve against.
-async function resolveAutoDay(serviceTypeId, planId, creds) {
-  const all = await listPlanTimes(serviceTypeId, planId, creds);
-  // Services only: a Thursday rehearsal on a weekend plan resolved "auto"
-  // to Thursday, hiding everyone scheduled for the weekend services. Falls
-  // back to every time if none are tagged as services.
+// That follows the plan's own PlanTimes rather than literally today's
+// calendar date, because this app is often started ahead of the show (prep
+// on a weekday for a Sat/Sun service), when "today" is a day nobody is
+// scheduled for. Returns '' (no filtering) if the plan has no PlanTimes at
+// all: a single-service plan, with nothing to resolve against.
+//
+// The day is the service that's on now, or else the next one still to
+// come; once every time has passed, the last one. A service counts as on
+// until 90 minutes after its scheduled end (or start + 90 min without one),
+// so one that runs long keeps its team, and its musicians' phone mixes, on
+// the pages. Real weekend plans run Sat 5 PM, Sun 9 AM and 11 AM with
+// different teams: Saturday's hands over to Sunday's at about 8 PM.
+// (Closest-to-now, used before, kept Saturday's until about 1 AM.)
+const SERVICE_LENGTH_MS = 90 * 60 * 1000; // a time without ends_at
+const AFTER_SERVICE_MS = 90 * 60 * 1000;  // a service's team stays this long after it ends
+// Services only: a Thursday rehearsal on a weekend plan resolved "auto" to
+// Thursday, hiding everyone scheduled for the weekend services. Falls back
+// to every time if none are tagged as services. Sorted, with times parsed.
+function serviceTimes(all) {
   const services = all.filter(pt => pt.timeType === 'service');
-  const times = services.length ? services : all;
-  const now = Date.now();
-  let best = null, bestDistance = Infinity;
+  return (services.length ? services : all)
+    .map((pt) => {
+      const start = Date.parse(pt.startsAt), end = Date.parse(pt.endsAt);
+      return { ...pt, start, end: Number.isFinite(end) && end > start ? end : start + SERVICE_LENGTH_MS };
+    })
+    .filter((pt) => Number.isFinite(pt.start))
+    .sort((a, b) => a.start - b.start);
+}
+function currentServiceTime(all, now = Date.now()) {
+  const times = serviceTimes(all);
+  if (!times.length) return null;
+  return times.find((pt) => pt.start <= now && now < pt.end + AFTER_SERVICE_MS) || times.find((pt) => pt.start > now) || times[times.length - 1];
+}
+// A plan's services grouped by day, in order: [{ weekday, times: [ISO] }]
+// (a weekend plan: Saturday [5 PM], Sunday [9 AM, 11 AM]); which day is
+// being served (`current`, an index); and the weekday the team pages filter
+// on (`day`). Settings' Day: 'auto' follows currentServiceTime; a weekday
+// pins it (its next date still to come, else its last); '' ("every day")
+// filters nobody out, and the card still shows the day being served.
+// One answer for the roster and the Planning Center card, so they agree.
+function serviceDays(all, pinnedDay = 'auto', now = Date.now()) {
+  const times = serviceTimes(all);
+  const days = [];
   for (const pt of times) {
-    if (!pt.startsAt) continue;
-    const distance = Math.abs(new Date(pt.startsAt).getTime() - now);
-    if (distance < bestDistance) { bestDistance = distance; best = pt; }
+    const key = new Date(pt.start).toDateString();
+    let day = days[days.length - 1];
+    if (!day || day.key !== key) { day = { key, weekday: new Date(pt.start).toLocaleDateString('en-US', { weekday: 'long' }), times: [], end: 0 }; days.push(day); }
+    day.times.push(new Date(pt.start).toISOString());
+    day.end = Math.max(day.end, pt.end);
   }
-  return best ? new Date(best.startsAt).toLocaleDateString('en-US', { weekday: 'long' }) : '';
+  let current = -1;
+  if (pinnedDay && pinnedDay !== 'auto') {
+    const matching = days.map((d, i) => [d, i]).filter(([d]) => d.weekday === pinnedDay);
+    const next = matching.find(([d]) => now < d.end + AFTER_SERVICE_MS) || matching[matching.length - 1];
+    current = next ? next[1] : -1;
+  } else {
+    const pt = currentServiceTime(all, now);
+    if (pt) current = days.findIndex((d) => d.key === new Date(pt.start).toDateString());
+  }
+  const day = pinnedDay === '' ? '' : pinnedDay && pinnedDay !== 'auto' ? pinnedDay : (current >= 0 ? days[current].weekday : '');
+  return { days: days.map(({ weekday, times: t }) => ({ weekday, times: t })), current, day };
+}
+async function resolveAutoDay(serviceTypeId, planId, creds) {
+  return serviceDays(await listPlanTimes(serviceTypeId, planId, creds), 'auto').day;
 }
 
 // A Plan's order of service — CONFIRMED against a real account: the `Item`
@@ -485,4 +525,4 @@ const shared = {
   clear: () => sharedCache.clear(), // tests
 };
 
-module.exports = { listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };
+module.exports = { listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };

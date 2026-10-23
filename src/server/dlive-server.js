@@ -390,7 +390,7 @@ function buildConfig() {
     const liveName = nameCache.get(`aux:${i}`);
     auxilaries.push({
       enabled:   ov.enabled !== false,
-      label:     ov.label || liveName || `AUX ${i}`,
+      label:     ov.label || shared.consoleNameOr(serverCfg, 'auxes', i, liveName) || `AUX ${i}`,
       channel:   i,
       // A stereo mix is mixed like a mono one: dLive's MIDI control has no
       // per-send pan, so phones don't offer pan either way
