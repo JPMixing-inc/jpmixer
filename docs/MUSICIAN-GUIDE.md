@@ -7,7 +7,7 @@
 
 # Your mix, on your phone
 
-**JPMixer Musician Guide · Version 2.0.9**
+**JPMixer Musician Guide · Version 2.0.10**
 
 A quick guide for musicians and singers. JPMixer lets you set the level of every channel in your own in-ears or wedge, without touching the main mix and without installing an app.
 
@@ -86,10 +86,13 @@ Everything on the screen, top to bottom. Each channel in your mix has its own ca
 </tr></table>
 
 > [!WARNING]
-> **Double-tapping a fader turns that channel all the way off** (−∞). If a channel disappears from your ears, look for a fader pulled all the way left and drag it back up.
+> **Double-tapping a fader sets that channel to 0 dB.** If it was down low, it gets louder in your ears straight away. To turn a channel off, drag it all the way left, or tap the level number and type `-inf`.
 
 > [!TIP]
 > Everything you do here changes **your** mix only. You can’t affect the main speakers or anyone else’s ears.
+
+> [!TIP]
+> If your sound team has linked your wireless mic or pack to your mix, its battery shows at the top of your mix: **Good**, **Replace** (amber) or **Critical** (red). Tell the sound team if it says Replace or Critical.
 
 ---
 

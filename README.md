@@ -19,7 +19,7 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-9">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-10">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#consoles">Consoles</a> &nbsp;·&nbsp;
@@ -75,17 +75,25 @@
 
 ---
 
-<a id="new-in-2-0-9"></a>
+<a id="new-in-2-0-10"></a>
 
-## 🆕 New in 2.0.9
+## 🆕 New in 2.0.10
 
 | | |
 |---|---|
-| 📱 **Companion buttons on phones** | Scrolling a Home page on a phone no longer presses the Companion button your finger started on. Taps and holds work as before. |
-| 🔄 **Reconnects after sleep** | When a phone wakes up or you switch back to the browser, the Companion card reconnects straight away. |
+| 🎤 **Shure wireless** | Each wireless mic's name, battery and transmitter, read straight from your Shure receivers: on FOH Home, on the musician's own phone, in Monitor Engineer and on the Green Room TV. Battery shows as Good, Replace or Critical. Receivers are remembered, and JPMixer only ever reads them. |
+| 🔊 **Smaart SPL** | Live sound levels from Rational Acoustics Smaart on FOH Home and the Green Room, in Smaart's own colors and alarms. Works with Smaart 8.4 and later, and Smaart 9 Suite or SPL. |
+| ⏱️ **Service timing** | A countdown to the service start, time left and a progress bar on the live item, and an Order of Service that follows Live. |
+| 📺 **Green Room** | A QR code that opens the mix picker on a phone, full screen on the first press of the remote's OK button, and roomier team cards. |
+| 🏠 **Home pages** | A slimmer top, so the cards start near the top of the screen, and one Team row per person with all their roles. |
+| 🧩 **Settings → Integrations** | Planning Center, Companion, Smaart SPL, Shure wireless and the Control API together in one place. |
+| 🎚️ **And** | Double-tap a fader for 0 dB, bigger Companion buttons on phones, and the Devices layout in backups. |
 
 <details>
-<summary><b>Earlier releases: 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.9
+- **Companion buttons on phones**: a scroll that starts on a button no longer presses it, and the card reconnects after the phone wakes up.
 
 ### 2.0.8
 - **Green Room made for a TV**: fits a 16:9 screen, with a large clock, **Now / Up next** from Planning Center Live, and one card per person.
@@ -223,7 +231,7 @@ Every connected phone and iPad, the mix it's on and its latest activity, placed 
 
 FOH, ProPresenter, Lighting and Switcher each get a page that welcomes whoever Planning Center scheduled in that role, with the live service item, the team, the order of service and the next few plans. Arrange the cards and **save a layout per person**; it follows them to any device. FOH Home can sit behind an access code.
 
-<p align="center"><img src="docs/manual/img/foh-home.png" alt="FOH Home: welcome, live item, team, order of service, Planning Center and team chat" width="880" /></p>
+<p align="center"><img src="docs/manual/img/foh-home.png" alt="FOH Home: welcome, live item with time left, team, order of service, Planning Center, team chat, SPL and wireless" width="880" /></p>
 
 ### One link for the whole team
 
@@ -239,9 +247,13 @@ FOH, ProPresenter, Lighting and Switcher each get a page that welcomes whoever P
 
 ### Green Room TV
 
-A full-screen display for the green room: the team with photos and roles, a large clock, and **Now / Up next** from Planning Center Live. It fits a 16:9 TV with nothing to scroll, however big the team.
+A full-screen display for the green room: the team with photos and roles, a large clock, a service countdown, and **Now / Up next** from Planning Center Live with time left. A **QR code** opens the mix picker on a musician's phone, and with the integrations below it shows the room's **SPL** and each person's **mic battery**. It fits a 16:9 TV with nothing to scroll, however big the team.
 
-<p align="center"><img src="docs/manual/img/green-room.png" alt="Green Room on a TV: clock, Now and Up next, and the team" width="880" /></p>
+<p align="center"><img src="docs/manual/img/green-room.png" alt="Green Room on a TV: QR code, SPL, clock, Now and Up next, and the team with mic batteries" width="880" /></p>
+
+### Shure wireless and Smaart SPL
+
+Under **Settings → Integrations**, JPMixer can read your **Shure wireless** receivers (QLX-D, and the same strings on ULX-D, SLX-D and Axient Digital) and **Rational Acoustics Smaart**. Give each mic its mix, and its battery shows on that musician's phone and in Monitor Engineer. FOH Home gets an SPL card and a Wireless card. Both integrations only read: JPMixer never changes a receiver or a Smaart measurement.
 
 <a id="planning-center-and-setup"></a>
 

@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.9 · October 2026**
+**Version 2.0.10 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -144,7 +144,7 @@ Quit JPMixer
 
 ### The Settings window
 
-Choose **Settings…** to set everything up. The sidebar is in four groups: **Get started**; **Setup** (Console, Channels, Aux mixes); **People & pages** (Performers, Planning Center, Pages, Branding); and **System** (General, Backup & restore, Control API, OSC Log).
+Choose **Settings…** to set everything up. The sidebar is in five groups: **Get started**; **Setup** (Console, Channels, Aux mixes); **People & pages** (Performers, Pages, Branding); **Integrations** (Planning Center, Companion, Smaart SPL, Shure wireless, Control API); and **System** (General, Backup & restore, OSC Log).
 
 Changes take effect when you click **Save & Apply** at the bottom right. Most changes apply live. A few, such as switching console type, restart the server, and the button then says **Saved — server restarted**. Phones reconnect by themselves a moment later.
 
@@ -485,13 +485,14 @@ Give the whole production team one link, `http://192.168.1.20/home.html`. It lis
 
 ### FOH Home
 
-<p align="center"><img src="manual/img/foh-home.png" alt="FOH Home welcoming the scheduled engineer, with Live, Worship, Order of Service, Planning Center, Team chat and quick links"></p>
+<p align="center"><img src="manual/img/foh-home.png" alt="FOH Home welcoming the scheduled engineer, with Live, Worship, Order of Service, Planning Center, Team chat, SPL, Wireless and quick links"></p>
 
-<p align="center"><sub>Fig. 11.2 · FOH Home. The Live card shows the previous, current and next item as Planning Center Live moves through the service.</sub></p>
+<p align="center"><sub>Fig. 11.2 · FOH Home. The Live card shows the previous, current and next item with time left as Planning Center Live moves through the service; the SPL and Wireless cards come from Smaart and Shure receivers.</sub></p>
 
-- **Live**: the previous, current and next item, with keys, lengths and notes, from Planning Center Live.
+- **Live**: the previous, current and next item, with keys, lengths and notes, from Planning Center Live. The current item counts down its time left (for example *2:14 left*), from its length in Planning Center, and turns red with *0:32 over* when it runs long. A thin bar under it fills as the item goes. The card catches up within about 15 seconds when Live moves on.
+- **Service starts in**: before the next service time in Planning Center, a countdown shows under the welcome and in the Live card. It hides while a service is on and while Live is running.
 - **Team**: everyone on the roster team, with photos and positions.
-- **Order of Service**: the whole plan, with the live item marked.
+- **Order of Service**: the whole plan, with the live item marked. When Live moves to a new item, the card scrolls to it by itself; scroll it yourself in between and it stays where you put it.
 - **Planning Center**: this service and the next few, each opening in Planning Center.
 - **Team chat** and **Companion** buttons (below), and on FOH Home, quick links to the engineer tools.
 - The header shows the console connection and how many devices are connected.
@@ -520,10 +521,30 @@ Messages go to all four stations live. Each shows who sent it and from which sta
 JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds one button surface per Home page.
 
 1. In Companion, allow Satellite connections (TCP port `16622` by default).
-2. In JPMixer, open **Settings → Pages → Companion buttons**, turn it on, enter the Companion computer’s address (`127.0.0.1` if it is this computer) and choose the grid (8 × 4 by default). Click **Save & Apply**; the status should say Connected.
+2. In JPMixer, open **Settings → Integrations → Companion**, turn it on, enter the Companion computer’s address (`127.0.0.1` if it is this computer) and choose the grid (8 × 4 by default). Click **Save & Apply**; the status should say Connected.
 3. In Companion → Surfaces, give each JPMixer surface (JPMixer FOH Home, JPMixer ProPresenter Home, and so on) the page of buttons that station needs.
 
 The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. On a phone, a swipe that starts on a button scrolls the page without pressing it. JPMixer reconnects by itself if Companion restarts, and the card reconnects when a phone wakes up.
+
+### Shure wireless
+
+JPMixer can show each Shure wireless mic’s name, battery and transmitter, the way Wireless Workbench does, in a Wireless card on FOH Home and on Settings → Integrations → Shure wireless. It works with QLX-D, and uses the same control strings as ULX-D, SLX-D and Axient Digital. JPMixer only reads: it never changes a receiver or turns on its meters, and Wireless Workbench can stay open.
+
+1. Open **Settings → Integrations → Shure wireless** and turn on **Watch Shure wireless receivers**. Receivers on the network appear while Wireless Workbench is open; you can also add one by its address. Every receiver JPMixer sees is remembered, so after a restart they are all listed even with Wireless Workbench closed, and each is followed by its hardware ID if its address changes. **Forget this receiver** takes an unticked one off the list.
+2. Tick **one spare receiver** first, outside a service, and click **Save & Apply**. Leave it a while, then tick the rest.
+3. Under each ticked receiver, choose the **Mix** its mic belongs to. That mic’s battery then shows on the musician’s phone mixer, in Monitor Engineer next to the mix, and on the FOH Wireless card.
+
+Each channel shows its name, transmitter type and frequency, and its battery as **Good** (4–5 bars), **Replace** (3, amber) or **Critical** (0–2, red), with run time on Shure rechargeables. When a transmitter is switched off the card says so and, for half an hour, what its battery was. JPMixer asks each receiver again every 15 seconds and reconnects one that stops answering.
+
+### SPL from Smaart
+
+FOH Home can show live sound levels from Rational Acoustics Smaart in an SPL card. It works with Smaart 8.4 or later, and with Smaart 9 Suite or SPL (not RT or LE). JPMixer only reads from Smaart; it never starts a measurement or changes a setting there.
+
+1. In Smaart, open **Options → Preferences → API** and tick **Enabled**. The port is `26000` unless you changed it. Hover over **IP Address** there to see the Smaart computer’s address.
+2. In Smaart, start SPL logging on a calibrated mic input. The card shows every input that is logging.
+3. In JPMixer, open **Settings → Integrations → Smaart SPL**, turn it on and enter the Smaart computer’s address. Leave the password empty unless one is set in Smaart’s API tab. Click **Save & Apply**; the status should say Connected and how many inputs it is reading.
+
+Each input shows a big reading (LAeq 10 unless you choose another) and a small live one (SPL A Slow), green, yellow or red by Smaart’s own color levels. When one of Smaart’s alarms trips, the input turns red and says *Over Smaart’s alarm level*. Click **Options** on the card to choose the big reading, the small one (or none), and which inputs show. The choices are saved on the JPMixer computer, so every screen that opens FOH Home shows the same; they are also under **Settings → Integrations → Smaart SPL**. The lists show Smaart’s own metric names once it is connected. With an access code on FOH Home, changing them needs the code.
 
 ### The Pages tab and FOH access code
 
@@ -544,12 +565,16 @@ A full-screen, read-only display for a TV or iPad in the green room: who is serv
 
 <p align="center"><img src="manual/img/green-room.png" alt="Green Room display with the worship team’s photos, names and roles"></p>
 
-<p align="center"><sub>Fig. 12.1 · The Green Room on a 1080p TV, with the clock and Planning Center Live’s current and next item.</sub></p>
+<p align="center"><sub>Fig. 12.1 · The Green Room on a 1080p TV: the Your mix QR code, SPL from Smaart and the clock, Planning Center Live’s current and next item, and mic batteries on the team’s cards.</sub></p>
 
-- Open `http://192.168.1.20/greenroom.html` on the screen and click **Fullscreen**. It can be left open: the team refreshes every 2 minutes.
+- Open `http://192.168.1.20/greenroom.html` in the TV’s web browser, then press **OK** on the remote (or click anywhere) to go full screen. A browser won’t go full screen until something is pressed, so the page says so at the bottom until then. If the TV leaves full screen, press OK again. The mouse pointer hides itself after a few seconds. It can be left open: the team refreshes every 2 minutes.
 - **Made for a 16:9 TV.** On a landscape screen everything fits on one screen with nothing to scroll. The team grid sizes itself so everyone fits, with bigger photos for a small team and smaller ones for a big team. On a phone or portrait screen it becomes a scrolling list.
 - **Clock:** the time and today’s date, top right.
-- **Now and Up next:** while someone runs the service in Planning Center Live, a strip shows the live item and the next one, with their key and length. It follows Live within about 15 seconds and disappears when Live isn’t running.
+- **Your mix QR code:** beside the clock, a QR code that musicians scan with their phone’s camera to open the mix picker. Their phone needs to be on the same Wi-Fi as the JPMixer computer. Turn it off under Settings → Pages → Green Room. It shows on a TV or other landscape screen, not on a phone.
+- **Mic batteries:** with Shure wireless set up and each mic given a mix ([Chapter 11](#11-production-home-pages)), a person’s card shows their mic’s battery while it’s on: **Good**, **Replace** or **Critical**. The card uses the mix their position is mapped to on the Planning Center tab. Turn off **Show mic batteries** under Settings → Pages → Green Room to hide them.
+- **SPL:** with Smaart SPL set up ([Chapter 11](#11-production-home-pages)), turn on **Show SPL from Smaart** under Settings → Pages → Green Room to show a live sound level beside the clock, in Smaart’s colors and marked *Over the limit* when one of Smaart’s alarms trips. Choose its own **Reading** and **Input** there; Automatic uses LAeq 10 and the first input FOH Home’s SPL card shows.
+- **Now and Up next:** while someone runs the service in Planning Center Live, a strip shows the live item and the next one, with their key and length, and the time left on the live item (red when it runs over), with a bar along the bottom that fills as it goes. It follows Live within about 15 seconds and disappears when Live isn’t running.
+- **Service starts in:** under the clock, a countdown to the next service time in Planning Center, from 12 hours before. It hides while a service is on.
 - It shows the team chosen under Planning Center → Service & team (or everyone), minus any position marked Hide from Green Room. Someone serving more than one role shows once, with each role under their name.
 - No code is needed. It is information only, not a control surface.
 
@@ -605,7 +630,7 @@ Protect your setup and everyone’s saved mixes on a schedule, keep copies, and 
 
 ### Automatic backups
 
-Turn on **Automatically back up** and choose how often: every day, 3 days, week, 2 weeks or month. Backups include console settings, channel and mix setup, My Mixes, Ear Scenes and Home page layouts. Backups older than a month are deleted by themselves. **Show in Finder** opens the folder.
+Turn on **Automatically back up** and choose how often: every day, 3 days, week, 2 weeks or month. Backups include console settings, channel and mix setup, My Mixes, Ear Scenes, Home page layouts and the Devices stage arrangement. Backups older than a month are deleted by themselves. **Show in Finder** opens the folder.
 
 ### Export a backup
 
@@ -712,6 +737,9 @@ Replace `192.168.1.20` with your JPMixer computer’s address from the Get start
 | `2223` UDP | Behringer WING OSC |
 | Announced by LV1 | Waves LV1 MyMon remote (found by itself) |
 | `16622` TCP | Bitfocus Companion Satellite |
+| `2202` TCP | Shure receivers’ control port (JPMixer reads) |
+| `8427` UDP | Shure receivers’ announcements (JPMixer listens only) |
+| `26000` TCP | Smaart API (on the Smaart computer) |
 | `9096` TCP | Control API |
 
 ---
@@ -748,6 +776,7 @@ Every page works the same whichever console you use. What changes is what each c
 | **Control group / DCA** | A fader that controls the level of a set of channels. DiGiCo calls them control groups; dLive and LV1 call them DCAs. |
 | **Service Type** | In Planning Center, the kind of service a plan belongs to, such as Sunday Worship or Wednesday Night. |
 | **Position** | In Planning Center, a role on a team, such as Keys or Audio Engineer FOH. JPMixer maps positions to mixes and Home pages. |
+| **Smaart** | Rational Acoustics’ sound measurement software. JPMixer can read its SPL levels for FOH Home. |
 | **Satellite** | Bitfocus Companion’s way of adding remote button surfaces. JPMixer adds one per Home page. |
 | **OSC** | Open Sound Control, the network protocol DiGiCo, KLANG, WING and LV1 use for remote control. |
 
