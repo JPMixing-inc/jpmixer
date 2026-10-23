@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.10 · October 2026**
+**Version 2.0.11 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -166,7 +166,7 @@ At the top of the tab, **Web server** shows the address to give performers and a
 
 ### Names fill themselves in
 
-Once your console is connected, JPMixer reads its channel names, mix names and control groups (DCAs on dLive and LV1) straight from the console, so there is nothing to type in. When someone renames a channel on the console, JPMixer follows.
+Once your console is connected, JPMixer reads its channel names, mix names and control groups (DCAs on dLive and LV1) straight from the console, so there is nothing to type in. When someone renames a channel on the console, JPMixer follows. It also remembers the names on this computer, so Settings still shows them while the console is off. A name you type in JPMixer always wins.
 
 - To use a different name, type your own on the [Channels](#5-channels-and-groups) or [Aux mixes](#6-aux-mixes) tab. It overrides the console’s name in JPMixer only; the console isn’t changed.
 - Clear the name to go back to the console’s.
@@ -630,7 +630,7 @@ Protect your setup and everyone’s saved mixes on a schedule, keep copies, and 
 
 ### Automatic backups
 
-Turn on **Automatically back up** and choose how often: every day, 3 days, week, 2 weeks or month. Backups include console settings, channel and mix setup, My Mixes, Ear Scenes, Home page layouts and the Devices stage arrangement. Backups older than a month are deleted by themselves. **Show in Finder** opens the folder.
+Turn on **Automatically back up** and choose how often: every day, 3 days, week, 2 weeks or month. Backups include console settings, channel and mix setup, My Mixes, Ear Scenes, Home page layouts, the Devices stage arrangement, and the console names JPMixer remembers. Backups older than a month are deleted by themselves. **Show in Finder** opens the folder.
 
 ### Export a backup
 

@@ -19,7 +19,7 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-10">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-11">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#consoles">Consoles</a> &nbsp;·&nbsp;
@@ -75,22 +75,25 @@
 
 ---
 
-<a id="new-in-2-0-10"></a>
+<a id="new-in-2-0-11"></a>
 
-## 🆕 New in 2.0.10
+## 🆕 New in 2.0.11
 
 | | |
 |---|---|
-| 🎤 **Shure wireless** | Each wireless mic's name, battery and transmitter, read straight from your Shure receivers: on FOH Home, on the musician's own phone, in Monitor Engineer and on the Green Room TV. Battery shows as Good, Replace or Critical. Receivers are remembered, and JPMixer only ever reads them. |
-| 🔊 **Smaart SPL** | Live sound levels from Rational Acoustics Smaart on FOH Home and the Green Room, in Smaart's own colors and alarms. Works with Smaart 8.4 and later, and Smaart 9 Suite or SPL. |
-| ⏱️ **Service timing** | A countdown to the service start, time left and a progress bar on the live item, and an Order of Service that follows Live. |
-| 📺 **Green Room** | A QR code that opens the mix picker on a phone, full screen on the first press of the remote's OK button, and roomier team cards. |
-| 🏠 **Home pages** | A slimmer top, so the cards start near the top of the screen, and one Team row per person with all their roles. |
-| 🧩 **Settings → Integrations** | Planning Center, Companion, Smaart SPL, Shure wireless and the Control API together in one place. |
-| 🎚️ **And** | Double-tap a fader for 0 dB, bigger Companion buttons on phones, and the Devices layout in backups. |
+| 📅 **Weekend plans with two teams** | For a plan with Saturday and Sunday services and a team for each day, JPMixer switches to Sunday's team once Saturday's service is over (90 minutes after its scheduled end, in case it runs long), instead of at about 1 AM. |
+| 🗓️ **Sunday under Coming up** | The Planning Center card shows the day being served with its times, and lists the weekend's other day under Coming up before the next weekends. |
+| 🏷️ **Console names remembered** | The channel and mix names the console reports are kept on the JPMixer computer, so Settings still shows them while the console is off. Names you type in JPMixer still win, and the remembered names are in backups. |
 
 <details>
-<summary><b>Earlier releases: 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.10
+- **Shure wireless**: each mic's battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room.
+- **Smaart SPL** on FOH Home and the Green Room.
+- **Service timing**: a countdown to the service, and time left and a progress bar on the live item.
+- **Green Room**: a QR code for the mix picker, and full screen on the first press of OK.
+- **Settings → Integrations**, slimmer Home pages, and double-tap a fader for 0 dB.
 
 ### 2.0.9
 - **Companion buttons on phones**: a scroll that starts on a button no longer presses it, and the card reconnects after the phone wakes up.
