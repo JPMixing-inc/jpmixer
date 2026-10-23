@@ -123,6 +123,9 @@ const fields = {
   companionPort:    { el: $('companionPort'),     key: 'companionPort',   parse: Number },
   companionColumns: { el: $('companionColumns'),  key: 'companionColumns', parse: Number },
   companionRows:    { el: $('companionRows'),     key: 'companionRows',   parse: Number },
+  smaartHost:       { el: $('smaartHost'),        key: 'smaartHost',      parse: v => String(v).trim() },
+  smaartPort:       { el: $('smaartPort'),        key: 'smaartPort',      parse: Number },
+  smaartPassword:   { el: $('smaartPassword'),    key: 'smaartPassword',  parse: String },
 };
 
 // Only one console's connection fields are relevant at a time — DiGiCo's
@@ -624,6 +627,122 @@ function loadPcoAlt(saved) {
     roles: a.roles && typeof a.roles === 'object' ? JSON.parse(JSON.stringify(a.roles)) : {} };
 }
 
+// ── Wireless (Shure receivers, read-only) ──────────────────────────────────
+// wirelessReceivers: [{ ip, id }] — the receivers to read; saved with Save & Apply.
+// The list shows those plus every receiver JPMixer has seen (remembered by
+// shure-wireless.js, so it's there after a restart) or sees now. Each ticked
+// receiver's channels can be given a mix (wirelessAux { "id/channel": aux }).
+let wirelessReceivers = [];
+let wirelessAuxMap = {};
+const wirelessForget = new Set(); // remembered receivers to forget on the next save
+let wirelessLive = { enabled: false, discovered: [], receivers: [] };
+const WIRELESS_IP = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+const wirelessWatched = (ip) => wirelessReceivers.some(r => r.ip === ip);
+function wirelessMixOptions(selected) {
+  const auxCount = parseInt($('auxes').value) || 16;
+  let html = '<option value="">No mix</option>';
+  for (let i = 1; i <= auxCount; i++) {
+    const name = (auxOverrides[String(i)] && auxOverrides[String(i)].label) || auxNames[String(i)] || `AUX ${i}`;
+    html += `<option value="${i}"${String(selected) === String(i) ? ' selected' : ''}>${i} — ${escHtml(name)}</option>`;
+  }
+  return html;
+}
+function renderWireless() {
+  const list = $('wirelessList');
+  const on = $('wirelessEnabled').checked;
+  const live = new Map((wirelessLive.receivers || []).map(r => [r.ip, r]));
+  const found = new Map((wirelessLive.discovered || []).filter(d => !wirelessForget.has(d.id)).map(d => [d.ip, d]));
+  const ips = [...new Set([...wirelessReceivers.map(r => r.ip), ...found.keys()])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (!ips.length) {
+    list.innerHTML = `<p class="sub">${on ? (wirelessLive.enabled ? 'No receivers found yet. They appear while Wireless Workbench is open on this network, or add one by address below.' : 'Save &amp; Apply to start looking for receivers.') : 'Turn on Watch Shure wireless receivers to look for receivers.'}</p>`;
+    return;
+  }
+  // A ticked receiver's hardware id, once JPMixer knows it, so it's followed to a new address
+  for (const t of wirelessReceivers) { const d = found.get(t.ip) || live.get(t.ip); if (d && d.id) t.id = d.id; }
+  list.innerHTML = '';
+  for (const ip of ips) {
+    const r = live.get(ip), d = found.get(ip), watch = wirelessWatched(ip);
+    const id = (r && r.id) || (d && d.id) || null;
+    const model = (r && r.model) || (d && d.model) || 'Shure receiver';
+    const names = r ? r.channels.map(c => c.name).filter(Boolean).join(', ') : '';
+    let state = d && !d.seenNow ? 'Remembered' : 'Found on the network', cls = '';
+    if (watch && !on) state = 'Watching is off';
+    else if (watch && !r) state = 'Save & Apply to start reading';
+    else if (r && r.status === 'connected') {
+      const c = r.channels[0] || {};
+      state = c.battBars === null || c.battBars === undefined ? (c.txType ? 'Connected · transmitter on' : 'Connected · transmitter off') : `Connected · battery ${c.battBars}/5${c.runTimeMin != null ? ` · ${c.runTimeMin} min` : ''}`;
+      cls = 'ok';
+    } else if (r) { state = r.status === 'connecting' ? 'Connecting…' : `Offline${r.error ? ' · ' + r.error : ''}`; cls = 'warn'; }
+    const item = document.createElement('div');
+    item.className = 'wireless-item';
+    const row = document.createElement('label');
+    row.className = 'wireless-row';
+    row.innerHTML = `<input type="checkbox" data-wireless-ip="${escHtml(ip)}" ${watch ? 'checked' : ''} aria-label="Watch ${escHtml(model)} at ${escHtml(ip)}" />
+      <span><span class="wl-title">${escHtml(names || model)}</span><span class="wl-sub">${escHtml(model)} · ${escHtml(ip)}${r && r.firmware ? ' · firmware ' + escHtml(r.firmware) : ''}</span></span>
+      <span class="wl-state ${cls}">${escHtml(state)}</span>`;
+    item.appendChild(row);
+    if (watch) {
+      // Which mix each channel belongs to
+      const channels = r && r.channels.length ? r.channels : [{ n: 1, name: '', key: `${id || ip}/1` }];
+      for (const c of channels) {
+        const key = c.key || `${id || ip}/${c.n}`;
+        // A mix chosen while only the address was known moves to the hardware id
+        const byIp = `${ip}/${c.n}`;
+        if (key !== byIp && wirelessAuxMap[byIp] && !wirelessAuxMap[key]) { wirelessAuxMap[key] = wirelessAuxMap[byIp]; delete wirelessAuxMap[byIp]; }
+        const mix = document.createElement('div');
+        mix.className = 'wireless-mix';
+        mix.innerHTML = `<label for="wlMix-${escHtml(key)}">${channels.length > 1 ? `Channel ${c.n}` : 'Mix'}${c.name ? ` · ${escHtml(c.name)}` : ''}</label><select id="wlMix-${escHtml(key)}" data-wireless-key="${escHtml(key)}">${wirelessMixOptions(wirelessAuxMap[key])}</select>`;
+        item.appendChild(mix);
+      }
+    } else if (d && !d.seenNow && id) {
+      const forget = document.createElement('button');
+      forget.type = 'button'; forget.className = 'settings-text-link wireless-forget'; forget.dataset.wirelessForget = id;
+      forget.textContent = 'Forget this receiver';
+      item.appendChild(forget);
+    }
+    list.appendChild(item);
+  }
+}
+$('wirelessList').addEventListener('change', (e) => {
+  if (e.target.dataset.wirelessKey) {
+    const key = e.target.dataset.wirelessKey;
+    if (e.target.value) wirelessAuxMap[key] = Number(e.target.value); else delete wirelessAuxMap[key];
+    return;
+  }
+  const ip = e.target.dataset.wirelessIp;
+  if (!ip) return;
+  const id = (wirelessLive.discovered || []).find(d => d.ip === ip)?.id || null;
+  wirelessReceivers = wirelessReceivers.filter(r => r.ip !== ip);
+  if (e.target.checked) wirelessReceivers.push(id ? { ip, id } : { ip });
+  renderWireless();
+});
+$('wirelessList').addEventListener('click', (e) => {
+  const id = e.target.dataset && e.target.dataset.wirelessForget;
+  if (!id) return;
+  wirelessForget.add(id);
+  $('wirelessAddStatus').textContent = 'Forgotten. Save & Apply to make it stick; it comes back if it announces itself again.';
+  renderWireless();
+});
+$('wirelessEnabled').addEventListener('change', renderWireless);
+$('wirelessAddBtn').addEventListener('click', () => {
+  const ip = $('wirelessAddIp').value.trim();
+  const status = $('wirelessAddStatus');
+  if (!WIRELESS_IP.test(ip)) { status.textContent = 'Enter the receiver’s IP address, like 192.168.1.40. It’s on the receiver’s network menu.'; return; }
+  if (!wirelessWatched(ip)) wirelessReceivers.push({ ip });
+  $('wirelessAddIp').value = '';
+  status.textContent = `Added ${ip}. Save & Apply to start reading it.`;
+  renderWireless();
+});
+async function refreshWirelessStatus() {
+  if (!$('tab-wireless').classList.contains('active')) return;
+  // Don't redraw under an open mix menu
+  if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.wirelessKey) return;
+  try { wirelessLive = await window.jpm.getWirelessStatus() || wirelessLive; } catch (_) {}
+  renderWireless();
+}
+setInterval(refreshWirelessStatus, 2000);
+document.querySelector('.tab[data-tab="wireless"]').addEventListener('click', refreshWirelessStatus);
+
 // ── Companion buttons (Pages tab) ──────────────────────────────────────────
 function updateCompanionFields() {
   const on = $('companionEnabled').checked;
@@ -633,7 +752,7 @@ function updateCompanionFields() {
 $('companionEnabled').addEventListener('change', updateCompanionFields);
 // The live connection, while the Pages tab is showing
 async function refreshCompanionStatus() {
-  if (!$('tab-views').classList.contains('active')) return;
+  if (!$('tab-companion').classList.contains('active')) return;
   let s;
   try { s = await window.jpm.getCompanionStatus(); } catch (_) { return; }
   if (!s) return;
@@ -643,8 +762,92 @@ async function refreshCompanionStatus() {
   $('companionStatusText').textContent = pending ? 'Save & Apply to ' + ($('companionEnabled').checked ? 'connect.' : 'turn them off.') : s.message;
 }
 setInterval(refreshCompanionStatus, 3000);
-document.querySelector('.tab[data-tab="views"]').addEventListener('click', refreshCompanionStatus);
+document.querySelector('.tab[data-tab="companion"]').addEventListener('click', refreshCompanionStatus);
 $('companionEnabled').addEventListener('change', refreshCompanionStatus);
+
+// ── Smaart SPL (Pages tab) ─────────────────────────────────────────────────
+// The two readings list Smaart's own metric names once it's connected; until
+// then, the common ones. A saved name Smaart doesn't list stays selectable.
+const SMAART_COMMON = ['LAeq 10', 'LAeq 1', 'SPL A Slow', 'SPL A Fast', 'SPL C Slow', 'LCeq 10', 'Peak C'];
+let smaartMetrics = [];
+function fillSmaartSelect(select, saved, automatic) {
+  const allowNone = select.id === 'smaartLiveMetric'; // the small reading can be turned off
+  const names = [...new Set([...(smaartMetrics.length ? smaartMetrics : SMAART_COMMON), ...(saved && saved !== 'none' ? [saved] : [])])];
+  const want = select.dataset.loaded ? select.value : (saved || '');
+  select.textContent = '';
+  const auto = new Option(`Automatic (${automatic})`, '');
+  select.add(auto);
+  if (allowNone) select.add(new Option('None', 'none'));
+  for (const name of names) select.add(new Option(name, name));
+  select.value = names.includes(want) || (allowNone && want === 'none') ? want : '';
+  select.dataset.loaded = '1';
+}
+// The Green Room's own reading and input (Pages → Green Room)
+let smaartInputs = [];
+function fillGreenRoomInput(saved) {
+  const select = $('greenRoomSplInput');
+  const want = select.dataset.loaded ? select.value : (saved || '');
+  const list = [...smaartInputs];
+  if (want && !list.some((i) => i.key === want)) list.push({ key: want, name: want.split('/').slice(1).join('/') || want });
+  select.textContent = '';
+  select.add(new Option('Automatic (first input on FOH Home)', ''));
+  for (const i of list) select.add(new Option(i.name, i.key));
+  select.value = want;
+  select.dataset.loaded = '1';
+}
+function updateGreenRoomSplFields() {
+  const on = $('greenRoomSpl').checked;
+  for (const el of $('greenRoomSplFields').querySelectorAll('select')) el.disabled = !on;
+  $('greenRoomSplFields').classList.toggle('is-off', !on);
+  $('greenRoomSplFields').hidden = !on;
+}
+$('greenRoomSpl').addEventListener('change', updateGreenRoomSplFields);
+
+function loadSmaart(cfg) {
+  $('smaartEnabled').checked = cfg.smaartEnabled === true;
+  $('greenRoomSpl').checked = cfg.greenRoomSpl === true;
+  for (const id of ['greenRoomSplMetric', 'greenRoomSplInput']) delete $(id).dataset.loaded;
+  fillSmaartSelect($('greenRoomSplMetric'), cfg.greenRoomSplMetric || '', 'LAeq 10');
+  fillGreenRoomInput(cfg.greenRoomSplInput || '');
+  updateGreenRoomSplFields();
+  for (const id of ['smaartMetric', 'smaartLiveMetric']) { delete $(id).dataset.loaded; delete $(id).dataset.touched; }
+  fillSmaartSelect($('smaartMetric'), cfg.smaartMetric || '', 'LAeq 10');
+  fillSmaartSelect($('smaartLiveMetric'), cfg.smaartLiveMetric || '', 'SPL A Slow');
+  updateSmaartFields();
+}
+function updateSmaartFields() {
+  const on = $('smaartEnabled').checked;
+  for (const el of $('smaartFields').querySelectorAll('input, select')) el.disabled = !on;
+  $('smaartFields').classList.toggle('is-off', !on);
+}
+$('smaartEnabled').addEventListener('change', updateSmaartFields);
+// FOH Home's SPL card can change the readings too (its options button); a
+// save here only replaces them if they were changed here
+for (const id of ['smaartMetric', 'smaartLiveMetric']) $(id).addEventListener('change', () => { $(id).dataset.touched = '1'; });
+async function refreshSmaartStatus() {
+  // The Smaart tab, and Pages for the Green Room's reading
+  if (!$('tab-smaart').classList.contains('active') && !$('tab-views').classList.contains('active')) return;
+  let s;
+  try { s = await window.jpm.getSmaartStatus(); } catch (_) { return; }
+  if (!s) return;
+  $('smaartDot').className = 'dot' + (s.state === 'connected' && s.inputs ? ' on' : s.state === 'error' || (s.state === 'connected' && !s.inputs) ? ' warn' : '');
+  const pending = $('smaartEnabled').checked !== !!s.enabled;
+  $('smaartStatusText').textContent = pending ? 'Save & Apply to ' + ($('smaartEnabled').checked ? 'connect.' : 'turn it off.') : s.message;
+  if (Array.isArray(s.metrics) && s.metrics.length && s.metrics.join('|') !== smaartMetrics.join('|')) {
+    smaartMetrics = s.metrics;
+    fillSmaartSelect($('smaartMetric'), $('smaartMetric').value, 'LAeq 10');
+    fillSmaartSelect($('smaartLiveMetric'), $('smaartLiveMetric').value, 'SPL A Slow');
+    fillSmaartSelect($('greenRoomSplMetric'), $('greenRoomSplMetric').value, 'LAeq 10');
+  }
+  const list = Array.isArray(s.inputList) ? s.inputList : [];
+  if (list.map((i) => i.key).join('|') !== smaartInputs.map((i) => i.key).join('|')) { smaartInputs = list; fillGreenRoomInput($('greenRoomSplInput').value); }
+  $('greenRoomSplHint').textContent = 'A live sound level beside the clock, in Smaart’s colors, marked when it’s over Smaart’s alarm level. '
+    + (s.enabled ? (s.state === 'connected' ? 'Smaart is connected.' : 'Smaart SPL is on but not connected yet; see Integrations → Smaart SPL.') : 'Needs Smaart SPL set up under Integrations.');
+}
+setInterval(refreshSmaartStatus, 3000);
+document.querySelector('.tab[data-tab="views"]').addEventListener('click', refreshSmaartStatus);
+document.querySelector('.tab[data-tab="smaart"]').addEventListener('click', refreshSmaartStatus);
+$('smaartEnabled').addEventListener('change', refreshSmaartStatus);
 
 // Pages tab → "Refresh team & role lists": the same two fetches the Planning
 // Center tab's Refresh buttons make, with the outcome shown on the Pages tab.
@@ -1463,6 +1666,9 @@ function applyConfig(cfg) {
   $('fohAccessCode').value = cfg.fohAccessCode || '';
   $('companionEnabled').checked = cfg.companionEnabled === true;
   updateCompanionFields();
+  $('greenRoomQr').checked = cfg.greenRoomQr !== false;
+  $('greenRoomMics').checked = cfg.greenRoomMics !== false;
+  loadSmaart(cfg);
   $('autoBackupEnabled').checked  = cfg.autoBackupEnabled !== false;
   $('dliveTlsEnabled').checked    = !!cfg.dliveTlsEnabled;
   $('dliveListenSendLevels').checked = cfg.dliveListenSendLevels !== false;
@@ -1474,6 +1680,11 @@ function applyConfig(cfg) {
   $('pcoUpdateAuxNames').checked = cfg.pcoUpdateAuxNames !== false;
   updatePcoPhoneAssignmentsState();
   pcoPositionMapping = (cfg.pcoPositionMapping && typeof cfg.pcoPositionMapping === 'object') ? { ...cfg.pcoPositionMapping } : {};
+  $('wirelessEnabled').checked = !!cfg.wirelessEnabled;
+  wirelessReceivers = Array.isArray(cfg.wirelessReceivers) ? cfg.wirelessReceivers.filter(r => r && WIRELESS_IP.test(String(r.ip || ''))).map(r => (r.id ? { ip: r.ip, id: r.id } : { ip: r.ip })) : [];
+  wirelessAuxMap = cfg.wirelessAux && typeof cfg.wirelessAux === 'object' ? { ...cfg.wirelessAux } : {};
+  wirelessForget.clear();
+  renderWireless();
   pcoGreenRoomHidden = Array.isArray(cfg.pcoGreenRoomHidden) ? [...cfg.pcoGreenRoomHidden] : [];
   pcoSavedServiceTypeId = cfg.pcoServiceTypeId || '';
   pcoSavedTeamId = cfg.pcoTeamId || '';
@@ -1554,6 +1765,18 @@ function collectConfig() {
   // Companion buttons: out-of-range numbers fall back to the defaults
   const companionInt = (v, lo, hi, d) => Number.isInteger(v) && v >= lo && v <= hi ? v : d;
   out.companionEnabled = $('companionEnabled').checked;
+  out.wirelessEnabled  = $('wirelessEnabled').checked;
+  out.wirelessReceivers = wirelessReceivers.map(r => (r.id ? { ip: r.ip, id: r.id } : { ip: r.ip }));
+  out.wirelessAux = { ...wirelessAuxMap };
+  out.greenRoomQr = $('greenRoomQr').checked;
+  out.greenRoomMics = $('greenRoomMics').checked;
+  out.smaartEnabled = $('smaartEnabled').checked;
+  out.smaartPort = Number.isInteger(out.smaartPort) && out.smaartPort >= 1 && out.smaartPort <= 65535 ? out.smaartPort : 26000;
+  out.smaartMetric = $('smaartMetric').value;
+  out.smaartLiveMetric = $('smaartLiveMetric').value;
+  out.greenRoomSpl = $('greenRoomSpl').checked;
+  out.greenRoomSplMetric = $('greenRoomSplMetric').value;
+  out.greenRoomSplInput = $('greenRoomSplInput').value;
   out.companionPort    = companionInt(out.companionPort, 1, 65535, 16622);
   out.companionColumns = companionInt(out.companionColumns, 1, 12, 8);
   out.companionRows    = companionInt(out.companionRows, 1, 8, 4);
@@ -2208,6 +2431,12 @@ $('saveBtn').addEventListener('click', async () => {
   const fresh = await window.jpm.getConfig();
   out.channelOverrides = mergeExternalLabels(out.channelOverrides, loadedOverrides.channel, fresh.channelOverrides);
   out.auxOverrides     = mergeExternalLabels(out.auxOverrides, loadedOverrides.aux, fresh.auxOverrides);
+  // Receivers JPMixer has seen since this window opened are kept (shure-wireless.js saves them), minus any forgotten here
+  out.wirelessKnown = (Array.isArray(fresh.wirelessKnown) ? fresh.wirelessKnown : []).filter(k => !wirelessForget.has(k.id));
+  // The SPL card's own options, unless changed here (see loadSmaart)
+  out.smaartHiddenInputs = Array.isArray(fresh.smaartHiddenInputs) ? fresh.smaartHiddenInputs : [];
+  if (!$('smaartMetric').dataset.touched) out.smaartMetric = fresh.smaartMetric || '';
+  if (!$('smaartLiveMetric').dataset.touched) out.smaartLiveMetric = fresh.smaartLiveMetric || '';
   const result = await window.jpm.saveConfig(out);
   if (!result || result.ok === false) {
     // The disk write failed — config.js rolled the in-memory config back,

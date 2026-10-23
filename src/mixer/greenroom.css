@@ -26,7 +26,7 @@ button:focus-visible { outline: 2px solid var(--jp-light); outline-offset: 4px; 
 
 .gr-main { padding: 28px 32px 24px; }
 .gr-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; padding-bottom: 20px; border-bottom: 1px solid var(--jp-line); }
-.gr-plan-info { min-width: 0; }
+.gr-plan-info { flex: 1; min-width: 0; }
 .gr-eyebrow { color: var(--aux); font-size: 11px; letter-spacing: 2.5px; font-weight: 650; margin-bottom: 8px; }
 h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px; overflow-wrap: anywhere; }
 .gr-date { color: var(--jp-label); font-size: 16px; line-height: 1.5; margin-top: 6px; }
@@ -35,6 +35,28 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
 .gr-time { font-size: 56px; font-weight: 600; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
 .gr-ampm { font-size: .4em; font-weight: 600; letter-spacing: 0; margin-left: .25em; color: var(--jp-label); }
 .gr-today { color: var(--jp-label); font-size: 15px; margin-top: 6px; }
+/* SPL from Smaart (greenroom.js), beside the clock, in Smaart's colours */
+.gr-spl { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; gap: 2px; padding: 10px 16px; border: 1px solid var(--jp-edge); border-radius: 12px; background: var(--jp-card); min-width: 150px; }
+.gr-spl-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--jp-secondary); }
+.gr-spl-label span { letter-spacing: .5px; font-weight: 600; margin-left: .3em; }
+.gr-spl-reading { display: flex; align-items: baseline; gap: 4px; }
+.gr-spl-value { font-size: 40px; font-weight: 650; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.gr-spl-unit { font-size: 15px; font-weight: 600; color: var(--jp-label); }
+.gr-spl-input { font-size: 12px; color: var(--jp-label); max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gr-spl[data-color="green"] .gr-spl-value { color: #34c759; }
+.gr-spl[data-color="yellow"] .gr-spl-value { color: #ffcc00; }
+.gr-spl[data-color="red"] .gr-spl-value { color: #ff453a; }
+.gr-spl.is-over { border-color: #ff453a; background: rgba(255, 69, 58, .14); }
+.gr-spl.is-over .gr-spl-input { color: #ff6b61; font-weight: 600; }
+.gr-spl.is-stale .gr-spl-value { color: var(--jp-secondary); }
+
+/* "Your mix" QR code (greenroom.js): on a TV only; a phone is already there */
+.gr-qr { display: none; }
+.gr-qr-code svg { display: block; width: 100%; height: 100%; border-radius: 8px; }
+.gr-qr-text { display: flex; flex-direction: column; gap: .3em; min-width: 0; }
+.gr-qr-text strong { font-weight: 650; color: var(--text); }
+.gr-qr-text span { color: var(--jp-label); }
+.gr-qr-url { font-variant-numeric: tabular-nums; color: var(--jp-secondary) !important; }
 
 .gr-live { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; margin-top: 16px; }
 .gr-live-item { display: flex; align-items: baseline; gap: 14px; min-width: 0; padding: 14px 18px; border-radius: 12px; border: 1px solid var(--jp-edge); background: var(--jp-card); }
@@ -47,6 +69,16 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
 .gr-live-next strong { font-weight: 550; color: var(--jp-label); }
 .gr-live-meta { flex-shrink: 0; margin-left: auto; color: var(--jp-label); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .gr-live-meta:empty { display: none; }
+.gr-live-left { flex-shrink: 0; font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gr-live-meta + .gr-live-left { margin-left: 0; }
+.gr-live-meta:empty + .gr-live-left { margin-left: auto; }
+.gr-live-left.is-over { color: var(--live); }
+.gr-live-now { position: relative; overflow: hidden; }
+.gr-live-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255, 255, 255, .08); }
+.gr-live-progress i { display: block; height: 100%; width: 0; background: var(--live); transition: width 1s linear; }
+.gr-live-progress.is-over i { background: #ffb020; }
+.gr-countdown { margin-top: 10px; color: var(--jp-label); font-size: 15px; }
+.gr-countdown strong { color: var(--aux); font-size: 1.5em; font-weight: 650; font-variant-numeric: tabular-nums; margin-left: .2em; }
 
 .gr-notice { padding: 12px 16px; color: #ddc398; background: var(--jp-border); border: 1px solid #665438; border-radius: 9px; font-size: 13px; line-height: 1.6; margin-top: 14px; }
 .gr-roster-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 18px 0 14px; }
@@ -63,6 +95,16 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
 .gr-name { font-size: var(--gr-name, 20px); font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .gr-positions { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--gr-pos, 12px) * .45); margin-top: calc(var(--gr-name, 20px) * .45); max-width: 100%; }
 .gr-position { display: inline-block; color: var(--text); font-size: var(--gr-pos, 12px); line-height: 1.4; padding: .35em .7em; background: rgba(var(--jp-accent-rgb), .12); border: 1px solid rgba(var(--jp-accent-rgb), .35); border-radius: 6px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A person's mic battery while it's on (greenroom.js fillMics), sized with their role labels */
+.gr-mics { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--gr-pos, 12px) * .4); margin-top: calc(var(--gr-pos, 12px) * .6); }
+.gr-mic { display: inline-flex; align-items: center; gap: .45em; font-size: var(--gr-pos, 12px); font-weight: 600; line-height: 1.4; padding: .25em .65em; border-radius: 999px; border: 1px solid var(--jp-edge); color: var(--jp-label); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.gr-mic-bars { display: inline-flex; gap: .12em; }
+.gr-mic-bars b { width: .28em; height: .8em; border-radius: 1px; background: rgba(255, 255, 255, .16); }
+.gr-mic.is-good .gr-mic-bars b.on { background: #32d74b; }
+.gr-mic.is-replace { color: #ffb340; border-color: rgba(255, 159, 10, .45); }
+.gr-mic.is-replace .gr-mic-bars b.on { background: #ff9f0a; }
+.gr-mic.is-critical { color: #ff6b61; border-color: rgba(255, 69, 58, .55); background: rgba(255, 69, 58, .12); }
+.gr-mic.is-critical .gr-mic-bars b.on { background: #ff453a; }
 .gr-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 300px; padding: 36px 24px; border: 1px dashed var(--jp-edge); border-radius: 14px; background: var(--jp-card); }
 .gr-empty h2 { font-size: 21px; font-weight: 550; line-height: 1.4; }
 .gr-empty p { max-width: 520px; color: var(--sub); font-size: 14px; line-height: 1.8; margin-top: 12px; white-space: pre-line; }
@@ -70,6 +112,15 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
 /* ── TV: one landscape screen, nothing to scroll ── */
 @media (orientation: landscape) and (min-width: 900px) {
   html, body { height: 100%; overflow: hidden; }
+  .gr-qr { display: flex; align-items: center; gap: 1.3vh; flex-shrink: 0; align-self: center; }
+  .gr-spl { align-self: center; padding: 1.2vh 1.5vh; border-radius: 1.3vh; min-width: 17vh; gap: .3vh; }
+  .gr-spl-label { font-size: 1.25vh; }
+  .gr-spl-value { font-size: 6vh; }
+  .gr-spl-unit { font-size: 2vh; }
+  .gr-spl-input { font-size: 1.5vh; max-width: 24vh; }
+  .gr-qr-code { width: 13vh; height: 13vh; flex-shrink: 0; }
+  .gr-qr-text { font-size: 1.6vh; max-width: 22vh; }
+  .gr-qr-text strong { font-size: 2.3vh; }
   body { display: flex; flex-direction: column; }
   .gr-header { padding: 1.1vh 2.4vw; }
   .gr-header button { min-height: 3.6vh; font-size: max(11px, 1.15vh); }
@@ -87,15 +138,30 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
   .gr-live-tag i { width: 1.05vh; height: 1.05vh; }
   .gr-live-item strong { font-size: 3vh; }
   .gr-live-meta { font-size: 1.7vh; }
+  .gr-live-left { font-size: 2.4vh; }
+  .gr-live-progress { height: .5vh; }
+  .gr-countdown { margin-top: 1.1vh; font-size: 1.9vh; }
   .gr-notice { margin-top: 1.4vh; font-size: 1.4vh; }
   .gr-roster-heading { padding: 2vh 0 1.4vh; }
   .gr-roster-heading h2 { font-size: 1.8vh; }
   .gr-count { font-size: 1.6vh; }
-  .gr-grid { flex: 1; min-height: 0; gap: var(--gr-gap, 1.6vh); grid-template-columns: repeat(var(--gr-cols, 5), minmax(0, 1fr)); grid-template-rows: repeat(var(--gr-rows, 2), minmax(0, 1fr)); }
+  .gr-grid { flex: 1; min-height: 0; gap: var(--gr-gap, 2.6vh); grid-template-columns: repeat(var(--gr-cols, 5), var(--gr-card-w, minmax(0, 1fr))); grid-template-rows: repeat(var(--gr-rows, 2), var(--gr-card-h, minmax(0, 1fr))); justify-content: center; align-content: center; }
   .gr-card { padding: 1.2vh 1vw; border-radius: 1.4vh; }
   .gr-empty { flex: 1; min-height: 0; }
   .gr-empty h2 { font-size: 2.6vh; }
   .gr-empty p { font-size: 1.7vh; }
+
+  /* The QR code, SPL and clock share one height (the QR code's) and sit
+     centred on one line, so none of them dwarfs the others */
+  .gr-top { align-items: center; gap: 2.4vw; }
+  .gr-spl { height: 13vh; justify-content: center; align-items: center; text-align: center; padding: 0 2vh; min-width: 19vh; gap: .5vh; }
+  .gr-spl-label { font-size: 1.4vh; }
+  .gr-spl-value { font-size: 6.4vh; }
+  .gr-spl-unit { font-size: 2.1vh; }
+  .gr-spl-input { font-size: 1.6vh; }
+  .gr-clock { align-self: center; }
+  .gr-time { font-size: 7.6vh; }
+  .gr-today { font-size: 1.8vh; margin-top: .7vh; }
 }
 
 /* ── Phones and portrait screens: a scrolling list ── */
@@ -107,6 +173,7 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
   .gr-main { padding: 22px 16px 20px; }
   .gr-top { align-items: flex-start; flex-direction: column-reverse; gap: 16px; }
   .gr-clock { text-align: left; }
+  .gr-spl { align-self: flex-start; align-items: flex-start; }
   .gr-time { font-size: 40px; }
   h1 { font-size: 27px; }
   .gr-live { grid-template-columns: minmax(0, 1fr); }
@@ -120,4 +187,10 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
   .gr-positions { justify-content: flex-start; margin-top: 6px; }
   .gr-position { font-size: 11px; }
 }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } .gr-live-tag i { animation: none; } }
+/* Full screen (greenroom.js): the hint until it is, and no mouse pointer
+   left sitting on the TV */
+.gr-fullscreen-hint { position: fixed; left: 50%; bottom: 3vh; transform: translateX(-50%); z-index: 5; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--jp-edge); background: rgba(0, 0, 0, .78); color: var(--jp-label); font-size: max(13px, 1.6vh); white-space: nowrap; pointer-events: none; animation: gr-hint-fade 1s ease 12s forwards; }
+.gr-fullscreen-hint b { color: var(--text); font-weight: 650; }
+@keyframes gr-hint-fade { to { opacity: 0; } }
+body.gr-idle, body.gr-idle * { cursor: none !important; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } .gr-live-tag i { animation: none; } .gr-fullscreen-hint { animation: none; } .gr-live-progress i { transition: none; } }

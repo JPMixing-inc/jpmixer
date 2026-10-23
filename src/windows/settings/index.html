@@ -33,13 +33,17 @@
     <button class="tab" data-tab="auxes"><span class="nav-symbol" aria-hidden="true">◫</span>Aux mixes</button>
     <span class="nav-section-label nav-section-second">PEOPLE &amp; PAGES</span>
     <button class="tab" data-tab="performers"><span class="nav-symbol" aria-hidden="true">♫</span>Performers</button>
-    <button class="tab" data-tab="pco"><span class="nav-symbol" aria-hidden="true">◷</span>Planning Center</button>
     <button class="tab" data-tab="views"><span class="nav-symbol" aria-hidden="true">▦</span>Pages</button>
     <button class="tab" data-tab="branding"><span class="nav-symbol" aria-hidden="true">◐</span>Branding</button>
+    <span class="nav-section-label nav-section-second">INTEGRATIONS</span>
+    <button class="tab" data-tab="pco"><span class="nav-symbol" aria-hidden="true">◷</span>Planning Center</button>
+    <button class="tab" data-tab="companion"><span class="nav-symbol" aria-hidden="true">▣</span>Companion</button>
+    <button class="tab" data-tab="smaart"><span class="nav-symbol" aria-hidden="true">◉</span>Smaart SPL</button>
+    <button class="tab" data-tab="wireless"><span class="nav-symbol" aria-hidden="true">⌁</span>Shure wireless</button>
+    <button class="tab" data-tab="api"><span class="nav-symbol" aria-hidden="true">⌘</span>Control API</button>
     <span class="nav-section-label nav-section-second">SYSTEM</span>
     <button class="tab" data-tab="general"><span class="nav-symbol" aria-hidden="true">◎</span>General</button>
     <button class="tab" data-tab="backup"><span class="nav-symbol" aria-hidden="true">↻</span>Backup &amp; restore</button>
-    <button class="tab" data-tab="api"><span class="nav-symbol" aria-hidden="true">⌘</span>Control API</button>
     <button class="tab" data-tab="osclog"><span class="nav-symbol" aria-hidden="true">≋</span>OSC Log</button>
     <div class="sidebar-note">BUILT FOR THE STAGE<span>Your mixes. Your workspace.</span></div>
   </nav>
@@ -347,6 +351,26 @@
     </div>
 
     <!-- ── Performers: phone options and My Mixes ── -->
+    <div class="tab-panel" id="tab-wireless">
+      <section class="card">
+        <div class="settings-heading"><h2>Shure wireless</h2><p class="sub">See each wireless mic’s name, battery and transmitter on this tab and on FOH Home, the way Wireless Workbench shows them. JPMixer only reads: it never changes a receiver. Wireless Workbench can stay open.</p></div>
+        <div class="card-row">
+          <div><label class="toggle-label" for="wirelessEnabled">Watch Shure wireless receivers</label><div class="sub">Lists the receivers on this network and reads the ones you tick below.</div></div>
+          <input type="checkbox" id="wirelessEnabled" class="toggle" />
+        </div>
+        <div class="wireless-caution"><strong>Try one receiver first, outside a service.</strong> JPMixer reads receivers through Shure’s control port (2202), the one Crestron and AMX use, and only ever asks; it never changes a receiver or turns on its meters. QLX-D firmware 2.2.11 and later was reported to freeze on that port while streaming meters over a shaky network, which JPMixer avoids. Even so, tick one spare receiver, leave it a while, then add the rest.</div>
+      </section>
+      <section class="card" id="wireless-receivers">
+        <div class="settings-heading"><h2>Receivers</h2><p class="sub">Receivers on this network appear here while Wireless Workbench (or another Shure controller) is open. You can also add one by its address. Tick the ones to watch, then Save &amp; Apply.</p></div>
+        <div id="wirelessList" class="wireless-list"><p class="sub">Turn on Watch Shure wireless receivers to look for receivers.</p></div>
+        <div class="wireless-add">
+          <div class="field-row"><label for="wirelessAddIp">Add a receiver by address</label><input type="text" id="wirelessAddIp" placeholder="192.168.1.40" inputmode="decimal" autocomplete="off" /></div>
+          <button type="button" class="btn" id="wirelessAddBtn">Add</button>
+        </div>
+        <p class="sub" id="wirelessAddStatus" role="status"></p>
+      </section>
+    </div>
+
     <div class="tab-panel" id="tab-performers">
 
       <section class="card" id="performer-phones">
@@ -439,20 +463,6 @@
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="switcherViewUrl">—</span></div>
         </section>
       </div>
-      <section class="card companion-card" id="companionCard">
-        <div class="card-row space-between">
-          <div class="settings-heading"><h2>Companion buttons</h2><p class="sub">Put Bitfocus Companion buttons on the Home pages. JPMixer connects to Companion as a Satellite and adds one surface per page.</p></div>
-          <input type="checkbox" id="companionEnabled" class="toggle" aria-label="Show Companion buttons on the Home pages" />
-        </div>
-        <div class="companion-fields" id="companionFields">
-          <div class="field-row companion-host"><label for="companionHost">Companion computer</label><input type="text" id="companionHost" placeholder="192.168.1.50, or 127.0.0.1 on this Mac" autocomplete="off" spellcheck="false" /></div>
-          <div class="field-row"><label for="companionPort">Satellite port</label><input type="number" id="companionPort" min="1" max="65535" placeholder="16622" /></div>
-          <div class="field-row"><label for="companionColumns">Buttons per row</label><input type="number" id="companionColumns" min="1" max="12" /></div>
-          <div class="field-row"><label for="companionRows">Rows</label><input type="number" id="companionRows" min="1" max="8" /></div>
-        </div>
-        <div class="companion-status" id="companionStatus" role="status"><span class="dot" id="companionDot"></span><span id="companionStatusText">Off</span></div>
-        <details class="settings-help"><summary>Setting it up in Companion</summary><div class="settings-help-body"><div class="sub">In Companion, open <strong>Surfaces</strong>. After Save &amp; Apply, four Satellite surfaces appear: <strong>JPMixer FOH Home</strong>, <strong>JPMixer ProPresenter Home</strong>, <strong>JPMixer Lighting Home</strong> and <strong>JPMixer Switcher Home</strong>. Give each one the page of buttons that station needs. Companion’s Satellite port is 16622 unless you changed it. Each Home page shows its buttons in a Companion card you can move and resize with Arrange page.</div></div></details>
-      </section>
       <div class="views-section-heading"><h2>Engineer tools</h2><p>Mixing and monitoring pages for the audio team.</p></div>
       <div class="views-directory">
         <section class="card view-directory-card" data-engineer-view="monitor">
@@ -491,6 +501,16 @@
           <p class="sub view-directory-description">A room display of the upcoming service, scheduled team members, photos, and roles.</p>
           <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openGreenRoomViewBtn">Open Green Room</button><button type="button" class="btn view-settings-link" data-settings-target="pco">Planning Center setup</button></div>
           <p class="sub view-directory-hint" id="greenRoomViewHint" role="status">Start the server first to open.</p>
+          <div class="view-page-setup">
+            <p class="view-page-setup-title">On the TV</p>
+            <div class="pco-setting-row"><div><label class="toggle-label" for="greenRoomQr">Show a QR code for the aux picker</label><p class="sub">Musicians scan it with their phone’s camera to open the mix picker. Their phone needs to be on the same Wi-Fi as this computer. Shown on a TV or other landscape screen.</p></div><input type="checkbox" id="greenRoomQr" class="toggle" /></div>
+            <div class="pco-setting-row"><div><label class="toggle-label" for="greenRoomMics">Show mic batteries</label><p class="sub">While someone’s wireless mic is on, its battery shows on their card: Good, Replace or Critical. Uses the mix their position is mapped to on the Planning Center tab, and the mix each mic has under Integrations → Shure wireless.</p></div><input type="checkbox" id="greenRoomMics" class="toggle" /></div>
+            <div class="pco-setting-row"><div><label class="toggle-label" for="greenRoomSpl">Show SPL from Smaart</label><p class="sub" id="greenRoomSplHint">A live sound level beside the clock, in Smaart’s colors, marked when it’s over Smaart’s alarm level. Needs Smaart SPL set up under Integrations.</p></div><input type="checkbox" id="greenRoomSpl" class="toggle" /></div>
+            <div class="companion-fields smaart-fields green-room-spl-fields" id="greenRoomSplFields">
+              <div class="field-row"><label for="greenRoomSplMetric">Reading</label><select id="greenRoomSplMetric"></select></div>
+              <div class="field-row"><label for="greenRoomSplInput">Input</label><select id="greenRoomSplInput"></select></div>
+            </div>
+          </div>
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="greenRoomViewUrl">—</span></div>
         </section>
       </div>
@@ -498,6 +518,41 @@
     </div>
 
     <!-- ── Branding ── -->
+    <div class="tab-panel" id="tab-companion">
+      <section class="card companion-card" id="companionCard">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2>Companion buttons</h2><p class="sub">Put Bitfocus Companion buttons on the Home pages. JPMixer connects to Companion as a Satellite and adds one surface per page.</p></div>
+          <input type="checkbox" id="companionEnabled" class="toggle" aria-label="Show Companion buttons on the Home pages" />
+        </div>
+        <div class="companion-fields" id="companionFields">
+          <div class="field-row companion-host"><label for="companionHost">Companion computer</label><input type="text" id="companionHost" placeholder="192.168.1.50, or 127.0.0.1 on this Mac" autocomplete="off" spellcheck="false" /></div>
+          <div class="field-row"><label for="companionPort">Satellite port</label><input type="number" id="companionPort" min="1" max="65535" placeholder="16622" /></div>
+          <div class="field-row"><label for="companionColumns">Buttons per row</label><input type="number" id="companionColumns" min="1" max="12" /></div>
+          <div class="field-row"><label for="companionRows">Rows</label><input type="number" id="companionRows" min="1" max="8" /></div>
+        </div>
+        <div class="companion-status" id="companionStatus" role="status"><span class="dot" id="companionDot"></span><span id="companionStatusText">Off</span></div>
+        <details class="settings-help"><summary>Setting it up in Companion</summary><div class="settings-help-body"><div class="sub">In Companion, open <strong>Surfaces</strong>. After Save &amp; Apply, four Satellite surfaces appear: <strong>JPMixer FOH Home</strong>, <strong>JPMixer ProPresenter Home</strong>, <strong>JPMixer Lighting Home</strong> and <strong>JPMixer Switcher Home</strong>. Give each one the page of buttons that station needs. Companion’s Satellite port is 16622 unless you changed it. Each Home page shows its buttons in a Companion card you can move and resize with Arrange page.</div></div></details>
+      </section>
+    </div>
+
+    <div class="tab-panel" id="tab-smaart">
+      <section class="card companion-card smaart-card" id="smaartCard">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2>Smaart SPL</h2><p class="sub">Show live sound levels from Rational Acoustics Smaart in an SPL card on FOH Home. JPMixer only reads from Smaart; it never changes a measurement or setting there.</p></div>
+          <input type="checkbox" id="smaartEnabled" class="toggle" aria-label="Show Smaart SPL on FOH Home" />
+        </div>
+        <div class="companion-fields smaart-fields" id="smaartFields">
+          <div class="field-row companion-host"><label for="smaartHost">Smaart computer</label><input type="text" id="smaartHost" placeholder="192.168.1.60, or 127.0.0.1 on this Mac" autocomplete="off" spellcheck="false" /></div>
+          <div class="field-row"><label for="smaartPort">API port</label><input type="number" id="smaartPort" min="1" max="65535" placeholder="26000" /></div>
+          <div class="field-row"><label for="smaartPassword">API password</label><input type="password" id="smaartPassword" autocomplete="off" placeholder="Only if set in Smaart" /></div>
+          <div class="field-row"><label for="smaartMetric">Big reading</label><select id="smaartMetric"></select></div>
+          <div class="field-row"><label for="smaartLiveMetric">Small reading</label><select id="smaartLiveMetric"></select></div>
+        </div>
+        <div class="companion-status" id="smaartStatus" role="status"><span class="dot" id="smaartDot"></span><span id="smaartStatusText">Off</span></div>
+        <details class="settings-help"><summary>Setting it up in Smaart</summary><div class="settings-help-body"><div class="sub">Works with Smaart 8.4 or later, and with Smaart 9 Suite or SPL (not RT or LE). In Smaart, open <strong>Options → Preferences → API</strong> and tick <strong>Enabled</strong>; the port is 26000 unless you changed it. Hover over the IP Address there to see the Smaart computer’s address, and enter it above. Leave the password empty unless one is set in that tab. The card shows the mic inputs that are calibrated and logging SPL, so start SPL logging in Smaart. Colors and alarms come from Smaart’s own settings.</div></div></details>
+      </section>
+    </div>
+
     <div class="tab-panel" id="tab-branding">
 
       <div class="views-section-heading"><h2>Your logo and color</h2><p>Shown on every page JPMixer serves to phones, iPads and screens. Settings, the launch screen, the browser tab icon and the app icon stay JPMixer.</p></div>

@@ -40,7 +40,7 @@
   // Starting sizes (w × h in grid units) and the order cards are first placed in
   const DEFAULT_SIZE = {
     live: [8, 34], team: [8, 34], order: [8, 34], plans: [8, 40], chat: [8, 40], companion: [8, 40],
-    monitor: [8, 20], devices: [8, 20], console: [8, 20],
+    monitor: [8, 20], devices: [8, 20], console: [8, 20], spl: [8, 34], wireless: [8, 34],
   };
   const sizeOf = (id) => DEFAULT_SIZE[id] || [8, 30];
   const isPhone = () => innerWidth <= PHONE;
@@ -486,7 +486,7 @@
   window.addEventListener('pagehide', cancelGesture);
 
   // ── Arrange mode ──────────────────────────────────────────────────────
-  // A card the page switched off (Companion) was parked below
+  // A card the page switched off (Companion, Wireless) was parked below
   // everything; the first time it turns on it takes the first free spot among
   // the cards that are showing, instead of sitting under a gap. Once someone
   // arranges the page, cards stay where they put them.

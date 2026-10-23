@@ -147,6 +147,28 @@ async function main() {
   }
   config.save({ ...config.getAll(), pcoTeamId: '' });
 
+  {
+    const scheduleMock = global.fetch;
+    global.fetch = async (url) => {
+      if (url.includes('/team_members')) {
+        return { ok: true, text: async () => JSON.stringify({ data: [
+          { id: 'a', attributes: { name: 'Sam Lee', team_position_name: 'Vocal 2', status: 'C' }, relationships: { person: { data: { id: 'p-sam' } } } },
+          { id: 'b', attributes: { name: 'Ana Ruiz', team_position_name: 'Keys', status: 'C' }, relationships: { person: { data: { id: 'p-ana' } } } },
+          { id: 'c', attributes: { name: 'Sam Lee', team_position_name: 'Acoustic Guitar', status: 'C', photo_thumbnail_url: 'https://example.com/sam.jpg' }, relationships: { person: { data: { id: 'p-sam' } } } },
+          { id: 'd', attributes: { name: 'Sam Lee', team_position_name: 'Drums', status: 'C' }, relationships: { person: { data: { id: 'p-other-sam' } } } },
+        ] }) };
+      }
+      return scheduleMock(url);
+    };
+    const data = await get(port, '/foh-data');
+    const sam = data.roster.find((m) => m.positions.includes('Vocal 2'));
+    assert.deepEqual(sam.positions, ['Vocal 2', 'Acoustic Guitar'], 'both roles, in schedule order, listed once');
+    assert.equal(sam.photoUrl, 'https://example.com/sam.jpg', 'a photo from any of their entries');
+    assert.equal(data.roster.length, 3, 'a different person with the same name keeps their own row');
+    global.fetch = scheduleMock;
+    t('someone serving two roles is one Team row with both roles');
+  }
+
   connected = false; deviceCount = 0;
   {
     const data = await get(port, '/foh-data');

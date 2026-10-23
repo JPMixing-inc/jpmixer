@@ -118,4 +118,49 @@ function mountDeviceStage(appExpress) {
   });
 }
 
-module.exports = { mountDeviceStage, clean, get, set, getAll: () => { load(); return { ...store }; }, _reset: () => { store = Object.create(null); loaded = false; } };
+// For backups: every arrangement, and taking them back in. A restore puts
+// back the backup's arrangement for each number of mixes it has, keeping
+// any other; open Devices pages redraw. Anything that isn't valid is skipped.
+function getAll() { load(); return JSON.parse(JSON.stringify(store)); }
+function cleanAll(data) {
+  const out = Object.create(null);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return out;
+  for (const [sig, entry] of Object.entries(data)) {
+    const layout = SIGNATURE.test(sig) ? clean(entry) : null;
+    if (!layout) continue;
+    out[sig] = { ...layout, rev: Number.isInteger(entry.rev) && entry.rev > 0 ? entry.rev : 1, savedAt: typeof entry.savedAt === 'string' ? entry.savedAt : new Date().toISOString() };
+  }
+  return out;
+}
+function count(data) {
+  const all = data === undefined ? getAll() : cleanAll(data);
+  return { arrangements: Object.keys(all).length, cards: Object.values(all).reduce((n, entry) => n + Object.keys(entry.positions).length, 0) };
+}
+function write(next, changed) {
+  const previous = store;
+  store = next;
+  try { writeFileAtomic(file(), JSON.stringify(store)); }
+  catch (e) {
+    console.error('[JPMixer] Devices stage restore error:', e.message);
+    store = previous;
+    return false;
+  }
+  for (const sig of changed) if (store[sig]) announce(sig, store[sig], 'restore');
+  return true;
+}
+function importAll(data) {
+  load();
+  const incoming = cleanAll(data);
+  const next = toNullProto(JSON.parse(JSON.stringify(store)));
+  // rev keeps counting up from this computer's, so it never goes backwards
+  for (const [sig, entry] of Object.entries(incoming)) next[sig] = { ...entry, rev: ((store[sig] && store[sig].rev) || 0) + 1 };
+  return write(next, Object.keys(incoming));
+}
+// Puts back exactly what was there before (a failed restore's rollback)
+function replaceAll(data) {
+  load();
+  const next = toNullProto(cleanAll(data));
+  return write(next, [...new Set([...Object.keys(store), ...Object.keys(next)])]);
+}
+
+module.exports = { mountDeviceStage, clean, get, set, getAll, count, cleanAll, importAll, replaceAll, _reset: () => { store = Object.create(null); loaded = false; } };

@@ -112,8 +112,32 @@ function tooManyTries(address) {
 function mountFoh(app, status) {
   require('./chat').mountChat(app); // the Home pages' Team chat card (chat.js)
   require('./device-stage').mountDeviceStage(app); // the Devices page's shared stage arrangement
+  // The FOH Home Wireless card (shure-wireless.js); behind FOH's access code like the rest of FOH Home
+  app.get('/wireless-data', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true }); return; }
+    const wireless = require('./shure-wireless');
+    res.json({ ok: true, enabled: wireless.getStatus().enabled, channels: wireless.channelsForPages() });
+  });
+  // Each mix's mic batteries, for the musician's phone mixer and Monitor
+  // Engineer (no code: names and batteries only, no addresses)
+  app.get('/wireless-aux', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const wireless = require('./shure-wireless');
+    const enabled = wireless.getStatus().enabled;
+    res.json({ ok: true, enabled, mixes: enabled ? wireless.mixesForPages() : {} });
+  });
   // The Home pages' Companion card (companion-satellite.js); FOH's needs its access code
   require('./companion-satellite').mountCompanion(app, { canUse: (req, role) => role !== 'foh' || hasFohAccess(req) });
+  // FOH Home's SPL card (smaart.js): the levels need no code; changing the card's options does
+  require('./smaart').mountSmaart(app, {
+    canChange: hasFohAccess,
+    save: (o) => {
+      if (!config.save({ ...config.getAll(), smaartMetric: o.main, smaartLiveMetric: o.live, smaartHiddenInputs: o.hidden })) return false;
+      require('./smaart').applyConfig(config.getAll());
+      return true;
+    },
+  });
   app.get('/foh-data', async (req, res) => {
     if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true, role: { id: 'foh', label: ROLES.foh.label, page: ROLES.foh.page } }); return; }
     res.json(await roleData('foh', status));
@@ -248,16 +272,26 @@ async function roleData(roleId, status) {
       return true;
     });
 
-    const roster = members
-      .filter((m) => {
-        if (m.declined) return false;
-        if (!(includeUnconfirmed || m.confirmed)) return false;
-        if (hidden.has((m.positionName || '').toLowerCase())) return false;
-        if (rosterTeamId && positionTeam && positionTeam.get((m.positionName || '').toLowerCase()) !== rosterTeamId) return false;
-        if (day && m.days.length > 0 && !m.days.includes(day)) return false;
-        return true;
-      })
-      .map((m) => ({ name: m.personName, position: m.positionName || 'Team', photoUrl: m.photoUrl }));
+    // One row per person, as on the Green Room: someone on two positions
+    // (Vocal 2 and Acoustic Guitar) shows once with both, in schedule order.
+    // Matched by their Planning Center id, or by name when there's no id.
+    const people = new Map();
+    for (const m of members) {
+      if (m.declined) continue;
+      if (!(includeUnconfirmed || m.confirmed)) continue;
+      if (hidden.has((m.positionName || '').toLowerCase())) continue;
+      if (rosterTeamId && positionTeam && positionTeam.get((m.positionName || '').toLowerCase()) !== rosterTeamId) continue;
+      if (day && m.days.length > 0 && !m.days.includes(day)) continue;
+      const key = m.personId ? `id:${m.personId}` : `name:${String(m.personName || '').toLowerCase()}`;
+      const role = m.positionName || 'Team';
+      const person = people.get(key);
+      if (!person) people.set(key, { name: m.personName, position: role, positions: [role], photoUrl: m.photoUrl });
+      else {
+        if (!person.positions.includes(role)) person.positions.push(role);
+        if (!person.photoUrl && m.photoUrl) person.photoUrl = m.photoUrl;
+      }
+    }
+    const roster = [...people.values()];
 
     const order = items.map((it) => ({
       type: it.type,

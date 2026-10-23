@@ -11,14 +11,19 @@ const tvLayout = matchMedia('(orientation: landscape) and (min-width: 900px)');
 // ── Fitting the team on one screen ──────────────────────────────────────
 // On a TV the grid has a fixed box. Try every column count, keep the one
 // that gives each card the most room (cards a little taller than wide), and
-// size the photo and text from the card. Phones scroll instead.
+// size the photo and text from the card. The cards stay a bit smaller than
+// that room, with wide gaps, centred, so the screen doesn't feel crowded; a
+// small team doesn't get giant cards either. Phones scroll instead.
+const CARD_SCALE = 0.88;    // of the room each card could have
+const CARD_MAX_W = 0.2;     // of the screen's width
+const GR_VARS = ['--gr-cols', '--gr-rows', '--gr-card-w', '--gr-card-h', '--gr-photo', '--gr-name', '--gr-pos'];
 function fitGrid() {
   const grid = document.getElementById('grGrid');
   const count = grid.children.length;
-  if (!tvLayout.matches || !count || grid.hidden) { grid.style.removeProperty('--gr-cols'); grid.style.removeProperty('--gr-rows'); grid.style.removeProperty('--gr-photo'); grid.style.removeProperty('--gr-name'); grid.style.removeProperty('--gr-pos'); return; }
+  if (!tvLayout.matches || !count || grid.hidden) { for (const v of GR_VARS) grid.style.removeProperty(v); return; }
   const W = grid.clientWidth, H = grid.clientHeight;
   if (!W || !H) return;
-  const gap = Math.round(innerHeight * 0.016);
+  const gap = Math.round(innerHeight * 0.026);
   let best = null;
   for (let cols = 1; cols <= count; cols++) {
     const rows = Math.ceil(count / cols);
@@ -27,13 +32,17 @@ function fitGrid() {
     const size = Math.min(w, h * 0.85), empty = cols * rows - count;
     if (!best || size > best.size + 0.5 || (Math.abs(size - best.size) <= 0.5 && empty < best.empty)) best = { cols, rows, w, h, size, empty };
   }
-  // Cards with more than one role need room for a second line of labels
-  const manyRoles = [...grid.children].some(card => card.querySelectorAll('.gr-position').length > 1);
-  const photo = Math.max(36, Math.min(best.w * 0.62, best.h * (manyRoles ? 0.4 : 0.5), innerHeight * 0.2));
-  const name = Math.max(12, Math.min(photo * 0.2, best.w * 0.1, innerHeight * 0.032));
+  const cardW = Math.floor(Math.min(best.size * CARD_SCALE, innerWidth * CARD_MAX_W));
+  const cardH = Math.floor(Math.min(best.h, cardW / 0.85));
+  // Cards with more than one role, or a mic battery showing, need room for another line
+  const manyRoles = [...grid.children].some(card => card.querySelectorAll('.gr-position').length > 1 || !card.querySelector('.gr-mics')?.hidden);
+  const photo = Math.max(36, Math.min(cardW * 0.56, cardH * (manyRoles ? 0.38 : 0.46), innerHeight * 0.17));
+  const name = Math.max(12, Math.min(photo * 0.2, cardW * 0.1, innerHeight * 0.03));
   grid.style.setProperty('--gr-gap', `${gap}px`);
   grid.style.setProperty('--gr-cols', best.cols);
   grid.style.setProperty('--gr-rows', best.rows);
+  grid.style.setProperty('--gr-card-w', `${cardW}px`);
+  grid.style.setProperty('--gr-card-h', `${cardH}px`);
   grid.style.setProperty('--gr-photo', `${Math.round(photo)}px`);
   grid.style.setProperty('--gr-name', `${name.toFixed(1)}px`);
   grid.style.setProperty('--gr-pos', `${Math.max(10, name * 0.62).toFixed(1)}px`);
@@ -53,6 +62,41 @@ function tick() {
 tick();
 setInterval(tick, 1000);
 
+// ── Countdowns ──────────────────────────────────────────────────────────
+// "Service starts in 12:34" before the next service time, and "2:14 left"
+// on the live item (its length in Planning Center from when it went live).
+// Both count on JPMixer's clock (serverTime), so a TV set to the wrong time
+// still counts right. They tick here every second between checks.
+const COUNTDOWN_WINDOW_MS = 12 * 60 * 60 * 1000;
+let clockOffset = 0, liveState = null, nextServiceAt = null;
+const serverNow = () => Date.now() + clockOffset;
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+function untilLabel(ms) {
+  const sec = Math.ceil(ms / 1000);
+  if (sec < 3600) return mmss(sec);
+  const min = Math.floor(sec / 60);
+  return `${Math.floor(min / 60)} h ${min % 60} min`;
+}
+function tickCountdowns() {
+  const now = serverNow();
+  const until = nextServiceAt ? nextServiceAt - now : NaN;
+  const box = document.getElementById('grCountdown');
+  const show = !liveState && until > 0 && until <= COUNTDOWN_WINDOW_MS;
+  box.hidden = !show;
+  if (show) document.getElementById('grCountdownTime').textContent = untilLabel(until);
+  const left = document.getElementById('grNowLeft'), bar = document.getElementById('grNowProgress');
+  const it = liveState && liveState.now, started = liveState && Date.parse(liveState.startedAt);
+  left.hidden = bar.hidden = !(it && it.length > 0 && Number.isFinite(started));
+  if (left.hidden) return;
+  const remaining = Math.round((started + it.length * 1000 - now) / 1000);
+  left.textContent = remaining >= 0 ? `${mmss(remaining)} left` : `${mmss(-remaining)} over`;
+  left.classList.toggle('is-over', remaining < 0);
+  // A bar along the bottom of the Now box fills as the item goes
+  bar.classList.toggle('is-over', remaining < 0);
+  bar.firstChild.style.width = `${(Math.max(0, Math.min(1, (now - started) / (it.length * 1000))) * 100).toFixed(2)}%`;
+}
+setInterval(tickCountdowns, 1000);
+
 // ── Now / Up next, while Planning Center Live is running ────────────────
 const clockLength = (sec) => (Number.isFinite(sec) && sec > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : '');
 const itemMeta = (it) => [it.keyName ? `Key ${it.keyName}` : '', clockLength(it.length)].filter(Boolean).join(' · ');
@@ -61,6 +105,11 @@ async function refreshLive() {
     const res = await fetch('/greenroom-live', { cache: 'no-store' });
     const data = await res.json();
     const live = data.ok ? data.live : null;
+    const serverTime = Date.parse(data.serverTime);
+    if (Number.isFinite(serverTime)) clockOffset = serverTime - Date.now();
+    liveState = live;
+    nextServiceAt = data.ok && data.nextServiceAt ? Date.parse(data.nextServiceAt) : null;
+    tickCountdowns();
     const box = document.getElementById('grLive');
     const wasHidden = box.hidden;
     box.hidden = !live;
@@ -126,10 +175,60 @@ function buildCard(member) {
     roles.appendChild(position);
   }
   details.appendChild(roles);
+  // Their mic's battery while it's on (fillMics); which mixes are theirs
+  const mics = document.createElement('div');
+  mics.className = 'gr-mics';
+  mics.hidden = true;
+  mics.dataset.auxes = (member.auxes || []).join(',');
+  details.appendChild(mics);
   card.appendChild(details);
 
   return card;
 }
+
+// ── Mic batteries ───────────────────────────────────────────────────────
+// Each person's wireless mic, by the mix their position is mapped to (Shure
+// wireless gives each mic a mix), from /wireless-aux every 15 seconds. Only
+// while the mic is on; nothing while it's off, and nothing at all when
+// Settings → Pages → Green Room turns it off.
+const MIC_STATE = { good: 'Good', replace: 'Replace', critical: 'Critical' };
+let showMics = true, micMixes = {};
+function micChip(mic, many) {
+  const chip = document.createElement('span');
+  chip.className = `gr-mic is-${mic.battState || 'on'}`;
+  const bars = document.createElement('i');
+  bars.className = 'gr-mic-bars';
+  bars.setAttribute('aria-hidden', 'true');
+  for (let i = 1; i <= 5; i++) { const b = document.createElement('b'); if (mic.battBars !== null && i <= mic.battBars) b.className = 'on'; bars.appendChild(b); }
+  const text = mic.battBars === null ? 'Mic on' : MIC_STATE[mic.battState] + (mic.runTimeMin !== null ? ` · ${mic.runTimeMin >= 60 ? `${Math.floor(mic.runTimeMin / 60)} h ${mic.runTimeMin % 60} m` : `${mic.runTimeMin} min`}` : '');
+  const label = document.createElement('span');
+  label.textContent = many ? `${mic.name} · ${text}` : text;
+  chip.append(bars, label);
+  chip.title = `${mic.name}: ${text}`;
+  return chip;
+}
+function fillMics() {
+  let changed = false;
+  for (const box of document.querySelectorAll('#grGrid .gr-mics')) {
+    const auxes = box.dataset.auxes ? box.dataset.auxes.split(',') : [];
+    const on = showMics ? auxes.flatMap((aux) => micMixes[aux] || []).filter((m) => m.status === 'connected' && m.transmitter === 'on') : [];
+    const key = JSON.stringify(on);
+    if (box.dataset.micKey === key) continue;
+    box.dataset.micKey = key;
+    box.replaceChildren(...on.map((m) => micChip(m, on.length > 1)));
+    if (box.hidden !== !on.length) { box.hidden = !on.length; changed = true; }
+  }
+  if (changed) fitGrid(); // a chip line takes room from the photo
+}
+async function loadMics() {
+  try {
+    const data = await (await fetch('/wireless-aux', { cache: 'no-store' })).json();
+    micMixes = data.ok && data.enabled && data.mixes ? data.mixes : {};
+  } catch (_) { /* keep what's showing */ }
+  fillMics();
+}
+loadMics();
+setInterval(loadMics, 15000);
 
 function showEmpty(title, message) {
   document.getElementById('grGrid').hidden = true;
@@ -150,6 +249,7 @@ function showGrid(members) {
   if (signature !== lastRoster) {
     grid.replaceChildren(...members.map(buildCard));
     lastRoster = signature;
+    fillMics();
   }
   fitGrid();
   document.getElementById('grMemberCount').textContent = members.length;
@@ -206,7 +306,9 @@ async function refresh() {
     } else if (!data.members?.length) {
       showEmpty('The team is still coming together', 'No one is scheduled for this service yet. Check back soon.');
     } else {
+      showMics = data.mics !== false;
       showGrid(data.members);
+      fillMics();
     }
     lastSuccess = new Date();
     setStatus('ready', 'Updated ' + lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
@@ -222,19 +324,111 @@ async function refresh() {
   }
 }
 
+// ── Full screen ──
+// A browser only goes full screen from a click or key press, never by
+// itself, so on a TV the first press of the remote's OK button (or a click
+// anywhere) does it, and again after the TV or Esc leaves full screen. A
+// hint says so while the page isn't full screen. Clicking Exit fullscreen
+// turns this off until the page is reloaded. In full screen
+// the mouse pointer hides itself when it hasn't moved for a few seconds.
 const fullscreenButton = document.getElementById('grFullscreen');
-if (document.fullscreenEnabled) fullscreenButton.hidden = false;
-fullscreenButton.addEventListener('click', async () => {
+const fullscreenHint = document.getElementById('grFullscreenHint');
+const root = document.documentElement;
+const canFullscreen = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+let autoFullscreen = canFullscreen;
+async function enterFullscreen() {
   try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await document.documentElement.requestFullscreen();
+    if (root.requestFullscreen) await root.requestFullscreen({ navigationUI: 'hide' });
+    else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
   } catch (_) {
+    autoFullscreen = false;
+    fullscreenHint.hidden = true;
     setStatus('error', 'Fullscreen unavailable in this browser');
   }
+}
+async function exitFullscreen() {
+  try { if (document.exitFullscreen) await document.exitFullscreen(); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (_) {}
+}
+if (canFullscreen) fullscreenButton.hidden = false;
+fullscreenButton.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (isFullscreen()) { autoFullscreen = false; fullscreenHint.hidden = true; exitFullscreen(); } else enterFullscreen();
 });
-document.addEventListener('fullscreenchange', () => {
-  fullscreenButton.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+document.addEventListener('click', (e) => {
+  if (autoFullscreen && !isFullscreen() && !e.target.closest('button, a')) enterFullscreen();
 });
+document.addEventListener('keydown', (e) => {
+  if (!autoFullscreen || isFullscreen() || e.repeat || !['Enter', ' ', 'f', 'F'].includes(e.key)) return;
+  if (e.target.closest && e.target.closest('button, a')) return; // OK on a focused button does that button
+  e.preventDefault();
+  enterFullscreen();
+});
+let idleTimer = null;
+function wake() {
+  document.body.classList.remove('gr-idle');
+  clearTimeout(idleTimer);
+  if (isFullscreen()) idleTimer = setTimeout(() => document.body.classList.add('gr-idle'), 3000);
+}
+for (const type of ['mousemove', 'pointerdown', 'keydown']) document.addEventListener(type, wake, { passive: true });
+function onFullscreenChange() {
+  const on = isFullscreen();
+  fullscreenButton.textContent = on ? 'Exit fullscreen' : 'Fullscreen';
+  fullscreenHint.hidden = on || !autoFullscreen;
+  wake();
+}
+document.addEventListener('fullscreenchange', onFullscreenChange);
+document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+fullscreenHint.hidden = !autoFullscreen;
+// ── SPL from Smaart ──
+// One reading beside the clock (Settings → Pages → Green Room), coloured by
+// Smaart's own levels and marked when it's over Smaart's alarm. Asked for
+// every second while it's on, every 15 seconds while it's off.
+let splTimer = null;
+async function loadSpl() {
+  clearTimeout(splTimer);
+  let on = false;
+  try {
+    const data = await (await fetch('/greenroom-spl', { cache: 'no-store' })).json();
+    on = !!(data.ok && data.enabled);
+    const box = document.getElementById('grSpl');
+    const r = on ? data.reading : null;
+    const wasHidden = box.hidden;
+    box.hidden = !on;
+    document.getElementById('grSplValue').textContent = r && Number.isFinite(r.value) ? r.value.toFixed(1) : '—';
+    document.getElementById('grSplName').textContent = r ? r.name : '';
+    document.getElementById('grSplInput').textContent = !r ? 'Waiting for Smaart' : r.stale ? 'No reading right now' : r.over ? 'Over the limit' : r.input;
+    box.dataset.color = r && !r.stale ? r.color : '';
+    box.classList.toggle('is-over', !!(r && r.over && !r.stale));
+    box.classList.toggle('is-stale', !r || !!r.stale);
+    if (wasHidden !== box.hidden) fitGrid();
+  } catch (_) { /* keep what's showing */ }
+  splTimer = setTimeout(loadSpl, on ? 1000 : 15000);
+}
+loadSpl();
+
+// ── "Your mix" QR code ──
+// Opens the aux picker on a phone that scans it (src/server/greenroom.js
+// works out the address). Settings → Pages → Green Room turns it off.
+let lastQr = '';
+async function loadQr() {
+  try {
+    const res = await fetch('/greenroom-qr', { cache: 'no-store' });
+    const data = await res.json();
+    const show = !!(data.ok && data.enabled && data.url && data.svg);
+    const box = document.getElementById('grQr');
+    if (show && data.url !== lastQr) {
+      document.getElementById('grQrCode').innerHTML = data.svg; // JPMixer's own SVG, built from the address
+      document.getElementById('grQrUrl').textContent = data.url.replace(/^http:\/\//, '').replace(/\/$/, '');
+      lastQr = data.url;
+    }
+    if (box.hidden === show) { box.hidden = !show; fitGrid(); }
+  } catch (_) { /* keep what's showing */ }
+}
+loadQr();
+setInterval(loadQr, REFRESH_MS);
+
 document.getElementById('grRefresh').addEventListener('click', refresh);
 refresh();
 setInterval(refresh, REFRESH_MS);
+

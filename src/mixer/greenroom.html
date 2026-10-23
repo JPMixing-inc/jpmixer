@@ -29,10 +29,12 @@
   <main class="gr-main">
     <section class="gr-top" aria-label="Service details">
       <div class="gr-plan-info"><p class="gr-eyebrow">THE TEAM</p><h1 id="grPlanTitle">Green Room</h1><p class="gr-date" id="grPlanDate"></p></div>
-      <div class="gr-clock" role="timer" aria-label="Current time"><div class="gr-time"><span id="grTime">--:--</span><span class="gr-ampm" id="grAmPm"></span></div><div class="gr-today" id="grToday"></div></div>
+      <div class="gr-qr" id="grQr" hidden><div class="gr-qr-code" id="grQrCode" role="img" aria-label="QR code to open your mix"></div><div class="gr-qr-text"><strong>Your mix</strong><span>Scan with your phone’s camera</span><span class="gr-qr-url" id="grQrUrl"></span></div></div>
+      <div class="gr-spl" id="grSpl" hidden><span class="gr-spl-label">SPL <span id="grSplName"></span></span><span class="gr-spl-reading"><span class="gr-spl-value" id="grSplValue">—</span><span class="gr-spl-unit">dB</span></span><span class="gr-spl-input" id="grSplInput"></span></div>
+      <div class="gr-clock" role="timer" aria-label="Current time"><div class="gr-time"><span id="grTime">--:--</span><span class="gr-ampm" id="grAmPm"></span></div><div class="gr-today" id="grToday"></div><div class="gr-countdown" id="grCountdown" hidden>Service starts in <strong id="grCountdownTime"></strong></div></div>
     </section>
     <section class="gr-live" id="grLive" aria-label="Planning Center Live" aria-live="polite" hidden>
-      <div class="gr-live-item gr-live-now"><span class="gr-live-tag"><i aria-hidden="true"></i>NOW</span><strong id="grNowTitle"></strong><span class="gr-live-meta" id="grNowMeta"></span></div>
+      <div class="gr-live-item gr-live-now"><span class="gr-live-tag"><i aria-hidden="true"></i>NOW</span><strong id="grNowTitle"></strong><span class="gr-live-meta" id="grNowMeta"></span><span class="gr-live-left" id="grNowLeft" hidden></span><span class="gr-live-progress" id="grNowProgress" hidden><i></i></span></div>
       <div class="gr-live-item gr-live-next" id="grNextBox"><span class="gr-live-tag">UP NEXT</span><strong id="grNextTitle"></strong><span class="gr-live-meta" id="grNextMeta"></span></div>
     </section>
     <p class="gr-notice" id="grNotice" role="status" hidden></p>
@@ -40,6 +42,7 @@
     <section class="gr-grid" id="grGrid" aria-label="Scheduled team members" aria-busy="true"></section>
     <div class="gr-empty" id="grEmpty" role="status"><img class="jp-empty-logo" src="brand/jp-monogram.svg" alt="" width="56" height="28" /><h2 id="grEmptyTitle">Getting the team together</h2><p id="grEmptyMessage">Loading the upcoming service and scheduled team.</p></div>
   </main>
+  <p class="gr-fullscreen-hint" id="grFullscreenHint" hidden>Press <b>OK</b> or click anywhere for full screen</p>
   <script src="greenroom.js"></script>
 </body>
 </html>

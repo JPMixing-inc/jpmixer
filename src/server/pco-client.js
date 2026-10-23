@@ -320,13 +320,20 @@ async function listPlanItems(serviceTypeId, planId, creds) {
 // as `links` (URLs to fetch) rather than `relationships.data` — confirmed
 // `include=` does nothing useful on it, `included` stays empty regardless.
 //
-// Returns the live item's id, or null if nothing is live. Deliberately
-// returns null on any failure too (bad shape, network hiccup) rather than
-// throwing — a Live-resource problem should never take down the rest of
-// the FOH Home page. The caller cross-references the id against its own
-// already-fetched item list (listPlanItems()) rather than this function
-// making a second round trip to re-fetch the same Item.
+// getLive returns { itemId, startedAt } for the live item, or null if
+// nothing is live; getLiveItemId just the id. startedAt is the ItemTime's
+// `live_start_at` (CONFIRMED as an ItemTime attribute on a live account, but
+// only ever seen empty there, so it may be null). Deliberately returns null
+// on any failure too (bad shape, network hiccup) rather than throwing — a
+// Live-resource problem should never take down the rest of the FOH Home
+// page. The caller cross-references the id against its own already-fetched
+// item list (listPlanItems()) rather than this function making a second
+// round trip to re-fetch the same Item.
 async function getLiveItemId(serviceTypeId, planId, creds) {
+  const live = await getLive(serviceTypeId, planId, creds);
+  return live ? live.itemId : null;
+}
+async function getLive(serviceTypeId, planId, creds) {
   try {
     const json = await pcoFetch(
       `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/live`,
@@ -338,7 +345,9 @@ async function getLiveItemId(serviceTypeId, planId, creds) {
     const itemTimeJson = await pcoFetch(currentItemTimeUrl, creds);
     const itemRel = itemTimeJson.data && itemTimeJson.data.relationships
       && itemTimeJson.data.relationships.item && itemTimeJson.data.relationships.item.data;
-    return itemRel ? itemRel.id : null;
+    if (!itemRel) return null;
+    const startedAt = itemTimeJson.data.attributes && itemTimeJson.data.attributes.live_start_at;
+    return { itemId: itemRel.id, startedAt: typeof startedAt === 'string' && Number.isFinite(Date.parse(startedAt)) ? startedAt : null };
   } catch (_) {
     return null;
   }
@@ -472,7 +481,8 @@ const shared = {
   resolveAutoDay: sharedCall('resolveAutoDay', resolveAutoDay),
   upcomingPlans: sharedCall('upcomingPlans', upcomingPlans),
   getLiveItemId,
+  getLive,
   clear: () => sharedCache.clear(), // tests
 };
 
-module.exports = { listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, resolveAutoDay, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };
+module.exports = { listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };

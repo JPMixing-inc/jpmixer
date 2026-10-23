@@ -356,7 +356,9 @@ function buildGrid() {
     const kicker = document.createElement('div');
     kicker.className = 'aux-col-kicker';
     kicker.textContent = `AUX ${String(aux.channel).padStart(2, '0')} · ${aux.stereo ? 'STEREO' : 'MONO'}`;
-    heading.append(kicker, hdrLabel);
+    const micEl = document.createElement('div');
+    micEl.dataset.mixMic = aux.channel; micEl.hidden = true; // mic batteries (wireless-mix.js), under the mix's name
+    heading.append(kicker, hdrLabel, micEl);
 
     const presenceEl = document.createElement('div');
     presenceEl.className = 'aux-presence';
@@ -630,7 +632,8 @@ function renderMonitorNavigation() {
     const text = document.createElement('span'); text.className = 'mon-nav-copy';
     const name = document.createElement('strong'); name.textContent = label;
     const presence = document.createElement('small'); presence.dataset.mixPresence = aux.channel;
-    text.append(name, presence); button.append(number, text);
+    const mic = document.createElement('span'); mic.dataset.mixMic = aux.channel; mic.hidden = true; // wireless-mix.js
+    text.append(name, presence, mic); button.append(number, text);
     button.addEventListener('click', () => selectMonitorAux(aux.channel));
     nav.append(button);
     const option = document.createElement('option'); option.value = aux.channel; option.textContent = `Aux ${aux.channel} · ${label}`; picker.append(option);

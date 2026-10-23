@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
 const http = require('http');
 const express = require('express');
 const config = require('./config');
-const { mountGreenRoom } = require('./greenroom');
+const { mountGreenRoom, _resetLive } = require('./greenroom');
 
 let n = 0;
 function t(name) { n++; console.log('ok -', name); }
@@ -105,8 +105,19 @@ async function main() {
     assert.equal(data.ok, true);
     assert.equal(data.plan.title, 'Sunday Service');
     assert.equal(data.members.length, 1, 'unconfirmed (status U) should be excluded by default');
-    assert.deepEqual(data.members[0], { name: 'John Smith', position: 'Acoustic Guitar', positions: ['Acoustic Guitar'], photoUrl: 'https://example.com/john.jpg' });
+    assert.deepEqual(data.members[0], { name: 'John Smith', position: 'Acoustic Guitar', positions: ['Acoustic Guitar'], photoUrl: 'https://example.com/john.jpg', auxes: [] });
+    assert.equal(data.mics, true, 'mic batteries are on unless turned off');
     t('a configured setup returns the plan + confirmed members only, in the display shape');
+  }
+
+  {
+    const saved = config.getAll();
+    config.save({ ...saved, pcoPositionMapping: { 'acoustic guitar': 4, Keys: 9 }, greenRoomMics: false });
+    const data = await get(port, '/greenroom-data');
+    assert.deepEqual(data.members[0].auxes, [4], 'the mix their position is mapped to, whatever its case');
+    assert.equal(data.mics, false);
+    config.save(saved);
+    t('each card carries the mixes its positions are mapped to, for their mic battery');
   }
 
   config.save({ ...config.getAll(), pcoIncludeUnconfirmed: true });
@@ -224,7 +235,8 @@ async function main() {
   // ── Now / Up next from Planning Center Live ──────────────────────────
   {
     const scheduleMock = global.fetch;
-    let liveItem = 'i2';
+    let liveItem = 'i2', liveStartAt = '2026-10-25T13:04:10Z', pastOffset = 0;
+    _resetLive();
     global.fetch = async (url) => {
       if (url.includes('/items')) {
         return { ok: true, text: async () => JSON.stringify({ data: [
@@ -234,7 +246,16 @@ async function main() {
           { id: 'i4', attributes: { item_type: 'item', title: 'Sermon', length: 1800, sequence: 4 } },
         ] }) };
       }
-      if (url.includes('/live-item-time')) return { ok: true, text: async () => JSON.stringify({ data: { relationships: { item: { data: { id: liveItem } } } } }) };
+      if (url.includes('/live-item-time')) return { ok: true, text: async () => JSON.stringify({ data: { attributes: { live_start_at: liveStartAt }, relationships: { item: { data: { id: liveItem } } } } }) };
+      if (url.includes('/plan_times')) {
+        const at = (min) => new Date(Date.now() + min * 60000).toISOString();
+        return { ok: true, text: async () => JSON.stringify({ data: [
+          { id: 'pt-past', attributes: { starts_at: at(-90 - pastOffset), ends_at: at(-1 - pastOffset), time_type: 'service' } },
+          { id: 'pt-reh', attributes: { starts_at: at(5), time_type: 'rehearsal' } },
+          { id: 'pt-late', attributes: { starts_at: at(180), time_type: 'service' } },
+          { id: 'pt-next', attributes: { starts_at: at(20), time_type: 'service' } },
+        ] }) };
+      }
       if (url.includes('/live')) return { ok: true, text: async () => JSON.stringify({ data: { links: { current_item_time: liveItem ? 'https://api.planningcenteronline.com/services/v2/live-item-time' : null } } }) };
       return scheduleMock(url);
     };
@@ -242,10 +263,38 @@ async function main() {
     assert.equal(data.ok, true);
     assert.deepEqual(data.live.now, { title: 'How Great Thou Art', keyName: 'Bb', length: 360, type: 'song' });
     assert.equal(data.live.next.title, 'Sermon', 'Up next skips section headers');
+    assert.equal(data.live.index, 1, 'its place in the order of service');
     t('/greenroom-live shows the live item and the next one, skipping headers');
 
+    assert.equal(data.live.startedAt, '2026-10-25T13:04:10Z');
+    assert.ok(Math.abs(Date.parse(data.serverTime) - Date.now()) < 5000, 'JPMixer’s own clock, for counting down');
+    t('the live item’s start time comes from Planning Center when it has one');
+
+    const nextAt = Date.parse(data.nextServiceAt) - Date.now();
+    assert.ok(nextAt > 19 * 60000 && nextAt < 21 * 60000, 'the next service still to come, not the rehearsal, a past or a later one');
+    t('/greenroom-live gives the next service time');
+
+    pastOffset = -10; // the earlier service now ends in 9 minutes
+    data = await get(port, '/greenroom-live');
+    assert.equal(data.nextServiceAt, null);
+    pastOffset = 0;
+    t('no countdown to the next service while one is still on');
+
+    _resetLive();
+    liveItem = 'i4'; liveStartAt = null;
+    const before = Date.now();
+    data = await get(port, '/greenroom-live');
+    const firstSeen = Date.parse(data.live.startedAt);
+    assert.equal(data.live.now.title, 'Sermon');
+    assert.ok(firstSeen >= before - 1000 && firstSeen <= Date.now() + 1000, 'without one, when JPMixer first saw it live');
+    await new Promise((r) => setTimeout(r, 50));
+    _resetLive(false);
+    data = await get(port, '/greenroom-live');
+    assert.equal(data.live.startedAt, new Date(firstSeen).toISOString(), 'and it stays that while the item stays live');
+    t('without Planning Center’s start time, the item counts from when it went live');
+
+    _resetLive();
     liveItem = null;
-    await new Promise((r) => setTimeout(r, 8100)); // past the few-second live cache
     data = await get(port, '/greenroom-live');
     assert.equal(data.live, null);
     t('/greenroom-live is empty when Planning Center Live isn’t running');
@@ -256,9 +305,50 @@ async function main() {
     const saved = config.getAll();
     config.save({ ...saved, pcoAppId: '', pcoSecret: '' });
     const data = await get(port, '/greenroom-live');
-    assert.deepEqual(data, { ok: true, live: null });
+    assert.equal(data.ok, true);
+    assert.equal(data.live, null);
+    assert.equal(data.nextServiceAt, null);
     config.save(saved);
     t('/greenroom-live answers quietly when Planning Center isn’t set up');
+  }
+
+  // ── "Your mix" QR code ───────────────────────────────────────────────
+  {
+    const getWithHost = (host) => new Promise((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port, path: '/greenroom-qr', headers: { Host: host } }, (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => resolve(JSON.parse(data)));
+      }).on('error', reject);
+    });
+    let data = await getWithHost('192.168.1.20:8080');
+    assert.equal(data.enabled, true);
+    assert.equal(data.url, 'http://192.168.1.20:8080/', 'the address the TV typed, which phones on its network reach too');
+    assert.ok(data.svg.startsWith('<svg') && data.svg.includes('<path d="M'), 'an SVG QR code');
+    assert.ok(!/<script|on\w+=/i.test(data.svg));
+    data = await getWithHost('192.168.1.20');
+    assert.equal(data.url, 'http://192.168.1.20/', 'Port 80 needs no port in the address');
+    t('the Green Room QR code opens the aux picker at the address the TV used');
+
+    data = await getWithHost('localhost:8080');
+    assert.ok(data.url === null || (/^http:\/\/\d+\.\d+\.\d+\.\d+(:\d+)?\/$/.test(data.url) && !data.url.includes('127.0.0.1')), 'this computer’s network address, not localhost');
+    data = await getWithHost('evil.example"><script>');
+    assert.ok(!data.url || !data.url.includes('<'), 'an odd Host header is never put in the code');
+    t('a Green Room open on this computer gets its network address instead of localhost');
+
+    config.save({ ...config.getAll(), greenRoomQr: false });
+    data = await getWithHost('192.168.1.20:8080');
+    assert.deepEqual(data, { ok: true, enabled: false });
+    config.save({ ...config.getAll(), greenRoomQr: true });
+    t('Settings can turn the QR code off');
+
+    data = await getWithHost('192.168.1.20:8080').then(() => get(port, '/greenroom-spl'));
+    assert.deepEqual(data, { ok: true, enabled: false, reading: null }, 'off by default');
+    config.save({ ...config.getAll(), greenRoomSpl: true, smaartEnabled: false });
+    data = await get(port, '/greenroom-spl');
+    assert.equal(data.enabled, false, 'it also needs Smaart SPL on');
+    config.save({ ...config.getAll(), greenRoomSpl: false });
+    t('the Green Room SPL reading is off unless both it and Smaart SPL are on');
   }
 
   global.fetch = origFetch;

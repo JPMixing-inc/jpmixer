@@ -95,7 +95,7 @@ function showRoster(roster) {
     name.textContent = m.name;
     const position = document.createElement('div');
     position.className = 'fh-roster-position';
-    position.textContent = m.position;
+    position.textContent = (m.positions && m.positions.length ? m.positions : [m.position]).join(' · ');
     details.append(name, position);
     row.appendChild(details);
     body.appendChild(row);
@@ -206,6 +206,16 @@ function showPlans(plan, upcoming, pcoHome) {
   if (pcoHome) body.appendChild(link(pcoHome, 'fh-plan-all', 'All plans in Planning Center ↗'));
 }
 
+// The Order of Service card follows Live: when the live item changes (and
+// on first load) the card scrolls so it sits near the top, with the item
+// before it just showing. Otherwise it stays wherever someone scrolled it,
+// including across refreshes. Only the card scrolls, never the page.
+let orderFollowedIndex = null;
+function followLiveItem(body, row) {
+  const top = row.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 36;
+  const smooth = orderFollowedIndex !== null && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  body.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+}
 function showOrder(order) {
   const body = document.getElementById('fhOrder');
   body.removeAttribute('aria-busy');
@@ -215,9 +225,11 @@ function showOrder(order) {
   if (!order || order.length === 0) {
     body.innerHTML = '';
     body.dataset.empty = 'No order of service yet.';
+    orderFollowedIndex = null;
     return;
   }
   delete body.dataset.empty;
+  const scrolledTo = body.scrollTop;
   body.innerHTML = '';
   for (const it of order) {
     const row = document.createElement('div');
@@ -231,9 +243,14 @@ function showOrder(order) {
     }
     body.appendChild(row);
   }
+  const liveIndex = order.findIndex((it) => it.live);
+  if (liveIndex >= 0 && liveIndex !== orderFollowedIndex) followLiveItem(body, body.children[liveIndex]);
+  else body.scrollTop = scrolledTo;
+  orderFollowedIndex = liveIndex >= 0 ? liveIndex : orderFollowedIndex;
 }
 
 let lastLiveCardKey = '';
+let shownLive = { index: -1, title: null }; // what the last /foh-data said is live
 
 function showLiveCard(previousItem, liveItem, nextItem) {
   const body = document.getElementById('fhLiveCard');
@@ -259,7 +276,23 @@ function showLiveCard(previousItem, liveItem, nextItem) {
     const label = document.createElement('div');
     label.className = 'fh-live-card-label';
     label.textContent = r.label;
+    if (r.current) {
+      const left = document.createElement('span');
+      left.className = 'fh-live-left';
+      left.dataset.liveLeft = '';
+      left.hidden = true;
+      label.appendChild(left);
+    }
     row.appendChild(label);
+    if (r.current) {
+      // How far through the item it is (see tickCountdowns)
+      const bar = document.createElement('div');
+      bar.className = 'fh-live-progress';
+      bar.dataset.liveProgress = '';
+      bar.hidden = true;
+      bar.appendChild(document.createElement('i'));
+      row.appendChild(bar);
+    }
     if (r.item) {
       appendItemContent(row, r.item);
     } else {
@@ -271,6 +304,69 @@ function showLiveCard(previousItem, liveItem, nextItem) {
     body.appendChild(row);
   }
 }
+
+// ── Countdowns ──
+// "Service starts in 12:34" before the next service time, and "2:14 left"
+// on the live item, from /greenroom-live every 15 seconds (the rest of the
+// page refreshes every 2 minutes). They count every second in between, on
+// JPMixer's clock. When Live moves to another item, the page refreshes
+// straight away instead of waiting for the next 2-minute refresh.
+const LIVE_MS = 15000;
+const COUNTDOWN_WINDOW_MS = 12 * 60 * 60 * 1000;
+let clockOffset = 0, liveState = null, nextServiceAt = null, refreshedForIndex = null;
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+function untilLabel(ms) {
+  const sec = Math.ceil(ms / 1000);
+  if (sec < 3600) return mmss(sec);
+  const min = Math.floor(sec / 60);
+  return `${Math.floor(min / 60)} h ${min % 60} min`;
+}
+function tickCountdowns() {
+  const now = Date.now() + clockOffset;
+  const until = nextServiceAt ? nextServiceAt - now : NaN;
+  const countdown = !liveState && shownLive.index < 0 && until > 0 && until <= COUNTDOWN_WINDOW_MS ? untilLabel(until) : '';
+  document.getElementById('fhCountdown').hidden = !countdown;
+  document.getElementById('fhCountdownTime').textContent = countdown;
+  const card = document.getElementById('fhLiveCard');
+  if (card.dataset.empty) card.dataset.empty = countdown ? `Nothing live right now. Service starts in ${countdown}.` : 'Nothing live right now.';
+  // Time left only for the item this page shows as live
+  const it = liveState && liveState.now, started = liveState && Date.parse(liveState.startedAt);
+  let text = '', over = false, done = 0;
+  if (it && it.length > 0 && Number.isFinite(started) && liveState.index === shownLive.index) {
+    const remaining = Math.round((started + it.length * 1000 - now) / 1000);
+    over = remaining < 0;
+    text = over ? `${mmss(-remaining)} over` : `${mmss(remaining)} left`;
+    done = Math.max(0, Math.min(1, (now - started) / (it.length * 1000)));
+  }
+  for (const el of document.querySelectorAll('[data-live-left]')) {
+    el.hidden = !text;
+    el.textContent = text ? `· ${text}` : '';
+    el.classList.toggle('is-over', over);
+  }
+  for (const el of document.querySelectorAll('[data-live-progress]')) {
+    el.hidden = !text;
+    el.classList.toggle('is-over', over);
+    el.firstChild.style.width = `${(done * 100).toFixed(2)}%`;
+  }
+}
+async function refreshLive() {
+  try {
+    const res = await fetch('/greenroom-live', { cache: 'no-store' });
+    const data = await res.json();
+    const serverTime = Date.parse(data.serverTime);
+    if (Number.isFinite(serverTime)) clockOffset = serverTime - Date.now();
+    if (!data.ok) return;
+    liveState = data.live;
+    nextServiceAt = data.nextServiceAt ? Date.parse(data.nextServiceAt) : null;
+    const index = liveState ? liveState.index : -1;
+    // Live moved on: catch the order of service and Live card up now (once per move)
+    if (index !== shownLive.index && index !== refreshedForIndex && lastSuccess) { refreshedForIndex = index; refresh(); }
+    tickCountdowns();
+  } catch (_) { /* keep what's showing; try again shortly */ }
+}
+refreshLive();
+setInterval(refreshLive, LIVE_MS);
+setInterval(tickCountdowns, 1000);
 
 function showLiveItem(liveItem) {
   const badge = document.getElementById('fhLiveBadge');
@@ -348,6 +444,9 @@ async function refresh() {
       showLiveItem(data.liveItem || null);
       showLiveCard(data.previousItem || null, data.liveItem || null, data.nextItem || null);
       showPlans(data.plan || null, data.upcoming || [], data.pcoHome || null);
+      shownLive = { index: (data.order || []).findIndex((it) => it.live), title: data.liveItem ? data.liveItem.title : null };
+      refreshedForIndex = null;
+      tickCountdowns();
     }
     lastSuccess = new Date();
     setStatus('ready', 'Updated ' + lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));

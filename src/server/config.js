@@ -88,6 +88,11 @@ const DEFAULTS = {
   pcoAlt: { enabled: false, serviceTypeId: '', teamId: '', positionMapping: {}, roles: {} },
   pcoIncludeUnconfirmed: false,
   pcoGreenRoomHidden: [], // PCO position names to exclude from the Green Room display; empty = show everyone
+  greenRoomQr: true, // the Green Room shows a QR code that opens the aux picker on a phone (greenroom.js)
+  greenRoomMics: true,    // the Green Room shows each person's mic battery while it's on (Shure wireless, by their mix)
+  greenRoomSpl: false,    // the Green Room shows an SPL reading from Smaart (needs smaartEnabled)
+  greenRoomSplMetric: '', // which reading; '' = automatic (LAeq 10, then SPL A Slow)
+  greenRoomSplInput: '',  // which Smaart input ("device/channel"); '' = the first one FOH Home's card shows
   pcoPhoneAssignments: false, // opt-in person identity and automatic phone aux selection
   pcoUpdateAuxNames: true, // false = Planning Center only drives the Green Room display; Sync Now and
                            // the automatic sync at launch/save skip renaming aux channels entirely.
@@ -109,11 +114,26 @@ const DEFAULTS = {
   fohAccessCode: '',
   // Companion buttons on the Home pages: JPMixer connects to Companion as a
   // Satellite and registers one surface per Home page. See companion-satellite.js.
+  // Shure wireless monitoring (read-only, off by default) — see shure-wireless.js.
+  // wirelessReceivers: [{ ip }], the receivers to read; others are only listed.
+  wirelessEnabled: false,
+  wirelessReceivers: [],
   companionEnabled: false,
   companionHost: '',
   companionPort: 16622,
   companionColumns: 8,
-  companionRows: 4
+  companionRows: 4,
+  // Smaart SPL on FOH Home: JPMixer reads levels from Smaart's API (read-only). See smaart.js.
+  // Shure wireless (shure-wireless.js): receivers remembered, and which mix each channel belongs to
+  wirelessKnown: [], // [{ id, ip, model }] every receiver seen; saved by shure-wireless.js
+  wirelessAux: {},   // { "id/channel": aux }
+  smaartEnabled: false,
+  smaartHost: '',
+  smaartPort: 26000,
+  smaartPassword: '', // Smaart's API password, only if one is set in Smaart
+  smaartMetric: '',   // the big reading on the card; '' = automatic (LAeq 10, then SPL A Slow)
+  smaartLiveMetric: '', // the smaller live reading under it; '' = automatic (SPL A Slow), 'none' = off
+  smaartHiddenInputs: [] // "device/channel" of Smaart inputs left off the card (its options button)
 };
 
 // Console types with a backend. Settings once offered X32/M32, Yamaha and

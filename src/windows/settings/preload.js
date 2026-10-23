@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('jpm', {
   onStatus:         (cb) => ipcRenderer.on('server-status',  (_, data) => cb(data)),
   getConsoleStatus:       ()  => ipcRenderer.invoke('get-console-status'),
   getCompanionStatus:     ()  => ipcRenderer.invoke('get-companion-status'),
+  getSmaartStatus:        ()  => ipcRenderer.invoke('get-smaart-status'),
+  getWirelessStatus:      ()  => ipcRenderer.invoke('get-wireless-status'),
   onConsoleStatus:        (cb) => ipcRenderer.on('console-status', (_, data) => cb(data)),
   openPerformer:          ()   => ipcRenderer.invoke('open-performer'),
   openMonitor:            ()   => ipcRenderer.invoke('open-monitor'),

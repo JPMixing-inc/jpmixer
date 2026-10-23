@@ -36,23 +36,25 @@
         <div class="fh-photo-fallback" id="fhPhotoFallback"><img class="jp-fallback-logo" src="brand/jp-monogram.svg" alt="JPMixer" width="64" height="32" /></div>
       </div>
       <div class="fh-welcome-text">
-        <p class="fh-eyebrow">WELCOME</p>
         <h1 id="fhWelcomeName">Welcome</h1>
-        <p class="fh-plan" id="fhPlanLine"></p>
-        <p class="fh-live-badge" id="fhLiveBadge" hidden><span class="fh-live-dot" aria-hidden="true"></span>LIVE: <span id="fhLiveTitle"></span></p>
+        <div class="fh-welcome-meta">
+          <p class="fh-plan" id="fhPlanLine"></p>
+          <p class="fh-live-badge" id="fhLiveBadge" hidden><span class="fh-live-dot" aria-hidden="true"></span>LIVE: <span id="fhLiveTitle"></span><span class="fh-live-left" data-live-left hidden></span></p>
+          <p class="fh-live-badge fh-countdown-badge" id="fhCountdown" hidden>Service starts in <strong id="fhCountdownTime"></strong></p>
+        </div>
+      </div>
+      <div class="fh-layout-toolbar" role="group" aria-label="Page layout">
+        <div class="fh-layout-actions">
+          <button type="button" id="fhArrange" aria-pressed="false">Arrange page</button>
+          <button type="button" id="fhLayoutSave" disabled title="Saves this arrangement for the team member scheduled on this page">Save layout</button>
+          <button type="button" id="fhLayoutUndo" hidden disabled>Undo</button>
+          <button type="button" id="fhLayoutReset" hidden>Reset layout</button>
+          <details id="fhCardVisibility" hidden><summary>Show / hide cards</summary><div id="fhCardVisibilityList"></div></details>
+        </div>
+        <p class="fh-layout-status" id="fhLayoutStatus" role="status">Layout saves in this browser.</p>
       </div>
     </section>
     <p class="fh-notice" id="fhNotice" role="status" hidden></p>
-    <section class="fh-layout-toolbar" aria-label="Page layout">
-      <div><h2>Your workspace</h2><p id="fhLayoutStatus" role="status">Layout saves in this browser.</p></div>
-      <div class="fh-layout-actions">
-        <button type="button" id="fhArrange" aria-pressed="false">Arrange page</button>
-        <button type="button" id="fhLayoutSave" disabled title="Saves this arrangement for the team member scheduled on this page">Save layout</button>
-        <button type="button" id="fhLayoutUndo" hidden disabled>Undo</button>
-        <button type="button" id="fhLayoutReset" hidden>Reset layout</button>
-        <details id="fhCardVisibility" hidden><summary>Show / hide cards</summary><div id="fhCardVisibilityList"></div></details>
-      </div>
-    </section>
     <p class="fh-layout-hint" id="fhLayoutHint" hidden>Drag any card anywhere; drop it onto another card to swap the two. Drag a card’s lower-right corner to resize it, or use its size menus. Hide cards here and show them again from Show / hide cards. <span class="fh-layout-phone-hint">On phones, cards stack in one column, top to bottom; arrange on a computer or iPad.</span></p>
     <div class="fh-dashboard" id="fhDashboard">
 

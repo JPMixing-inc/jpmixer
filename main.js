@@ -344,6 +344,10 @@ app.whenReady().then(async () => {
   apiServer = require('./src/server/api-server');
   apiServer.applyConfig(config.getAll());
   require('./src/server/companion-satellite').applyConfig(config.getAll());
+  require('./src/server/smaart').applyConfig(config.getAll());
+  // Receivers it sees are remembered in the config, so they're there after a restart
+  require('./src/server/shure-wireless').setSaver((patch) => config.save({ ...config.getAll(), ...patch }));
+  require('./src/server/shure-wireless').applyConfig(config.getAll());
   pcoClient  = require('./src/server/pco-client');
 
   createTray();
@@ -370,6 +374,8 @@ app.on('window-all-closed', (e) => {
 let quitting = false;
 app.on('before-quit', (e) => {
   try { require('./src/server/companion-satellite').stop(); } catch (_) {} // tells Companion to drop the surfaces
+  try { require('./src/server/smaart').stop(); } catch (_) {}
+  try { require('./src/server/shure-wireless').stop(); } catch (_) {}
   if (quitting || !serverRunning || !server) return;
   e.preventDefault();
   quitting = true;
@@ -1007,6 +1013,8 @@ ipcMain.handle('save-config', async (_, incoming) => {
   // reconnect, and vice versa. See api-server.js's file header.
   apiServer.applyConfig(config.getAll());
   require('./src/server/companion-satellite').applyConfig(config.getAll());
+  require('./src/server/smaart').applyConfig(config.getAll());
+  require('./src/server/shure-wireless').applyConfig(config.getAll());
   rebuildTrayMenu();
   updateKeepAwake();
   if (prev.brandLogo !== config.get('brandLogo')) require('./src/server/branding').pruneLogos();
@@ -1017,6 +1025,9 @@ ipcMain.handle('save-config', async (_, incoming) => {
 
 // Companion buttons' connection, for Settings → Pages
 ipcMain.handle('get-companion-status', () => require('./src/server/companion-satellite').getStatus());
+// Smaart SPL's connection, for Settings → Pages
+ipcMain.handle('get-smaart-status', () => require('./src/server/smaart').getStatus());
+ipcMain.handle('get-wireless-status', () => require('./src/server/shure-wireless').getStatus());
 
 // iPad relay health for Settings — DiGiCo backend only (the others have no relay)
 ipcMain.handle('get-ipad-status', () => (serverRunning && server.getIpadStatus) ? server.getIpadStatus() : null);
@@ -1332,7 +1343,7 @@ ipcMain.handle('restore-backup', async (event, request) => {
   restoreBusy = true;
   let dataCommitted = false;
   try {
-    const result = await require('./src/server/backup-restore').apply(pendingRestore.data,request.sections,request.mixMode,{ config,presets,scenes,autoBackup,homeLayouts:require('./src/server/home-layouts') });
+    const result = await require('./src/server/backup-restore').apply(pendingRestore.data,request.sections,request.mixMode,{ config,presets,scenes,autoBackup,homeLayouts:require('./src/server/home-layouts'),deviceStage:require('./src/server/device-stage') });
     if (!result.ok) return result;
     dataCommitted = true;
     pendingRestore = null;
@@ -1341,7 +1352,11 @@ ipcMain.handle('restore-backup', async (event, request) => {
       // must not see a "console switch" and wipe the scenes it just wrote.
       if (result.scenesChanged) lastSceneKeyScheme = sceneKeySchemeFor(config.get('consoleType'));
       await applySavedConfig(result.previousConfig);
-      apiServer.applyConfig(config.getAll()); rebuildTrayMenu();
+      apiServer.applyConfig(config.getAll());
+      require('./src/server/companion-satellite').applyConfig(config.getAll());
+      require('./src/server/smaart').applyConfig(config.getAll());
+      require('./src/server/shure-wireless').applyConfig(config.getAll());
+      rebuildTrayMenu();
     } else if (result.scenesChanged && serverRunning && server.applyConfigLive) server.applyConfigLive(config.getAll());
     if (result.mixes && serverRunning && server.pushDevicePresets) for (const id of result.mixes.deviceIds) server.pushDevicePresets(id);
     return { ok:true,selected:result.selected,configChanged:result.configChanged,mixes:result.mixes,safetyBackup:result.safetyBackup };

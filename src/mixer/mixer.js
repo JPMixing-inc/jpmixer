@@ -1821,10 +1821,12 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
   overlay.addEventListener('dblclick', () => { if (!locked()) onReset(); });
 }
 
+// Double-tap puts the send at unity (0 dB), not off
 function resetVolSlider(slider, dbEl) {
-  slider.value = 0;
-  setFaderVar(slider, 0);
-  if (dbEl) dbEl.textContent = '-∞';
+  const v = dbToSlider(0);
+  slider.value = v;
+  setFaderVar(slider, parseFloat(slider.value));
+  if (dbEl) dbEl.textContent = formatDb(parseFloat(slider.value));
   markSceneDirty();
   slider.dispatchEvent(new Event('change', { bubbles: true }));
 }

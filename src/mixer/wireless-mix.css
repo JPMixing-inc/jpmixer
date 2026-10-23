@@ -1,0 +1,14 @@
+/* Mic battery chips (wireless-mix.js), on the phone mixer and Monitor Engineer */
+.mic-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .04); font-size: 11px; font-weight: 600; line-height: 1.6; color: #c9ccd4; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.mic-chip span { overflow: hidden; text-overflow: ellipsis; }
+.mic-bars { display: inline-flex; gap: 1.5px; flex-shrink: 0; }
+.mic-bars b { width: 3px; height: 9px; border-radius: 1px; background: rgba(255, 255, 255, .16); }
+.mic-chip.is-good .mic-bars b.on { background: #32d74b; }
+.mic-chip.is-replace { color: #ffb340; border-color: rgba(255, 159, 10, .4); }
+.mic-chip.is-replace .mic-bars b.on { background: #ff9f0a; }
+.mic-chip.is-critical { color: #ff6b61; border-color: rgba(255, 69, 58, .5); background: rgba(255, 69, 58, .12); }
+.mic-chip.is-critical .mic-bars b.on { background: #ff453a; }
+.mic-chip.is-off, .mic-chip.is-offline { color: #8a8f99; }
+.mic-batt { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; min-width: 0; }
+.mic-batt[hidden], [data-mix-mic][hidden] { display: none !important; }
+[data-mix-mic] { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
