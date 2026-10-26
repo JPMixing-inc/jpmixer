@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('jpm', {
   getConfig:   ()    => ipcRenderer.invoke('get-config'),
@@ -17,6 +17,27 @@ contextBridge.exposeInMainWorld('jpm', {
   getCompanionStatus:     ()  => ipcRenderer.invoke('get-companion-status'),
   getSmaartStatus:        ()  => ipcRenderer.invoke('get-smaart-status'),
   getWirelessStatus:      ()  => ipcRenderer.invoke('get-wireless-status'),
+  getPerformance:         ()   => ipcRenderer.invoke('get-performance'),
+  copyText:               (text) => ipcRenderer.invoke('copy-text', text),
+  pluginsList:            ()   => ipcRenderer.invoke('plugins-list'),
+  pluginsLog:             (id) => ipcRenderer.invoke('plugins-log', id),
+  pluginsSave:            (changes) => ipcRenderer.invoke('plugins-save', changes),
+  pluginsReload:          ()   => ipcRenderer.invoke('plugins-reload'),
+  pluginsOpenFolder:      ()   => ipcRenderer.invoke('plugins-open-folder'),
+  pluginsConfirmEnable:   (id) => ipcRenderer.invoke('plugins-confirm-enable', id),
+  pluginsCatalog:         ()   => ipcRenderer.invoke('plugins-catalog'),
+  pluginsInstallCatalog:  (id) => ipcRenderer.invoke('plugins-install-catalog', id),
+  pluginsImport:          (kind) => ipcRenderer.invoke('plugins-import', kind),
+  pluginsImportPath:      (file) => ipcRenderer.invoke('plugins-import-path', file),
+  pluginsOpenSubmit:      ()   => ipcRenderer.invoke('plugins-open-submit'),
+  onPluginsChanged:       (cb) => ipcRenderer.on('plugins-changed', () => cb()),
+  onPluginsShow:          (cb) => ipcRenderer.on('plugins-show', () => cb()),
+  onPluginsResult:        (cb) => ipcRenderer.on('plugins-result', (_, result) => cb(result)),
+  // A file dropped on the page: where it is on disk
+  pathForFile:            (file) => { try { return webUtils ? webUtils.getPathForFile(file) : file.path; } catch (_) { return file && file.path; } },
+  pluginsRemove:          (id) => ipcRenderer.invoke('plugins-remove', id),
+  pluginsOpenGuide:       ()   => ipcRenderer.invoke('plugins-open-guide'),
+  pluginsOpenHomepage:    (id) => ipcRenderer.invoke('plugins-open-homepage', id),
   onConsoleStatus:        (cb) => ipcRenderer.on('console-status', (_, data) => cb(data)),
   openPerformer:          ()   => ipcRenderer.invoke('open-performer'),
   openMonitor:            ()   => ipcRenderer.invoke('open-monitor'),

@@ -10,7 +10,7 @@
   const card = document.querySelector('[data-fh-card="wireless"]');
   const body = document.getElementById('fhWireless');
   if (!card || !body) return;
-  const REFRESH_MS = 5000;
+  const REFRESH_MS = 3000;
 
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const STATE = { good: 'Good', replace: 'Replace', critical: 'Critical' };

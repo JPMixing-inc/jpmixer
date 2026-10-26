@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "console-check",
+      "name": "Console check",
+      "version": "1.0.0",
+      "description": "An example plugin: shows whether the console is connected, and the mixes it has, on FOH Home.",
+      "author": "JPMixer",
+      "permissions": [
+        "card",
+        "console"
+      ],
+      "path": "console-check",
+      "files": [
+        {
+          "path": "index.js",
+          "size": 1044,
+          "sha256": "dee7e06e868d7acb75c591a69d4aa1c82dddb0593d1e5a49313f9075ff8fb64c"
+        },
+        {
+          "path": "plugin.json",
+          "size": 580,
+          "sha256": "b4536f4997dfedd644a53bef87bb246ba17541c3c581fb4e1d56fd9f93c7418d"
+        }
+      ]
+    }
+  ]
+}

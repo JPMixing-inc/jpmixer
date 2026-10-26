@@ -1,0 +1,13 @@
+{
+  "id": "my-plugin",
+  "name": "My plugin",
+  "version": "0.1.0",
+  "description": "What it does, in one sentence.",
+  "author": "Your name",
+  "main": "index.js",
+  "permissions": ["card"],
+  "card": { "title": "My plugin" },
+  "settings": [
+    { "key": "message", "label": "Message", "type": "text", "default": "Hello from my plugin", "help": "An example setting. Change these to the ones your plugin needs." }
+  ]
+}

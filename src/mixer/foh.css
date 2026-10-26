@@ -80,6 +80,24 @@ button:focus-visible { outline: 2px solid var(--jp-light); outline-offset: 4px; 
 .fh-spl-row.is-over .fh-spl-note { color: #ff6b61; font-weight: 600; }
 .fh-spl-row.is-stale { opacity: .5; }
 
+/* Plugins' cards (foh-plugins.js) */
+.fh-plugin-top { padding: 2px 0 10px; }
+.fh-plugin-main { display: flex; align-items: baseline; gap: 6px; }
+.fh-plugin-value { font-size: 44px; font-weight: 650; line-height: 1.05; letter-spacing: -1px; font-variant-numeric: tabular-nums; color: var(--text); overflow-wrap: anywhere; }
+.fh-plugin-unit { font-size: 15px; font-weight: 600; color: var(--jp-label); }
+.fh-plugin-label { font-size: 13px; color: var(--jp-label); margin-top: 2px; overflow-wrap: anywhere; }
+.fh-plugin-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--jp-line); font-size: 13px; }
+.fh-plugin-row-label { color: var(--jp-secondary); overflow-wrap: anywhere; }
+.fh-plugin-row-value { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.fh-plugin-note { font-size: 11px; line-height: 1.5; color: var(--jp-secondary); padding: 8px 0 12px; }
+.fh-plugin-top[data-color="green"] .fh-plugin-value, .fh-plugin-row[data-color="green"] .fh-plugin-row-value { color: #34c759; }
+.fh-plugin-top[data-color="yellow"] .fh-plugin-value, .fh-plugin-row[data-color="yellow"] .fh-plugin-row-value { color: #ffcc00; }
+.fh-plugin-top[data-color="red"] .fh-plugin-value, .fh-plugin-row[data-color="red"] .fh-plugin-row-value { color: #ff453a; }
+.fh-plugin-top[data-color="blue"] .fh-plugin-value, .fh-plugin-row[data-color="blue"] .fh-plugin-row-value { color: #0a84ff; }
+.fh-plugin-top[data-color="gray"] .fh-plugin-value, .fh-plugin-row[data-color="gray"] .fh-plugin-row-value { color: var(--jp-secondary); }
+.fh-plugin-card.is-stopped .fh-plugin-top, .fh-plugin-card.is-stopped .fh-plugin-row { opacity: .45; }
+.fh-plugin-card.is-stopped .fh-plugin-note { color: #ff9f0a; font-weight: 600; }
+
 /* The live item's progress, under it in the Live card */
 .fh-live-progress { height: 3px; margin-top: 10px; border-radius: 2px; background: rgba(255, 255, 255, .08); overflow: hidden; }
 .fh-live-progress i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width 1s linear; }

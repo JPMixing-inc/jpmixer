@@ -130,15 +130,26 @@
   }
   // A mouse presses at once. A finger waits a moment first: on a phone the
   // cards stack and the page scrolls, and a scroll that started on a button
-  // used to press it. If the finger moves before then, it's a scroll and
-  // nothing is sent; lifted before then, it's a tap (press + release).
-  const TOUCH_WAIT_MS = 100, TOUCH_SLOP_PX = 10;
+  // used to press it. If the finger moves well before then, it's a scroll and
+  // nothing is sent; lifted before then, it's a tap (press + release); held,
+  // it stays pressed until it's lifted (Companion's long-press actions).
+  // iPads and phones also cancel a touch that slides a little, and that tap
+  // was lost (the button showed its focus ring and needed a second tap). The
+  // browser still calls it a tap ('click'), so a tap the browser sees whose
+  // touch didn't reach Companion is sent then: one tap always presses once.
+  // Matched by touch, not by time or button: a held press the browser cancels
+  // and then calls a tap is still one press, and a quick second tap is two.
+  const TOUCH_WAIT_MS = 100, TOUCH_SLOP_PX = 16;
   let down = null; // { index, pointerId, btn, sent, timer, x, y }
+  let lastPointerType = '';
+  let gesture = null; // the latest touch: { index, sent } — what its 'click' checks
   grid.addEventListener('pointerdown', (e) => {
+    lastPointerType = e.pointerType;
     const btn = e.target.closest('.fh-companion-key');
     if (!btn || grid.classList.contains('is-offline') || document.body.classList.contains('fh-editing')) return;
     if (down) release();
-    down = { index: Number(btn.dataset.key), pointerId: e.pointerId, btn, sent: false, timer: null, x: e.clientX, y: e.clientY };
+    down = { index: Number(btn.dataset.key), pointerId: e.pointerId, btn, sent: false, timer: null, x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
+    gesture = { index: down.index, sent: false };
     btn.classList.add('is-down');
     if (e.pointerType === 'mouse') {
       e.preventDefault();
@@ -152,6 +163,7 @@
     if (!down || down.sent) return;
     clearTimeout(down.timer);
     down.sent = true;
+    if (gesture && gesture.index === down.index) gesture.sent = true;
     press(down.index, true);
   }
   // A finger that moves before the press is a scroll: let it go, send nothing
@@ -170,8 +182,25 @@
     clearTimeout(down.timer);
     down.btn.classList.remove('is-down');
     if (down.sent) press(down.index, false);
+    if (down.touch) down.btn.blur(); // no focus ring left on a tapped button
     down = null;
   }
+  // The browser's own tap, for a touch that was cancelled before it pressed
+  grid.addEventListener('click', (e) => {
+    const btn = e.target.closest('.fh-companion-key');
+    // A mouse already pressed on pointerdown; detail 0 is a keyboard press (handled below)
+    if (!btn || lastPointerType === 'mouse' || e.detail === 0) return;
+    if (grid.classList.contains('is-offline') || document.body.classList.contains('fh-editing')) return;
+    const index = Number(btn.dataset.key);
+    // Only for a touch that pressed nothing: if the latest touch pressed any
+    // button (even one the browser now says it tapped beside), this is done
+    if (gesture && gesture.sent) return;
+    gesture = { index, sent: true };
+    btn.classList.add('is-down');
+    press(index, true).then(() => press(index, false));
+    setTimeout(() => btn.classList.remove('is-down'), 120);
+    btn.blur();
+  });
   // Lifted: a tap that hadn't pressed yet presses and releases now
   grid.addEventListener('pointerup', (e) => { if (!down || e.pointerId !== down.pointerId) return; send(); release(); });
   // The browser took the touch for scrolling (or capture was lost): release only what was pressed

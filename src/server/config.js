@@ -128,6 +128,9 @@ const DEFAULTS = {
   wirelessKnown: [], // [{ id, ip, model }] every receiver seen; saved by shure-wireless.js
   wirelessAux: {},   // { "id/channel": aux }
   smaartEnabled: false,
+  // Plugins (plugins.js): off until turned on in Settings → Integrations → Plugins. Which
+  // ones are on, and their settings, are in plugins.json.
+  pluginsEnabled: false,
   smaartHost: '',
   smaartPort: 26000,
   smaartPassword: '', // Smaart's API password, only if one is set in Smaart

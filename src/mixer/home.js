@@ -51,7 +51,7 @@ async function load() {
   }
 }
 load();
-setInterval(load, 120000); // who's on can change; same cadence as the Home pages
+setInterval(load, 30000); // who's on can change
 
 // The wordmark's intro (wordmark-fx.css), once the loading splash has gone,
 // and its glare again on hover

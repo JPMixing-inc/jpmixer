@@ -849,6 +849,671 @@ document.querySelector('.tab[data-tab="views"]').addEventListener('click', refre
 document.querySelector('.tab[data-tab="smaart"]').addEventListener('click', refreshSmaartStatus);
 $('smaartEnabled').addEventListener('change', refreshSmaartStatus);
 
+// ── Plugins (Integrations) ─────────────────────────────────────────────────
+// Each plugin in JPMixer's plugins folder (src/server/plugins.js) gets its
+// own tab under Integrations, like Smaart and Shure: on/off, what it can do,
+// the settings its plugin.json asks for (every plugin has at least one), its
+// status and log. The Plugins tab lists them, and adds, updates and finds
+// them. Turning one on asks first, since it's someone else's code; like the
+// rest of Settings, on/off and settings take effect with Save & Apply. Add,
+// Remove and Reload act straight away.
+let pluginList = [];
+let pluginsAllowed = false;
+// Plugins is always at the bottom of Integrations: Allow plugins, and adding
+// and removing them. Each plugin's own tab, listed under it, shows once
+// plugins are allowed and saved.
+function showPluginsTab(on) {
+  pluginsAllowed = !!on;
+  const tabs = [...document.querySelectorAll('.tab[data-plugin-tab]')];
+  for (const tab of tabs) tab.hidden = !on;
+  if (!on && tabs.some((tab) => tab.classList.contains('active'))) document.querySelector('.tab[data-tab="plugins"]').click();
+  showPluginsAllowed();
+}
+// The switch's note, and the rest of the menu greyed out while plugins aren't allowed
+function showPluginsAllowed() {
+  const want = $('pluginsEnabled').checked;
+  const note = want === pluginsAllowed ? (pluginsAllowed ? '' : 'Turn this on, then Save & Apply, to add plugins.')
+    : `Save & Apply to ${want ? 'allow plugins' : 'turn every plugin off'}.`;
+  $('pluginsAllowNote').textContent = note;
+  for (const id of ['pluginsFind', 'pluginsIntro', 'pluginList']) $(id).classList.toggle('is-off', !pluginsAllowed);
+}
+$('pluginsEnabled').addEventListener('change', showPluginsAllowed);
+const pluginTabId = (id) => `plugin-${id}`;
+function openPluginTab(id) { document.querySelector(`.tab[data-plugin-tab="${CSS.escape(id)}"]`)?.click(); }
+function pluginMessage(text, isError = false) {
+  $('pluginsMessage').textContent = text || '';
+  $('pluginsMessage').classList.toggle('is-error', !!isError);
+}
+function pluginField(plugin, f) {
+  const value = plugin.settings[f.key];
+  const id = `plugin-${plugin.id}-${f.key}`;
+  const row = document.createElement('div');
+  row.className = 'field-row';
+  const label = document.createElement('label');
+  label.htmlFor = id;
+  label.textContent = f.label;
+  let input;
+  if (f.type === 'select') {
+    input = document.createElement('select');
+    for (const o of f.options) input.add(new Option(o.label, o.value));
+    input.value = value;
+  } else {
+    input = document.createElement('input');
+    input.type = f.type === 'checkbox' ? 'checkbox' : f.type === 'number' ? 'number' : f.type === 'password' ? 'password' : 'text';
+    if (f.type === 'checkbox') { input.className = 'toggle'; input.checked = value === true; }
+    else {
+      input.value = value === null || value === undefined ? '' : String(value);
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      if (f.placeholder) input.placeholder = f.placeholder;
+      if (f.type === 'number') { if (f.min !== null) input.min = f.min; if (f.max !== null) input.max = f.max; }
+    }
+  }
+  input.id = id;
+  input.dataset.key = f.key;
+  input.dataset.type = f.type;
+  if (f.type === 'checkbox') {
+    const line = document.createElement('div');
+    line.className = 'plugin-field-check';
+    line.append(label, input);
+    row.append(line);
+  } else row.append(label, input);
+  if (f.help) {
+    const help = document.createElement('p');
+    help.className = 'plugin-field-help';
+    help.textContent = f.help;
+    row.append(help);
+  }
+  return row;
+}
+function stateLine(p) {
+  const level = p.status ? p.status.level : 'ok';
+  const text = {
+    off: 'Off',
+    starting: 'Starting…',
+    running: (p.status && p.status.text) || 'Running',
+    restarting: (p.status && p.status.text) || 'Starting again…',
+    crashed: (p.status && p.status.text) || 'Stopped',
+  }[p.state] || '';
+  const dot = 'dot' + (p.state === 'running' ? (level === 'ok' ? ' on' : level === 'warn' ? ' warn' : ' error') : p.state === 'crashed' || p.state === 'restarting' ? ' error' : '');
+  return { dot, text };
+}
+function statusBox() {
+  const status = document.createElement('div');
+  status.className = 'companion-status';
+  status.setAttribute('role', 'status');
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  status.append(dot, document.createElement('span'));
+  return status;
+}
+// Where it came from: the approved list, or imported (not reviewed)
+const PLUGIN_SOURCE = { catalog: ['Approved', 'is-approved', 'Installed from JPMixer’s list of approved plugins'], file: ['Not reviewed', 'is-unreviewed', 'Imported from a file or folder: not on JPMixer’s list of approved plugins'] };
+function pluginTitle(p) {
+  const h2 = document.createElement('h2');
+  h2.className = 'plugin-title';
+  h2.textContent = p.manifest ? p.manifest.name : p.id;
+  if (p.manifest && p.manifest.version) {
+    const v = document.createElement('span');
+    v.className = 'plugin-version';
+    v.textContent = p.manifest.version;
+    h2.append(v);
+  }
+  const [label, cls, title] = PLUGIN_SOURCE[p.source] || PLUGIN_SOURCE.file;
+  if (p.manifest) {
+    const badge = document.createElement('span');
+    badge.className = 'plugin-badge ' + cls;
+    badge.textContent = label;
+    badge.title = title;
+    h2.append(badge);
+  }
+  return h2;
+}
+// The Plugins tab: one row per plugin, with the way to its own tab
+function renderPluginList() {
+  const list = $('pluginList');
+  list.textContent = '';
+  if (!pluginList.length) {
+    pluginMessage('No plugins yet. Add one, or put its folder in the plugins folder and select Reload plugins.');
+    return;
+  }
+  for (const p of pluginList) {
+    const row = document.createElement('section');
+    row.className = 'card companion-card plugin-row';
+    row.dataset.pluginRow = p.folder; // by folder: a broken copy can share a working plugin's id
+    const head = document.createElement('div');
+    head.className = 'card-row space-between';
+    const heading = document.createElement('div');
+    heading.className = 'settings-heading';
+    heading.append(pluginTitle(p));
+    head.append(heading);
+    if (!p.manifest) {
+      row.classList.add('plugin-invalid');
+      const err = document.createElement('p');
+      err.className = 'plugin-error';
+      err.textContent = `This plugin can’t load: ${p.error}`;
+      heading.append(err);
+      head.append(pluginRemoveButton(p));
+      row.append(head);
+      list.append(row);
+      continue;
+    }
+    if (p.manifest.description) { const d = document.createElement('p'); d.className = 'sub'; d.textContent = p.manifest.description; heading.append(d); }
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'btn btn-sm';
+    open.textContent = 'Settings';
+    open.addEventListener('click', () => openPluginTab(p.id));
+    const actions = document.createElement('div');
+    actions.className = 'plugin-row-actions';
+    actions.append(open, pluginRemoveButton(p));
+    head.append(actions);
+    row.append(head, statusBox());
+    list.append(row);
+    showPluginRowStatus(row, p);
+  }
+}
+function showPluginRowStatus(row, p) {
+  const { dot, text } = stateLine(p);
+  row.querySelector('.companion-status .dot').className = dot;
+  row.querySelector('.companion-status span:last-child').textContent = text;
+}
+// Each plugin's own tab under Integrations, just above Plugins
+function renderPluginTabs() {
+  const activeTab = document.querySelector('.tab.active');
+  const wasPlugin = activeTab && activeTab.dataset.pluginTab;
+  // Changes not saved yet (switched on or off, settings typed) are kept
+  // through the redraw: installing or removing another plugin redraws them all
+  const unsaved = collectPluginChanges({ unsavedOnly: true });
+  for (const el of document.querySelectorAll('.tab[data-plugin-tab], .tab-panel[data-plugin-panel]')) el.remove();
+  let tabAfter = document.querySelector('.tab[data-tab="plugins"]');
+  let after = $('tab-plugins');
+  for (const p of pluginList) {
+    if (!p.manifest) continue;
+    const m = p.manifest;
+    const tab = document.createElement('button');
+    tab.className = 'tab plugin-subtab';
+    tab.dataset.tab = pluginTabId(p.id);
+    tab.dataset.pluginTab = p.id;
+    tab.dataset.title = m.name;
+    tab.dataset.description = m.description || 'A plugin’s settings.';
+    tab.hidden = !pluginsAllowed;
+    const symbol = document.createElement('span');
+    symbol.className = 'nav-symbol';
+    symbol.setAttribute('aria-hidden', 'true');
+    symbol.textContent = '◇';
+    tab.append(symbol, document.createTextNode(m.name));
+    tabAfter.after(tab);
+    tabAfter = tab;
+    const panel = document.createElement('div');
+    panel.className = 'tab-panel';
+    panel.id = 'tab-' + pluginTabId(p.id);
+    panel.dataset.pluginPanel = p.id;
+    panel.append(pluginCard(p, unsaved[p.id]));
+    after.after(panel);
+    after = panel;
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach((x) => x.classList.remove('active'));
+      tab.classList.add('active');
+      panel.classList.add('active');
+      window.jpmShowTabTitle?.(tab);
+      updateRestoreSelection();
+      refreshPluginStatus();
+    });
+  }
+  // Back where it was, or to the list if that plugin has gone
+  if (wasPlugin) {
+    if (document.querySelector(`.tab[data-plugin-tab="${CSS.escape(wasPlugin)}"]`)) openPluginTab(wasPlugin);
+    else document.querySelector('.tab[data-tab="plugins"]').click();
+  }
+}
+function renderPlugins() {
+  renderPluginList();
+  renderPluginTabs();
+}
+// One plugin's settings: what its tab shows. `unsaved`: changes made here
+// before a redraw, put back.
+function pluginCard(p, unsaved) {
+  const card = document.createElement('section');
+  card.className = 'card companion-card plugin-card';
+  card.dataset.plugin = p.id;
+  const head = document.createElement('div');
+  head.className = 'card-row space-between';
+  const heading = document.createElement('div');
+  heading.className = 'settings-heading';
+  heading.append(pluginTitle(p));
+  const m = p.manifest;
+  if (m.description) { const d = document.createElement('p'); d.className = 'sub'; d.textContent = m.description; heading.append(d); }
+  if (m.author || m.homepage) {
+    const meta = document.createElement('p');
+    meta.className = 'sub plugin-meta';
+    if (m.author) meta.append(document.createTextNode(`By ${m.author}`));
+    if (m.homepage) {
+      const link = document.createElement('button');
+      link.type = 'button'; link.className = 'btn btn-sm'; link.textContent = 'Website';
+      link.addEventListener('click', () => window.jpm.pluginsOpenHomepage(p.id));
+      meta.append(link);
+    }
+    heading.append(meta);
+  }
+  const toggle = document.createElement('input');
+  toggle.type = 'checkbox';
+  toggle.className = 'toggle';
+  toggle.checked = unsaved ? unsaved.enabled : p.enabled;
+  toggle.dataset.saved = String(p.enabled);
+  toggle.setAttribute('aria-label', `Turn on ${m.name}`);
+  head.append(heading, toggle);
+  card.append(head);
+
+  const permsLabel = document.createElement('p');
+  permsLabel.className = 'plugin-perms-label';
+  permsLabel.textContent = p.permissions.length ? 'IT CAN' : 'IT DOESN’T ASK FOR ANYTHING FROM JPMIXER';
+  card.append(permsLabel);
+  if (p.permissions.length) {
+    const perms = document.createElement('ul');
+    perms.className = 'plugin-perms';
+    for (const perm of p.permissions) { const li = document.createElement('li'); li.textContent = perm.text; perms.append(li); }
+    card.append(perms);
+  }
+
+  const fields = document.createElement('div');
+  fields.className = 'plugin-fields';
+  const shownSettings = unsaved ? { ...p.settings, ...unsaved.settings } : p.settings;
+  for (const f of m.settings) fields.append(pluginField({ ...p, settings: shownSettings }, f));
+  // For whoever is writing it: saving its files starts it again
+  const watchRow = document.createElement('label');
+  watchRow.className = 'plugin-watch';
+  const watchText = document.createElement('span');
+  watchText.textContent = 'Restart when its files change (for people making plugins)';
+  const watch = document.createElement('input');
+  watch.type = 'checkbox';
+  watch.className = 'toggle plugin-watch-toggle';
+  watch.checked = unsaved ? unsaved.watch : p.watch === true;
+  if (unsaved && unsaved.edited) card.dataset.edited = '1';
+  watchRow.append(watchText, watch);
+  watch.addEventListener('change', () => { card.dataset.edited = '1'; showPluginStatus(card, p); });
+  card.append(fields, watchRow, statusBox());
+
+  const actions = document.createElement('div');
+  actions.className = 'card-row plugin-actions';
+  const log = document.createElement('details');
+  log.className = 'settings-help';
+  const summary = document.createElement('summary');
+  summary.textContent = 'Log';
+  const lines = document.createElement('div');
+  lines.className = 'plugin-log-lines';
+  log.append(summary, lines);
+  log.addEventListener('toggle', () => { if (log.open) refreshPluginLog(p.id, lines); });
+  actions.append(log, pluginRemoveButton(p));
+  card.append(actions);
+
+  const updateFields = () => {
+    fields.classList.toggle('is-off', !toggle.checked);
+    for (const el of fields.querySelectorAll('input, select')) el.disabled = !toggle.checked;
+  };
+  toggle.addEventListener('change', async () => {
+    if (toggle.checked && toggle.dataset.saved !== 'true') {
+      toggle.disabled = true;
+      const { ok } = await window.jpm.pluginsConfirmEnable(p.id).catch(() => ({ ok: false }));
+      toggle.disabled = false;
+      if (!ok) toggle.checked = false;
+    }
+    updateFields();
+    showPluginStatus(card, p);
+  });
+  fields.addEventListener('input', () => { card.dataset.edited = '1'; showPluginStatus(card, p); });
+  updateFields();
+  showPluginStatus(card, p);
+  return card;
+}
+function pluginRemoveButton(p) {
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'btn btn-sm';
+  remove.textContent = 'Remove…';
+  remove.addEventListener('click', async () => {
+    const result = await window.jpm.pluginsRemove(p.folder).catch((e) => ({ ok: false, error: e.message }));
+    if (result.canceled) return;
+    await loadPlugins();
+    pluginMessage(result.ok ? `Removed ${p.manifest ? p.manifest.name : p.id}.` : result.error, !result.ok);
+  });
+  return remove;
+}
+function showPluginStatus(card, p) {
+  const toggle = card.querySelector('.card-row > .toggle');
+  const dot = card.querySelector('.companion-status .dot');
+  const text = card.querySelector('.companion-status span:last-child');
+  if (!toggle || !dot || !text) return;
+  if (toggle.checked !== p.enabled) { dot.className = 'dot'; text.textContent = `Save & Apply to turn it ${toggle.checked ? 'on' : 'off'}.`; return; }
+  if (card.dataset.edited && p.enabled) { dot.className = 'dot'; text.textContent = 'Save & Apply to use the new settings (it starts again).'; return; }
+  const line = stateLine(p);
+  dot.className = line.dot;
+  text.textContent = line.text;
+}
+async function refreshPluginLog(id, box) {
+  const lines = await window.jpm.pluginsLog(id).catch(() => []);
+  const key = lines.length ? `${lines.length}:${lines[lines.length - 1].at}:${lines[0].at}` : '0';
+  if (box.dataset.key === key) return; // nothing new: leave it where it's scrolled to
+  box.dataset.key = key;
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+  box.textContent = '';
+  if (!lines.length) { box.textContent = 'Nothing logged yet. A plugin’s console.log() lines show here while it runs.'; return; }
+  for (const l of lines) {
+    const line = document.createElement('div');
+    if (l.level === 'error') line.className = 'is-error';
+    line.textContent = `${new Date(l.at).toLocaleTimeString()}  ${l.text}`;
+    box.append(line);
+  }
+  if (atBottom) box.scrollTop = box.scrollHeight; // following along; not if scrolled up to read
+}
+async function loadPlugins() {
+  let result;
+  try { result = await window.jpm.pluginsList(); } catch (_) { return; }
+  pluginList = result.plugins || [];
+  pluginMessage('');
+  renderPlugins();
+}
+// While the Plugins tab or a plugin's tab is showing: each plugin's state,
+// without redrawing what's being edited
+async function refreshPluginStatus() {
+  const showing = $('tab-plugins').classList.contains('active') || !!document.querySelector('.tab-panel.active[data-plugin-panel]');
+  if (!pluginsAllowed || !showing) return;
+  let result;
+  try { result = await window.jpm.pluginsList(); } catch (_) { return; }
+  const fresh = result.plugins || [];
+  const shape = (list) => list.map((p) => p.id + (p.manifest ? p.manifest.version : '!')).join('|');
+  if (shape(fresh) !== shape(pluginList)) {
+    if (!document.querySelector('[data-plugin-panel] [data-edited]')) { pluginList = fresh; renderPlugins(); }
+    return;
+  }
+  pluginList = fresh;
+  for (const p of fresh) {
+    const row = document.querySelector(`#pluginList [data-plugin-row="${CSS.escape(p.folder)}"]`);
+    if (row && p.manifest) showPluginRowStatus(row, p);
+    const card = document.querySelector(`[data-plugin-panel] [data-plugin="${CSS.escape(p.id)}"]`);
+    if (card) showPluginStatus(card, p);
+    const log = card && card.querySelector('details.settings-help[open] .plugin-log-lines');
+    if (log) refreshPluginLog(p.id, log);
+  }
+}
+// { id: { enabled, settings, watch } } for Save & Apply; with unsavedOnly,
+// only the plugins changed here since they were drawn
+function collectPluginChanges({ unsavedOnly = false } = {}) {
+  const out = {};
+  for (const card of document.querySelectorAll('[data-plugin-panel] [data-plugin]')) {
+    const toggle = card.querySelector('.card-row > .toggle');
+    if (!toggle) continue;
+    const edited = !!card.dataset.edited;
+    if (unsavedOnly && !edited && String(toggle.checked) === toggle.dataset.saved) continue;
+    const settings = {};
+    for (const el of card.querySelectorAll('.plugin-fields [data-key]')) {
+      settings[el.dataset.key] = el.dataset.type === 'checkbox' ? el.checked : el.value;
+    }
+    const watch = card.querySelector('.plugin-watch-toggle');
+    out[card.dataset.plugin] = { enabled: toggle.checked, settings, watch: !!(watch && watch.checked), edited };
+  }
+  return out;
+}
+setInterval(refreshPluginStatus, 3000);
+document.querySelector('.tab[data-tab="plugins"]').addEventListener('click', () => setTimeout(refreshPluginStatus)); // once the panel is showing
+$('pluginFolderBtn').addEventListener('click', () => window.jpm.pluginsOpenFolder());
+$('pluginGuideBtn').addEventListener('click', () => window.jpm.pluginsOpenGuide());
+$('pluginReloadBtn').addEventListener('click', async () => {
+  $('pluginReloadBtn').disabled = true;
+  await window.jpm.pluginsReload().catch(() => {});
+  $('pluginReloadBtn').disabled = false;
+  await loadPlugins();
+  pluginMessage('Reloaded. Plugins that are on started again.');
+});
+// After any install: what to say. main.js shows the plugin and asks first.
+async function afterInstall(result, statusEl = $('pluginsMessage')) {
+  if (result.canceled) return;
+  await loadPlugins();
+  loadCatalog(false);
+  const say = (text, isError) => { statusEl.textContent = text; statusEl.classList.toggle('is-error', !!isError); };
+  if (!result.ok) { if (result.error) say(`Couldn’t install that plugin. ${result.error}`, true); return; }
+  say(result.replaced ? `Updated ${result.manifest.name}.` : `Installed ${result.manifest.name}. Open it under Plugins in the sidebar, turn it on there, then Save & Apply.`);
+}
+$('pluginImportBtn').addEventListener('click', async () => afterInstall(await window.jpm.pluginsImport('file').catch((e) => ({ ok: false, error: e.message }))));
+$('pluginImportFolderBtn').addEventListener('click', async () => afterInstall(await window.jpm.pluginsImport('folder').catch((e) => ({ ok: false, error: e.message }))));
+// A .jpmplugin, .zip or plugin folder dropped anywhere on the Plugins page
+{
+  const page = $('tab-plugins');
+  const files = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  // The panel is display: contents, so the drop is caught on main while it's showing
+  const main = document.querySelector('main');
+  const showing = () => page.classList.contains('active') && pluginsAllowed;
+  main.addEventListener('dragover', (e) => { if (!showing() || !files(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; page.classList.add('is-dropping'); });
+  main.addEventListener('dragleave', (e) => { if (!main.contains(e.relatedTarget)) page.classList.remove('is-dropping'); });
+  main.addEventListener('drop', async (e) => {
+    page.classList.remove('is-dropping');
+    if (!showing() || !files(e)) return;
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    const where = file && window.jpm.pathForFile(file);
+    if (!where) { pluginMessage('Couldn’t read that file. Use Import plugin… instead.', true); return; }
+    afterInstall(await window.jpm.pluginsImportPath(where).catch((err) => ({ ok: false, error: err.message })));
+  });
+  // Dropped anywhere else in Settings: don't let the window open the file
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
+}
+$('pluginSubmitBtn').addEventListener('click', () => window.jpm.pluginsOpenSubmit());
+window.jpm.onPluginsChanged(() => { loadPlugins(); loadCatalog(false); });
+// A .jpmplugin opened from Finder or Explorer: what happened
+window.jpm.onPluginsResult?.((result) => afterInstall(result));
+window.jpm.onPluginsShow(() => document.querySelector('.tab[data-tab="plugins"]').click());
+
+// ── Find plugins: the approved list on GitHub (plugin-store.js) ──
+// Asked for only when the Plugins page is opened (once per window) or
+// Refresh is pressed, never in the background.
+let catalogLoaded = false;
+async function loadCatalog(force) {
+  if (!pluginsAllowed || (!force && !catalogLoaded)) return;
+  catalogLoaded = true;
+  const status = $('pluginCatalogStatus');
+  if (force) status.textContent = 'Getting the list…';
+  status.classList.remove('is-error');
+  let result;
+  try { result = await window.jpm.pluginsCatalog(); } catch (e) { result = { ok: false, error: e.message }; }
+  const box = $('pluginCatalog');
+  if (!result.ok) { box.textContent = ''; status.textContent = result.error; status.classList.add('is-error'); return; }
+  status.textContent = result.plugins.length ? '' : 'No approved plugins yet.';
+  box.replaceChildren(...result.plugins.map((p) => {
+    const item = document.createElement('div');
+    item.className = 'plugin-catalog-item';
+    const info = document.createElement('div');
+    const h3 = document.createElement('h3');
+    h3.textContent = p.name;
+    const v = document.createElement('span'); v.className = 'plugin-version'; v.textContent = p.version; h3.append(v);
+    info.append(h3);
+    if (p.description) { const d = document.createElement('p'); d.className = 'sub'; d.textContent = p.description; info.append(d); }
+    if (p.author) { const a = document.createElement('p'); a.className = 'sub'; a.textContent = `By ${p.author}`; info.append(a); }
+    const perms = document.createElement('p');
+    perms.className = 'plugin-catalog-perms';
+    perms.textContent = p.permissions.length ? `It can: ${p.permissions.map((x) => x.text.charAt(0).toLowerCase() + x.text.slice(1)).join('; ')}.` : 'It doesn’t ask for anything from JPMixer.';
+    info.append(perms);
+    const actions = document.createElement('div');
+    actions.className = 'plugin-catalog-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-sm';
+    if (p.tooNew) { button.textContent = 'Install'; button.disabled = true; const n = document.createElement('span'); n.className = 'sub'; n.textContent = `Needs JPMixer ${p.minJPMixer}`; actions.append(button, n); }
+    else if (p.installedVersion && !p.update) { const done = document.createElement('span'); done.className = 'plugin-catalog-installed'; done.textContent = `Installed (${p.installedVersion})`; actions.append(done); }
+    else {
+      button.textContent = p.update ? `Update to ${p.version}` : 'Install';
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        const prev = button.textContent;
+        button.textContent = 'Downloading…';
+        const result = await window.jpm.pluginsInstallCatalog(p.id).catch((e) => ({ ok: false, error: e.message }));
+        button.disabled = false;
+        button.textContent = prev;
+        afterInstall(result, $('pluginCatalogStatus'));
+      });
+      actions.append(button);
+      if (p.update) { const n = document.createElement('span'); n.className = 'sub'; n.textContent = `You have ${p.installedVersion}`; actions.append(n); }
+    }
+    item.append(info, actions);
+    return item;
+  }));
+}
+$('pluginCatalogRefresh').addEventListener('click', () => loadCatalog(true));
+document.querySelector('.tab[data-tab="plugins"]').addEventListener('click', () => { if (!catalogLoaded) loadCatalog(true); });
+
+// ── Performance (System) ────────────────────────────────────────────────────
+// How hard JPMixer and this computer are working (src/server/system-stats.js
+// and main.js performanceReport), every 2 seconds while the tab is showing.
+// Read-only. Copy report puts the same numbers on the clipboard as text.
+let perfLast = null;
+const perfBytes = (b) => {
+  if (!Number.isFinite(b)) return '—';
+  if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(1)} GB`;
+  if (b >= 1024 ** 2) return `${Math.round(b / 1024 ** 2)} MB`;
+  return `${Math.max(1, Math.round(b / 1024))} KB`;
+};
+const perfMB = (mb) => (Number.isFinite(mb) ? perfBytes(mb * 1024 ** 2) : '—');
+const perfDuration = (sec) => {
+  if (!Number.isFinite(sec)) return '—';
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  if (d) return `${d} day${d === 1 ? '' : 's'} ${h} h`;
+  if (h) return `${h} h ${m} min`;
+  return m ? `${m} min` : `${sec} s`;
+};
+const PERF_THERMAL = { nominal: 'Normal', fair: 'Warm', serious: 'Hot', critical: 'Very hot', unknown: 'Not reported' };
+const PERF_CONSOLE = { digico: 'DiGiCo', dlive: 'Allen & Heath dLive', klang: 'KLANG', wing: 'Behringer WING', lv1: 'Waves LV1' };
+function perfEl(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
+function perfTile(label, value, sub, level) {
+  const t = perfEl('div', 'perf-tile' + (level ? ' is-' + level : ''));
+  t.append(perfEl('div', 'perf-tile-label', label), perfEl('div', 'perf-tile-value', value));
+  if (sub) t.append(perfEl('div', 'perf-tile-sub', sub));
+  return t;
+}
+function perfRow(name, text, dot) {
+  const r = perfEl('div', 'perf-row');
+  r.append(perfEl('span', 'dot' + (dot ? ' ' + dot : '')), perfEl('span', 'perf-row-name', name), perfEl('span', 'perf-row-text', text));
+  return r;
+}
+function perfFacts(box, pairs) {
+  box.replaceChildren(...pairs.flatMap(([k, v]) => [perfEl('div', 'perf-fact-label', k), perfEl('div', 'perf-fact-value', v)]));
+}
+function renderPerformance(s) {
+  perfLast = s;
+  const j = s.jpmixer, c = s.computer, x = s.extra;
+  $('perfUpdated').textContent = `Updated ${new Date(s.at).toLocaleTimeString()}. Refreshes every 2 seconds while this tab is open.`;
+  // Right now
+  const health = s.health.length ? s.health : [{ level: 'ok', text: 'Everything looks normal.' }];
+  $('perfHealth').replaceChildren(...health.map((h) => { const li = perfEl('li', 'is-' + h.level); li.append(perfEl('span', 'dot'), perfEl('span', '', h.text)); return li; }));
+  // JPMixer
+  const r = j.responsiveness;
+  $('perfApp').replaceChildren(
+    perfTile('Processor', `${j.cpuOfComputer.toFixed(1)}%`, `of this computer · peak ${j.cpuPeakOfComputer.toFixed(1)}%`, j.cpuOfComputer >= 60 ? 'warn' : ''),
+    perfTile('Memory', perfMB(j.memoryMB), `peak ${perfMB(j.memoryPeakMB)}`, j.memoryMB >= 2048 ? 'warn' : ''),
+    perfTile('Responsiveness', r.maxMs < 100 ? 'Good' : r.maxMs < 500 ? 'Some delay' : 'Slow', `longest hold-up ${r.maxMs} ms in the last 10 s · peak ${r.peakMaxMs} ms`, r.maxMs < 100 ? 'ok' : r.maxMs < 500 ? 'warn' : 'error'),
+    perfTile('Running for', perfDuration(j.uptimeSec), `version ${j.version}`),
+  );
+  $('perfProcSummary').textContent = `Processes (${j.processes.length})`;
+  const table = perfEl('table', 'perf-table');
+  const head = perfEl('tr');
+  head.append(perfEl('th', '', 'Process'), perfEl('th', '', 'Processor'), perfEl('th', '', 'Memory'));
+  table.append(head);
+  for (const p of j.processes) {
+    const tr = perfEl('tr');
+    tr.append(perfEl('td', '', p.name), perfEl('td', '', p.cpu === null ? '—' : `${p.cpu.toFixed(1)}%`), perfEl('td', '', perfMB(p.memoryMB)));
+    table.append(tr);
+  }
+  $('perfProcs').replaceChildren(table);
+  // Connections
+  const t = s.traffic;
+  $('perfConn').replaceChildren(
+    perfTile('Server', x.server.running ? 'Running' : 'Stopped', x.server.running ? `http://${x.server.address}:${x.server.port}` : 'Start it on Get started', x.server.running ? 'ok' : 'warn'),
+    perfTile('Phones & pages', String(x.connections), 'connected right now'),
+    perfTile('Console', x.console.demo ? 'Demo mode' : x.console.connected ? 'Connected' : 'Not connected', PERF_CONSOLE[x.console.type] || x.console.type, x.console.demo ? '' : x.console.connected ? 'ok' : 'warn'),
+    perfTile('Console messages', t.seen ? `${t.inPerSec} in · ${t.outPerSec} out` : '—', t.seen ? 'a second, over the last 10 s' : 'Shown for DiGiCo consoles'),
+  );
+  // Integrations
+  const rows = [];
+  const p = x.pco;
+  if (!p.configured) rows.push(perfRow('Planning Center', 'Not set up', ''));
+  else {
+    const fail = p.lastFailure ? ` Last problem: ${p.lastFailure.message}, ${new Date(p.lastFailure.at).toLocaleTimeString()}.` : '';
+    rows.push(perfRow('Planning Center', `${p.last20s} requests in the last 20 s (the limit is ${p.limitPer20s}) · ${p.lastMinute} in the last minute.${fail}`, p.last20s >= 80 ? 'warn' : p.lastFailure && Date.now() - Date.parse(p.lastFailure.at) < 120000 ? 'warn' : 'on'));
+  }
+  const live = (it, name) => rows.push(perfRow(name, it.enabled ? it.message || it.state : 'Off', !it.enabled ? '' : it.state === 'connected' ? 'on' : it.state === 'error' ? 'error' : 'warn'));
+  live(x.companion, 'Companion');
+  live(x.smaart, 'Smaart SPL');
+  rows.push(perfRow('Shure wireless', x.shure.enabled ? `${x.shure.connected} of ${x.shure.receivers} receiver${x.shure.receivers === 1 ? '' : 's'} connected` : 'Off', !x.shure.enabled ? '' : x.shure.receivers && x.shure.connected === x.shure.receivers ? 'on' : 'warn'));
+  rows.push(perfRow('Control API', x.controlApi ? 'On' : 'Off', x.controlApi ? 'on' : ''));
+  if (x.pluginsAllowed) {
+    const running = x.plugins.filter((pl) => pl.state === 'running').length;
+    const bad = x.plugins.filter((pl) => pl.state === 'crashed' || pl.state === 'restarting');
+    rows.push(perfRow('Plugins', x.plugins.length ? `${running} of ${x.plugins.length} running${bad.length ? `. Stopped: ${bad.map((pl) => pl.name).join(', ')}` : ''}` : 'None turned on', bad.length ? 'warn' : x.plugins.length ? 'on' : ''));
+  }
+  $('perfIntegrations').replaceChildren(...rows);
+  // This computer
+  const availPct = c.memoryTotalBytes ? Math.round((c.memoryAvailableBytes / c.memoryTotalBytes) * 100) : null;
+  const diskPct = c.disk.totalBytes ? Math.round((c.disk.freeBytes / c.disk.totalBytes) * 100) : null;
+  $('perfComputer').replaceChildren(
+    perfTile('Processor load', c.load === null ? '—' : `${c.load}%`, c.load === null ? 'Not reported on Windows' : 'everything on it, last minute', c.load !== null && c.load >= 90 ? 'warn' : ''),
+    perfTile('Memory available', perfBytes(c.memoryAvailableBytes), `of ${perfBytes(c.memoryTotalBytes)}${availPct !== null ? ` (${availPct}%)` : ''}`, availPct !== null && availPct < 5 ? 'error' : availPct !== null && availPct < 12 ? 'warn' : ''),
+    perfTile('Disk free', perfBytes(c.disk.freeBytes), c.disk.totalBytes ? `of ${perfBytes(c.disk.totalBytes)} (${diskPct}%)` : '', c.disk.freeBytes !== null && c.disk.freeBytes < 1024 ** 3 ? 'error' : c.disk.freeBytes !== null && c.disk.freeBytes < 5 * 1024 ** 3 ? 'warn' : ''),
+    perfTile('Temperature', PERF_THERMAL[c.thermal] || c.thermal, c.thermal === 'unknown' ? '' : 'as this computer reports it', c.thermal === 'critical' ? 'error' : c.thermal === 'serious' ? 'warn' : c.thermal === 'nominal' ? 'ok' : ''),
+  );
+  perfFacts($('perfComputerFacts'), [
+    ['Name', c.name],
+    ['System', `${c.os} (${c.arch})`],
+    ['Processor', `${c.cpuModel}, ${c.cores} cores`],
+    ['On for', perfDuration(c.uptimeSec)],
+    ['Power', c.onBattery ? 'Battery' : 'Plugged in'],
+    ['Keep awake', x.server.keepAwake ? 'On while the server runs' : 'Off'],
+  ]);
+  perfFacts($('perfData'), [
+    ['All of it', perfBytes(s.folder.bytes)],
+    ['Backups', perfBytes(s.folder.backupsBytes)],
+    ['Folder', s.folder.path],
+    ['Versions', `JPMixer ${j.version} · Electron ${j.versions.electron} · Node ${j.versions.node} · Chrome ${j.versions.chrome}`],
+  ]);
+}
+// The same numbers as plain text, for whoever is helping (no passwords or names)
+function performanceText(s) {
+  const j = s.jpmixer, c = s.computer, x = s.extra, t = s.traffic;
+  const lines = [
+    `JPMixer performance report, ${new Date(s.at).toLocaleString()}`,
+    '',
+    'Right now:',
+    ...(s.health.length ? s.health.map((h) => `  [${h.level}] ${h.text}`) : ['  Everything looks normal.']),
+    '',
+    `JPMixer ${j.version}, running for ${perfDuration(j.uptimeSec)}`,
+    `  Processor ${j.cpuOfComputer.toFixed(1)}% of the computer (peak ${j.cpuPeakOfComputer.toFixed(1)}%), memory ${perfMB(j.memoryMB)} (peak ${perfMB(j.memoryPeakMB)})`,
+    `  Longest hold-up ${j.responsiveness.maxMs} ms in the last 10 s (peak ${j.responsiveness.peakMaxMs} ms)`,
+    ...j.processes.map((p) => `  - ${p.name}: ${p.cpu === null ? '—' : p.cpu.toFixed(1) + '%'}, ${perfMB(p.memoryMB)}`),
+    '',
+    `Server ${x.server.running ? 'running on port ' + x.server.port : 'stopped'}, ${x.connections} connected`,
+    `Console: ${PERF_CONSOLE[x.console.type] || x.console.type}, ${x.console.demo ? 'demo mode' : x.console.connected ? 'connected' : 'not connected'}${t.seen ? `, ${t.inPerSec} in / ${t.outPerSec} out a second` : ''}`,
+    `Planning Center: ${x.pco.configured ? `${x.pco.last20s} requests in 20 s, ${x.pco.lastMinute} in a minute${x.pco.lastFailure ? `, last problem ${x.pco.lastFailure.message} at ${new Date(x.pco.lastFailure.at).toLocaleTimeString()}` : ''}` : 'not set up'}`,
+    `Companion: ${x.companion.enabled ? x.companion.state : 'off'} · Smaart: ${x.smaart.enabled ? x.smaart.state : 'off'} · Shure: ${x.shure.enabled ? `${x.shure.connected}/${x.shure.receivers} receivers` : 'off'} · Control API: ${x.controlApi ? 'on' : 'off'}${x.pluginsAllowed ? ` · Plugins: ${x.plugins.map((p) => `${p.name} (${p.state})`).join(', ') || 'none on'}` : ''}`,
+    '',
+    `Computer: ${c.os} (${c.arch}), ${c.cpuModel}, ${c.cores} cores, on for ${perfDuration(c.uptimeSec)}`,
+    `  Load ${c.load === null ? '—' : c.load + '%'}, memory available ${perfBytes(c.memoryAvailableBytes)} of ${perfBytes(c.memoryTotalBytes)}, disk free ${perfBytes(c.disk.freeBytes)}, temperature ${PERF_THERMAL[c.thermal] || c.thermal}, ${c.onBattery ? 'on battery' : 'plugged in'}`,
+    `  JPMixer's data ${perfBytes(s.folder.bytes)} (backups ${perfBytes(s.folder.backupsBytes)})`,
+    `  Electron ${j.versions.electron}, Node ${j.versions.node}, Chrome ${j.versions.chrome}`,
+  ];
+  return lines.join('\n');
+}
+async function refreshPerformance() {
+  if (!$('tab-performance').classList.contains('active')) return;
+  try { renderPerformance(await window.jpm.getPerformance()); } catch (_) { /* try again shortly */ }
+}
+setInterval(refreshPerformance, 2000);
+document.querySelector('.tab[data-tab="performance"]').addEventListener('click', () => setTimeout(refreshPerformance)); // once the panel is showing
+$('perfCopyBtn').addEventListener('click', async () => {
+  if (!perfLast) return;
+  await window.jpm.copyText(performanceText(perfLast));
+  $('perfCopyBtn').textContent = 'Copied';
+  setTimeout(() => { $('perfCopyBtn').textContent = 'Copy report'; }, 1500);
+});
+
 // Pages tab → "Refresh team & role lists": the same two fetches the Planning
 // Center tab's Refresh buttons make, with the outcome shown on the Pages tab.
 $('pagesRefreshPcoBtn').addEventListener('click', async () => {
@@ -1660,6 +2325,9 @@ function applyConfig(cfg) {
   $('autoStart').checked          = !!cfg.autoStart;
   $('openAtLogin').checked        = !!cfg.openAtLogin;
   $('keepAwake').checked          = cfg.keepAwake !== false;
+  $('pluginsEnabled').checked     = cfg.pluginsEnabled === true;
+  showPluginsTab(cfg.pluginsEnabled === true);
+  loadPlugins(); // the list under Integrations → Plugins, and each plugin's tab (shown once allowed)
   $('sceneRecallEnabled').checked = !!cfg.sceneRecallEnabled;
   $('performerEarScenes').checked = cfg.performerEarScenes !== false;
   loadBranding(cfg);
@@ -1783,6 +2451,7 @@ function collectConfig() {
   out.autoStart           = $('autoStart').checked;
   out.openAtLogin         = $('openAtLogin').checked;
   out.keepAwake           = $('keepAwake').checked;
+  out.pluginsEnabled      = $('pluginsEnabled').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;
   out.performerEarScenes  = $('performerEarScenes').checked;
   out.brandLogo           = brandLogoFile;
@@ -2448,6 +3117,23 @@ $('saveBtn').addEventListener('click', async () => {
     alert((result && result.error) || 'Could not save settings — nothing was changed.');
     setTimeout(() => { $('saveBtn').textContent = 'Save & Apply'; }, 2000);
     return;
+  }
+  // Plugins keep their own on/off and settings (plugins.json)
+  showPluginsTab(out.pluginsEnabled);
+  if (out.pluginsEnabled) {
+    let pluginsSaved = true;
+    if (document.querySelector('[data-plugin-panel] [data-plugin]')) {
+      const pluginResult = await window.jpm.pluginsSave(collectPluginChanges()).catch((e) => ({ ok: false, error: e.message }));
+      if (!pluginResult.ok) { pluginsSaved = false; alert(pluginResult.error || 'Couldn’t save the plugin settings.'); }
+    }
+    // Saved: drawn again from what's saved (and the plugins' tabs added when
+    // plugins were just allowed). Not saved: the changes stay to try again.
+    if (pluginsSaved) {
+      for (const card of document.querySelectorAll('[data-plugin-panel] [data-plugin]')) delete card.dataset.edited;
+      for (const t of document.querySelectorAll('[data-plugin-panel] .card-row > .toggle')) t.dataset.saved = String(t.checked);
+      await loadPlugins();
+    }
+    if (!catalogLoaded && $('tab-plugins').classList.contains('active')) loadCatalog(true);
   }
   // This is now the baseline for the next save. Turning performer names off
   // takes them off the mixes on save, so pick up the names they have now.

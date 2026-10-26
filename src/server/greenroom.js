@@ -48,15 +48,17 @@ const pcoServices = require('./pco-services'); // the main service, or the secon
 // started mid-item). `index` is the item's place in the order of service,
 // the same list /foh-data sends, so a Home page can tell its Live card is
 // behind.
-const LIVE_CACHE_MS = 8000;
-let liveCache = { at: 0, key: '', value: null };
+const LIVE_CACHE_MS = 3000; // with Planning Center's own 3 s (pco-client.js shared.getLive)
+let liveCache = { at: 0, key: '', value: null, asked: 0 };
 let firstSeen = { key: '', at: 0 };
+let liveAsked = 0; // numbers each ask: a slow answer never replaces a newer one
 const itemOut = (it) => it && { title: it.title, keyName: it.keyName, length: it.length, type: it.type };
 async function liveNow(creds, active) {
   const { service, plan } = active || await pcoServices.activeService(pco, creds);
   if (!plan) return null;
   const key = `${service.serviceTypeId}:${plan.id}`;
   if (liveCache.key === key && Date.now() - liveCache.at < LIVE_CACHE_MS) return liveCache.value;
+  const asked = ++liveAsked;
   const [items, live] = await Promise.all([
     pco.listPlanItems(service.serviceTypeId, plan.id, creds),
     pco.getLive(service.serviceTypeId, plan.id, creds),
@@ -64,13 +66,14 @@ async function liveNow(creds, active) {
   const at = live ? items.findIndex((it) => it.id === live.itemId) : -1;
   // Up next skips section headers ("WORSHIP"), as FOH Home's Live card does
   const next = at < 0 ? null : items.slice(at + 1).find((it) => it.type !== 'header') || null;
+  if (liveCache.key === key && liveCache.asked > asked) return liveCache.value; // a newer answer already came in
   let value = null;
   if (at >= 0) {
     const seenKey = `${key}:${live.itemId}`;
     if (firstSeen.key !== seenKey) firstSeen = { key: seenKey, at: Date.now() };
     value = { now: itemOut(items[at]), next: itemOut(next), index: at, startedAt: live.startedAt || new Date(firstSeen.at).toISOString() };
   }
-  liveCache = { at: Date.now(), key, value };
+  liveCache = { at: Date.now(), key, value, asked };
   return value;
 }
 
@@ -170,7 +173,7 @@ function mountGreenRoom(app) {
       const [live, next] = await Promise.all([liveNow(creds, active), nextServiceAt(creds, active).catch(() => null)]);
       res.json({ ok: true, live, nextServiceAt: next, serverTime: serverTime() });
     }
-    catch (err) { res.json({ ok: false, live: null, nextServiceAt: null, serverTime: serverTime(), error: err.message }); }
+    catch (err) { res.json({ ok: false, temporary: require('./pco-client').isTemporary(err), live: null, nextServiceAt: null, serverTime: serverTime(), error: err.message }); }
   });
 
   app.get('/greenroom-data', async (req, res) => {
@@ -253,4 +256,22 @@ function mountGreenRoom(app) {
 }
 
 // _resetLive(false) only drops the few-second cache (tests)
-module.exports = { mountGreenRoom, _resetLive: (all = true) => { liveCache = { at: 0, key: '', value: null }; if (all) firstSeen = { key: '', at: 0 }; } };
+// For plugins that ask for Planning Center (plugins.js): the plan, what's
+// live and next, and when the next service starts. No people, no links.
+async function planningCenterForPlugins() {
+  const appId = config.get('pcoAppId'), secret = config.get('pcoSecret');
+  if (!appId || !secret || !config.get('pcoServiceTypeId')) return { connected: false, plan: null, live: null, nextServiceAt: null };
+  const creds = { appId, secret };
+  const active = await pcoServices.activeService(pco, creds);
+  const plan = active.plan;
+  if (!plan) return { connected: true, plan: null, live: null, nextServiceAt: null };
+  const [live, next] = await Promise.all([liveNow(creds, active), nextServiceAt(creds, active).catch(() => null)]);
+  return {
+    connected: true,
+    plan: { title: plan.title || '', seriesTitle: plan.seriesTitle || '', date: plan.date || null },
+    live: live ? { now: live.now, next: live.next, startedAt: live.startedAt } : null,
+    nextServiceAt: next,
+  };
+}
+
+module.exports = { mountGreenRoom, planningCenterForPlugins, _resetLive: (all = true) => { liveCache = { at: 0, key: '', value: null, asked: 0 }; if (all) firstSeen = { key: '', at: 0 }; } };

@@ -511,7 +511,7 @@ async function main() {
     const first = calls;
     assert.deepEqual(a, b);
     await pco.shared.listPositions('1', creds);
-    assert.equal(calls, first, 'screens loading together, or within 20s, share one answer');
+    assert.equal(calls, first, 'screens loading together, or within 10s, share one answer');
     await pco.listPositions('1', creds);
     assert(calls > first, 'Settings (the plain functions) always fetches fresh');
     calls = 0;
@@ -524,6 +524,58 @@ async function main() {
     assert(calls > 0, 'a failure is not cached');
     global.fetch = realFetch;
     t('the display pages share a short Planning Center cache; Settings and failures are never cached');
+  }
+
+  {
+    // What's live: shared by every screen, for only 3 s, so they follow it within seconds
+    const realFetch = global.fetch;
+    let calls = 0;
+    global.fetch = async (...args) => { calls++; return realFetch(...args); };
+    pco.shared.clear();
+    const [live, id] = await Promise.all([pco.shared.getLive('9', '901', creds), pco.shared.getLiveItemId('9', '901', creds)]);
+    assert.equal(id, live.itemId, 'the id comes from the same answer');
+    const first = calls;
+    await pco.shared.getLive('9', '901', creds);
+    assert.equal(calls, first, 'a second screen right after shares it');
+    await new Promise((r) => setTimeout(r, 3100));
+    await pco.shared.getLive('9', '901', creds);
+    assert(calls > first, 'after 3 s it asks Planning Center again');
+    global.fetch = realFetch;
+    t('Live is shared across screens for 3 s');
+  }
+
+  {
+    // A hiccup about Live isn't "nothing live" for every screen; too many requests backs everyone off
+    const realFetch = global.fetch;
+    let calls = 0, mode = 'offline';
+    global.fetch = async (...args) => {
+      calls++;
+      if (mode === 'offline') throw new TypeError('fetch failed');
+      return { ok: false, status: 429, statusText: 'Too Many Requests', text: async () => '{}' };
+    };
+    pco.shared.clear();
+    await assert.rejects(pco.shared.getLive('9', '901', creds), 'the shared copy says it failed');
+    assert.equal(await pco.getLiveItemId('9', '901', creds), null, 'the plain one still never throws');
+    calls = 0;
+    await assert.rejects(pco.shared.getLive('9', '901', creds));
+    assert.ok(calls > 0, 'a failure isn’t kept: the next screen asks again');
+    mode = '429'; calls = 0;
+    await assert.rejects(pco.shared.listPositions('1', creds));
+    await assert.rejects(pco.shared.listPositions('1', creds));
+    assert.equal(calls, 1, 'after "too many requests" every screen waits instead of asking again');
+    assert.equal(pco.requestStats().lastFailure.status, 429);
+    // Which failures are worth waiting out: no answer, too many requests, Planning Center's trouble; not a wrong login
+    mode = 'offline';
+    pco.shared.clear();
+    assert.equal(pco.isTemporary(await pco.listServiceTypes(creds).catch((e) => e)), true, 'no answer');
+    mode = '429';
+    assert.equal(pco.isTemporary(await pco.listServiceTypes(creds).catch((e) => e)), true, 'too many requests');
+    global.fetch = async () => ({ ok: false, status: 401, statusText: 'Unauthorized', text: async () => '{}' });
+    assert.equal(pco.isTemporary(await pco.listServiceTypes(creds).catch((e) => e)), false, 'a wrong login is a real answer');
+    assert.equal(pco.isTemporary(new TypeError('a bug')), false, 'nor is a mistake in JPMixer’s own code');
+    global.fetch = realFetch;
+    pco.shared.clear();
+    t('a Live hiccup is a failure, not "nothing live", and "too many requests" backs every screen off');
   }
 
   global.fetch = origFetch;

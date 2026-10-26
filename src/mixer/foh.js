@@ -15,7 +15,7 @@ if (ROLE !== 'foh') {
 let refreshing = false;
 let lastSuccess = null;
 let lastEngineerKey = '';
-const REFRESH_MS = 120000; // 2 min — same cadence as greenroom.js
+const REFRESH_MS = 15000; // the team, order and plan; JPMixer shares Planning Center's answer across every screen (pco-client.js)
 
 function initials(name) {
   return name.split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?';
@@ -318,7 +318,7 @@ function showLiveCard(previousItem, liveItem, nextItem) {
 // page refreshes every 2 minutes). They count every second in between, on
 // JPMixer's clock. When Live moves to another item, the page refreshes
 // straight away instead of waiting for the next 2-minute refresh.
-const LIVE_MS = 15000;
+const LIVE_MS = 5000;
 const COUNTDOWN_WINDOW_MS = 12 * 60 * 60 * 1000;
 let clockOffset = 0, liveState = null, nextServiceAt = null, refreshedForIndex = null;
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -356,21 +356,31 @@ function tickCountdowns() {
     el.firstChild.style.width = `${(done * 100).toFixed(2)}%`;
   }
 }
+// One at a time, and a few seconds at most: a slow Planning Center used to
+// pile these up and hold up the page's other requests (Companion presses)
+let liveBusy = false;
 async function refreshLive() {
+  if (liveBusy || document.hidden) return;
+  liveBusy = true;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch('/greenroom-live', { cache: 'no-store' });
+    const res = await fetch('/greenroom-live', { cache: 'no-store', signal: controller.signal });
     const data = await res.json();
     const serverTime = Date.parse(data.serverTime);
     if (Number.isFinite(serverTime)) clockOffset = serverTime - Date.now();
-    if (!data.ok) return;
-    liveState = data.live;
+    // A hiccup keeps what's showing; a lasting error (a wrong login) doesn't
+    if (!data.ok && data.temporary === true) return;
+    liveState = data.ok ? data.live : null;
     nextServiceAt = data.nextServiceAt ? Date.parse(data.nextServiceAt) : null;
     const index = liveState ? liveState.index : -1;
     // Live moved on: catch the order of service and Live card up now (once per move)
-    if (index !== shownLive.index && index !== refreshedForIndex && lastSuccess) { refreshedForIndex = index; refresh(); }
+    if (index !== shownLive.index && index !== refreshedForIndex && lastSuccess && !refreshing) { refreshedForIndex = index; refresh({ quiet: true }); }
     tickCountdowns();
   } catch (_) { /* keep what's showing; try again shortly */ }
+  finally { clearTimeout(timeout); liveBusy = false; }
 }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLive(); });
 refreshLive();
 setInterval(refreshLive, LIVE_MS);
 setInterval(tickCountdowns, 1000);
@@ -413,13 +423,20 @@ function showNotice(message) {
   notice.hidden = false;
 }
 
-async function refresh() {
+// The timed refreshes are quiet (no "Refreshing…"), and only redraw what
+// changed: a page that's being scrolled or read isn't reset every 15 seconds
+let lastShown = '';
+let shownSchedule = false; // a schedule has been shown (kept through a Planning Center hiccup)
+async function refresh(options) {
   if (refreshing) return;
   refreshing = true;
+  const quiet = !!(options && options.quiet) && !!lastSuccess;
   const button = document.getElementById('fhRefresh');
-  button.disabled = true;
-  button.textContent = 'Refreshing…';
-  setStatus('loading', lastSuccess ? 'Refreshing…' : 'Loading…');
+  if (!quiet) {
+    button.disabled = true;
+    button.textContent = 'Refreshing…';
+    setStatus('loading', lastSuccess ? 'Refreshing…' : 'Loading…');
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
@@ -430,7 +447,22 @@ async function refresh() {
     const data = await response.json();
     if (data.role && data.role.label) roleLabel = data.role.label;
     showConnection(data.consoleConnected, data.connectionCount || 0);
-    if (!data.ok) {
+    // Planning Center didn't answer this time (a timeout, too many requests):
+    // keep the schedule that's showing rather than blanking the page, as the
+    // Green Room does. ("Not set up" has no status, and still shows.)
+    if (!data.ok && data.temporary === true && shownSchedule) {
+      lastShown = '';
+      showNotice(`Showing the schedule from ${lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. Planning Center didn’t answer just now; trying again shortly.`);
+      setStatus('error', 'Showing last update');
+      return;
+    }
+    const { consoleConnected: _c, connectionCount: _n, ...shown } = data;
+    const same = JSON.stringify(shown) === lastShown;
+    lastShown = JSON.stringify(shown);
+    if (same && data.ok) {
+      // Nothing new: leave the page as it is
+    } else if (!data.ok) {
+      shownSchedule = false;
       showEngineer(null);
       useLayoutFor(null);
       showNotice(data.error || 'The schedule could not be loaded.');
@@ -441,6 +473,7 @@ async function refresh() {
       showLiveCard(null, null, null);
       showPlans(null);
     } else {
+      shownSchedule = true;
       showEngineer(data.engineer);
       useLayoutFor(data.engineer);
       document.getElementById('fhPlanLine').textContent = data.plan
@@ -460,6 +493,7 @@ async function refresh() {
     lastSuccess = new Date();
     setStatus('ready', 'Updated ' + lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }));
   } catch (_) {
+    lastShown = '';
     setStatus('error', lastSuccess ? 'Showing last update' : 'Schedule unavailable');
     if (!lastSuccess) showEngineer(null);
   } finally {
@@ -542,6 +576,6 @@ document.getElementById('fhLayoutSave')?.addEventListener('click', async () => {
   }
 });
 
-document.getElementById('fhRefresh').addEventListener('click', refresh);
+document.getElementById('fhRefresh').addEventListener('click', () => refresh());
 refresh();
-setInterval(refresh, REFRESH_MS);
+setInterval(() => refresh({ quiet: true }), REFRESH_MS);

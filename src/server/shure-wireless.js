@@ -57,9 +57,13 @@ const DISCOVERY_PORT = 8427;
 let commandPort = 2202;          // tests point this at a stand-in receiver
 const SEEN_FOR_MS = 2 * 60 * 1000;
 const RECONNECT_MIN_MS = 5000, RECONNECT_MAX_MS = 60000, CONNECT_TIMEOUT_MS = 5000;
-let POLL_MS = 15000, SILENT_MS = 60000;   // tests shorten these
+let POLL_MS = 5000, SILENT_MS = 60000;   // tests shorten these
 const LAST_BATTERY_MS = 30 * 60 * 1000;
-const POLLED = ['CHAN_NAME', 'BATT_BARS', 'BATT_RUN_TIME', 'TX_TYPE'];
+// Re-read every POLL_MS: battery and transmitter (a few short GETs per
+// channel); the name only every NAME_EVERY polls, since it rarely changes.
+// Still nothing like Wireless Workbench's own traffic, and never METER_RATE.
+const POLLED = ['BATT_BARS', 'BATT_RUN_TIME', 'TX_TYPE'];
+const NAME_EVERY = 3;
 const IP = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 
 // Channels per receiver, by the model name it announces
@@ -280,7 +284,9 @@ class Receiver {
   poll(sock) {
     if (sock !== this.socket || this.status !== 'connected') return;
     if (Date.now() - this.lastHeard > SILENT_MS) { this.error = 'Stopped answering'; sock.destroy(); return; }
-    for (const ch of this.channels) for (const key of POLLED) this.send(`< GET ${ch.n} ${key} >`);
+    this.polls = (this.polls || 0) + 1;
+    const keys = this.polls % NAME_EVERY === 0 ? ['CHAN_NAME', ...POLLED] : POLLED;
+    for (const ch of this.channels) for (const key of keys) this.send(`< GET ${ch.n} ${key} >`);
   }
   // Strings arrive as "< REP 1 KEY value >", possibly several per packet or
   // split across packets; names are in braces and may contain spaces

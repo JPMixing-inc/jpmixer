@@ -4,8 +4,9 @@ let refreshing = false;
 let lastRoster = '';
 let lastSuccess = null;
 let hasRoster = false;
-const REFRESH_MS = 120000; // 2 min — this page is meant to sit unattended on a green-room iPad/TV
-const LIVE_MS = 15000;      // the Now / Up next strip follows Planning Center Live more closely
+const REFRESH_MS = 15000;  // the team; quiet, and only redrawn when it changes (see refresh)
+const LIVE_MS = 5000;       // the Now / Up next strip follows Planning Center Live more closely
+const QR_MS = 120000;       // the address in the QR code hardly ever changes
 const tvLayout = matchMedia('(orientation: landscape) and (min-width: 900px)');
 
 // ── Fitting the team on one screen ──────────────────────────────────────
@@ -100,15 +101,24 @@ setInterval(tickCountdowns, 1000);
 // ── Now / Up next, while Planning Center Live is running ────────────────
 const clockLength = (sec) => (Number.isFinite(sec) && sec > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : '');
 const itemMeta = (it) => [it.keyName ? `Key ${it.keyName}` : '', clockLength(it.length)].filter(Boolean).join(' · ');
+// One at a time and a few seconds at most, so a slow Planning Center can't
+// pile them up. A Planning Center hiccup (ok: false) keeps what's showing.
+let liveBusy = false;
 async function refreshLive() {
+  if (liveBusy) return;
+  liveBusy = true;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch('/greenroom-live', { cache: 'no-store' });
+    const res = await fetch('/greenroom-live', { cache: 'no-store', signal: controller.signal });
     const data = await res.json();
-    const live = data.ok ? data.live : null;
     const serverTime = Date.parse(data.serverTime);
     if (Number.isFinite(serverTime)) clockOffset = serverTime - Date.now();
+    // A hiccup keeps what's showing; a lasting error (a wrong login) clears it
+    if (!data.ok && data.temporary === true) return;
+    const live = data.ok ? data.live : null;
     liveState = live;
-    nextServiceAt = data.ok && data.nextServiceAt ? Date.parse(data.nextServiceAt) : null;
+    nextServiceAt = data.nextServiceAt ? Date.parse(data.nextServiceAt) : null;
     tickCountdowns();
     const box = document.getElementById('grLive');
     const wasHidden = box.hidden;
@@ -124,6 +134,7 @@ async function refreshLive() {
     }
     if (wasHidden !== box.hidden) fitGrid(); // the strip takes room from the team
   } catch (_) { /* keep what's showing; try again shortly */ }
+  finally { clearTimeout(timeout); liveBusy = false; }
 }
 refreshLive();
 setInterval(refreshLive, LIVE_MS);
@@ -228,7 +239,7 @@ async function loadMics() {
   fillMics();
 }
 loadMics();
-setInterval(loadMics, 15000);
+setInterval(loadMics, 3000); // JPMixer's own copy of the receivers' readings: no Shure traffic
 
 function showEmpty(title, message) {
   document.getElementById('grGrid').hidden = true;
@@ -283,14 +294,18 @@ function planDateLabel(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
-async function refresh() {
+// The timed refreshes are quiet: no "Refreshing…" on the TV every 15 seconds
+async function refresh(options) {
   if (refreshing) return;
   refreshing = true;
+  const quiet = !!(options && options.quiet) && !!lastSuccess;
   const button = document.getElementById('grRefresh');
-  button.disabled = true;
-  button.textContent = 'Refreshing…';
-  document.getElementById('grGrid').setAttribute('aria-busy', 'true');
-  setStatus('loading', lastSuccess ? 'Refreshing schedule…' : 'Loading schedule…');
+  if (!quiet) {
+    button.disabled = true;
+    button.textContent = 'Refreshing…';
+    document.getElementById('grGrid').setAttribute('aria-busy', 'true');
+    setStatus('loading', lastSuccess ? 'Refreshing schedule…' : 'Loading schedule…');
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
@@ -426,9 +441,9 @@ async function loadQr() {
   } catch (_) { /* keep what's showing */ }
 }
 loadQr();
-setInterval(loadQr, REFRESH_MS);
+setInterval(loadQr, QR_MS);
 
-document.getElementById('grRefresh').addEventListener('click', refresh);
+document.getElementById('grRefresh').addEventListener('click', () => refresh());
 refresh();
-setInterval(refresh, REFRESH_MS);
+setInterval(() => refresh({ quiet: true }), REFRESH_MS);
 

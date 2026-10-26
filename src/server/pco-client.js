@@ -37,7 +37,28 @@ function authHeader(appId, secret) {
 
 const REQUEST_TIMEOUT_MS = 15000;
 
+// For Settings → Performance: when each request went out (the last minute),
+// and the last one that failed. Never the address or the credentials.
+const requestTimes = [];
+let lastFailure = null; // { at, status, message }
+function noteRequest() {
+  const now = Date.now();
+  requestTimes.push(now);
+  while (requestTimes.length && now - requestTimes[0] > 60000) requestTimes.shift();
+}
+function noteFailure(status, message) { lastFailure = { at: new Date().toISOString(), status: status || null, message }; }
+function requestStats() {
+  const now = Date.now();
+  return {
+    last20s: requestTimes.filter((t) => now - t <= 20000).length,
+    lastMinute: requestTimes.filter((t) => now - t <= 60000).length,
+    limitPer20s: 100,
+    lastFailure,
+  };
+}
+
 async function pcoFetch(pathOrUrl, creds) {
+  noteRequest();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   // links.next (used by pcoFetchAll below) comes back as a full URL, not a
@@ -54,20 +75,27 @@ async function pcoFetch(pathOrUrl, creds) {
       signal: controller.signal,
     });
   } catch (e) {
+    noteFailure(null, e.name === 'AbortError' ? 'No answer in time' : 'Couldn’t reach Planning Center');
     if (e.name === 'AbortError') {
       const err = new Error(`Planning Center didn't respond within ${REQUEST_TIMEOUT_MS / 1000}s — check your network connection.`);
       err.status = null;
       err.body = null;
+      err.temporary = true;
       throw err;
     }
+    e.temporary = true; // no answer at all: the network, or Planning Center down
     throw e;
   } finally {
     clearTimeout(timer);
   }
   const text = await res.text();
   if (!res.ok) {
+    noteFailure(res.status, res.status === 429 ? 'Too many requests' : res.status === 401 ? 'Login refused' : `Error ${res.status}`);
     const err = new Error(`Planning Center request failed: ${res.status} ${res.statusText}`);
     err.status = res.status;
+    // Too many requests, or Planning Center's own trouble: worth waiting out.
+    // Not a wrong login (401) or a plan that's gone (404).
+    err.temporary = res.status === 429 || res.status >= 500;
     err.body = text;
     throw err;
   }
@@ -373,7 +401,16 @@ async function getLiveItemId(serviceTypeId, planId, creds) {
   const live = await getLive(serviceTypeId, planId, creds);
   return live ? live.itemId : null;
 }
+// A failure that says nothing about what's live (or the schedule): no
+// answer, too many requests, or Planning Center's own trouble (pcoFetch marks
+// these). Anything else, like a 404 (no Live for this plan), is a real answer.
+const temporary = (e) => !!(e && e.temporary === true);
 async function getLive(serviceTypeId, planId, creds) {
+  try { return await fetchLive(serviceTypeId, planId, creds); } catch (_) { return null; }
+}
+// The same, except a temporary failure is thrown (the display pages' shared
+// copy uses this, so a hiccup isn't cached as "nothing live" for every screen)
+async function fetchLive(serviceTypeId, planId, creds) {
   try {
     const json = await pcoFetch(
       `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans/${encodeURIComponent(planId)}/live`,
@@ -388,7 +425,8 @@ async function getLive(serviceTypeId, planId, creds) {
     if (!itemRel) return null;
     const startedAt = itemTimeJson.data.attributes && itemTimeJson.data.attributes.live_start_at;
     return { itemId: itemRel.id, startedAt: typeof startedAt === 'string' && Number.isFinite(Date.parse(startedAt)) ? startedAt : null };
-  } catch (_) {
+  } catch (e) {
+    if (temporary(e)) throw e;
     return null;
   }
 }
@@ -486,11 +524,21 @@ async function planTeamMembers(serviceTypeId, planId, creds) {
 // ── Shared short cache for the display pages and phones ────────────────────
 // Green Room screens, FOH Home and phone assignment all ask for the same plan.
 // When they load together (a server restart, Wi-Fi coming back) each one
-// fetched it separately, in parallel. These copies share one answer for 20s,
-// and a request already in flight is joined rather than repeated. The
+// fetched it separately, in parallel. These copies share one answer for 10s,
+// and a request already in flight is joined rather than repeated. Live (what's
+// on now) is shared for only 3s, so every page follows it within seconds. The
 // Settings tab keeps calling the plain functions above, so its Refresh buttons
-// always fetch fresh. getLiveItemId isn't cached: FOH Home follows it live.
-const SHARED_CACHE_MS = 20000;
+// always fetch fresh.
+// Planning Center allows 100 requests per 20 seconds. With every page open
+// this is usually 35 to 45 per 20 seconds, however many screens are showing:
+// each 10 s window fetches the plan, its times, team, items and positions
+// once (more for long lists, which come in pages), plus 2 for Live every 3 s.
+// A request that fails isn't kept, except a "too many requests" answer, which
+// is kept for RATE_LIMIT_BACKOFF_MS so every screen backs off together.
+// Settings → Performance shows the real count.
+const SHARED_CACHE_MS = 10000;
+const LIVE_CACHE_MS = 3000;
+const RATE_LIMIT_BACKOFF_MS = 5000;
 const sharedCache = new Map(); // key -> { at, promise }
 function credsKey(creds) {
   return require('crypto').createHash('sha256').update(authHeader(creds && creds.appId, creds && creds.secret)).digest('hex');
@@ -498,17 +546,27 @@ function credsKey(creds) {
 // Credentials are hashed into the key wherever they sit in the argument list
 // (upcomingPlans takes a count after them); the secret itself is never a key
 const isCreds = (a) => !!a && typeof a === 'object' && ('appId' in a || 'secret' in a);
-function sharedCall(name, fn) {
+function sharedCall(name, fn, ms = SHARED_CACHE_MS) {
   return (...args) => {
     const key = name + ':' + JSON.stringify(args.map(a => isCreds(a) ? credsKey(a) : a));
     const now = Date.now();
     const hit = sharedCache.get(key);
-    if (hit && now - hit.at < SHARED_CACHE_MS) return hit.promise;
-    if (sharedCache.size > 100) for (const [k, v] of sharedCache) if (now - v.at >= SHARED_CACHE_MS) sharedCache.delete(k);
+    // Still waiting for Planning Center counts as fresh: a slow answer is
+    // joined, not asked for again; its time starts when it's answered
+    if (hit && (hit.pending || now - hit.at < hit.ms)) return hit.promise;
+    if (sharedCache.size > 100) for (const [k, v] of sharedCache) if (!v.pending && now - v.at >= v.ms) sharedCache.delete(k);
     const promise = fn(...args);
-    sharedCache.set(key, { at: now, promise });
-    // A failure isn't kept — the next request tries again
-    promise.catch(() => { if (sharedCache.get(key)?.promise === promise) sharedCache.delete(key); });
+    const entry = { at: now, ms, promise, pending: true };
+    sharedCache.set(key, entry);
+    promise.then(() => { entry.pending = false; entry.at = Date.now(); }, () => {});
+    // A failure isn't kept — the next request tries again — except "too many
+    // requests": every screen waits a few seconds instead of asking again
+    promise.catch((e) => {
+      entry.pending = false;
+      if (sharedCache.get(key) !== entry) return;
+      if (e && e.status === 429) { entry.at = Date.now(); entry.ms = RATE_LIMIT_BACKOFF_MS; }
+      else sharedCache.delete(key);
+    });
     return promise;
   };
 }
@@ -520,9 +578,10 @@ const shared = {
   listPlanItems: sharedCall('listPlanItems', listPlanItems),
   resolveAutoDay: sharedCall('resolveAutoDay', resolveAutoDay),
   upcomingPlans: sharedCall('upcomingPlans', upcomingPlans),
-  getLiveItemId,
-  getLive,
+  // A temporary failure rejects (not cached), so pages keep what they showed
+  getLive: sharedCall('getLive', fetchLive, LIVE_CACHE_MS),
+  getLiveItemId: async (...args) => { const live = await shared.getLive(...args); return live ? live.itemId : null; },
   clear: () => sharedCache.clear(), // tests
 };
 
-module.exports = { listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };
+module.exports = { requestStats, isTemporary: temporary, listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };

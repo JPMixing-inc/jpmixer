@@ -1,0 +1,14 @@
+{
+  "id": "console-check",
+  "name": "Console check",
+  "version": "1.0.0",
+  "description": "An example plugin: shows whether the console is connected, and the mixes it has, on FOH Home.",
+  "author": "JPMixer",
+  "main": "index.js",
+  "permissions": ["card", "console"],
+  "card": { "title": "Console check" },
+  "settings": [
+    { "key": "showMixes", "label": "List the mixes", "type": "checkbox", "default": true },
+    { "key": "maxMixes", "label": "Mixes to list", "type": "number", "default": 8, "min": 1, "max": 20, "help": "The first this many mixes, in order." }
+  ]
+}

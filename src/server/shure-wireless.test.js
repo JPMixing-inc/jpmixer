@@ -196,7 +196,7 @@ test('battery is read again regularly: Good, Replace, Critical, and the last one
     assert.equal(ch().lastBatt, null, 'a transmitter back on shows its own battery');
     assert.ok(rx.received.filter((m) => m === '< GET 1 BATT_BARS >').length >= 3, 'it kept asking');
     assert.ok(rx.received.every((m) => /^< GET (\d )?[A-Z_]+ >$/.test(m)), `only GET strings, never METER_RATE or SET: ${[...new Set(rx.received)].join(' ')}`);
-  } finally { wireless.stop(); wireless._setTimings(15000, 60000); await rx.close(); }
+  } finally { wireless.stop(); wireless._setTimings(5000, 60000); await rx.close(); }
 });
 
 test('a receiver that stops answering without hanging up is reconnected', async () => {
@@ -211,7 +211,7 @@ test('a receiver that stops answering without hanging up is reconnected', async 
     assert.ok(await until(() => status() === 'offline', 3000), 'silence counts as gone');
     rx.state.quiet = false;
     assert.ok(await until(() => status() === 'connected', 8000), 'and it comes back');
-  } finally { wireless.stop(); wireless._setTimings(15000, 60000); await rx.close(); }
+  } finally { wireless.stop(); wireless._setTimings(5000, 60000); await rx.close(); }
 });
 
 test('battery states follow Micboard’s levels', () => {
@@ -273,7 +273,7 @@ test('a receiver added by address learns its hardware id from its MAC, and a mic
     assert.equal(mic.name, 'VOX 9');
     assert.equal(mic.ip, undefined, 'no addresses for the phones');
     assert.deepEqual(Object.keys(wireless.mixesForPages()), ['3']);
-  } finally { wireless.stop(); wireless.setSaver(null); wireless._noDiscovery(false); wireless._setTimings(15000, 60000); await rx.close(); }
+  } finally { wireless.stop(); wireless.setSaver(null); wireless._noDiscovery(false); wireless._setTimings(5000, 60000); await rx.close(); }
 });
 
 test('a mix chosen for a receiver added by address stays with it once its hardware id is known', async () => {

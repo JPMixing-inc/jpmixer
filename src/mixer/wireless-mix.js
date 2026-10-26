@@ -8,7 +8,7 @@
 //   phone mixer:      <span id="micBatt"> follows the selected mix
 //   Monitor Engineer: any element with data-mix-mic="<aux>"
 (() => {
-  const POLL_MS = 15000;
+  const POLL_MS = 3000; // JPMixer's own copy of the receivers' readings: no Shure traffic
   const STATE = { good: 'Good', replace: 'Replace', critical: 'Critical' };
   let enabled = false, mixes = {};
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, ipcMain, shell, dialog, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, ipcMain, shell, dialog, powerSaveBlocker, clipboard } = require('electron');
 const path  = require('path');
 const os    = require('os');
 const fs    = require('fs');
@@ -24,10 +24,39 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   // During the launch splash nothing is loaded yet; open it once startup ends
-  app.on('second-instance', () => { if (startupDone) openSettings(); else settingsRequestedDuringStartup = true; });
+  app.on('second-instance', (_e, argv) => {
+    const file = pluginFileIn(argv);
+    if (file) { openPluginFile(file); return; }
+    if (startupDone) openSettings(); else settingsRequestedDuringStartup = true;
+  });
 }
 let startupDone = false;
 let settingsRequestedDuringStartup = false;
+
+// ── A .jpmplugin opened from Finder or Explorer (package.json
+// fileAssociations) ── macOS sends 'open-file', even before JPMixer is ready;
+// Windows starts JPMixer (or a second copy, which hands it over) with the
+// file in its arguments. Either way Settings → Plugins opens, and the plugin
+// is shown before anything is installed.
+const pluginFileIn = (argv) => (argv || []).slice(1).find((a) => /\.jpmplugin$/i.test(String(a)) && !String(a).startsWith('-'));
+const pendingPluginFiles = [];
+app.on('open-file', (e, file) => {
+  if (!/\.jpmplugin$/i.test(file)) return;
+  e.preventDefault();
+  openPluginFile(file);
+});
+function openPluginFile(file) {
+  if (!startupDone) { pendingPluginFiles.push(file); return; }
+  openSettings();
+  const win = settingsWindow;
+  const go = async () => {
+    if (win && !win.isDestroyed()) win.webContents.send('plugins-show');
+    const result = await importPluginPath(file);
+    if (win && !win.isDestroyed()) win.webContents.send('plugins-result', result); // Settings says what happened
+  };
+  if (win && win.webContents.isLoading()) win.webContents.once('did-finish-load', go); else go();
+}
+{ const file = pluginFileIn(process.argv); if (file) pendingPluginFiles.push(file); }
 
 // > 0 when a is newer than b. Handles x.y.z and x.y.z-prerelease (a
 // prerelease sorts before its release, e.g. 1.1.6-beta.1 < 1.1.6).
@@ -348,6 +377,10 @@ app.whenReady().then(async () => {
   // Receivers it sees are remembered in the config, so they're there after a restart
   require('./src/server/shure-wireless').setSaver((patch) => config.save({ ...config.getAll(), ...patch }));
   require('./src/server/shure-wireless').applyConfig(config.getAll());
+  // Plugins that are on (Settings → Integrations → Plugins), each in its own process
+  require('./src/server/plugins').start({ ...pluginProviders, allowed: config.get('pluginsEnabled') === true });
+  // Settings → Performance: measured from launch, so its peaks cover the service
+  require('./src/server/system-stats').start({ pluginProcesses: () => require('./src/server/plugins').processes(), backupsDir: () => autoBackup.backupsDir() });
   pcoClient  = require('./src/server/pco-client');
 
   createTray();
@@ -358,6 +391,7 @@ app.whenReady().then(async () => {
   if (splash) splash.done();
   startupDone = true;
   if (settingsRequestedDuringStartup) openSettings();
+  for (const file of pendingPluginFiles.splice(0)) openPluginFile(file);
 
   // Silent update check on launch — only notifies if a newer version exists
   setTimeout(() => checkForUpdates(true), 3000);
@@ -377,6 +411,7 @@ app.on('before-quit', (e) => {
   try { require('./src/server/smaart').stop(); } catch (_) {}
   try { require('./src/server/shure-wireless').stop(); } catch (_) {}
   try { require('./src/server/console-names').flush(); } catch (_) {}
+  try { require('./src/server/plugins').stopAll(); } catch (_) {}
   if (quitting || !serverRunning || !server) return;
   e.preventDefault();
   quitting = true;
@@ -618,6 +653,7 @@ function broadcastConnectionCount(count) {
 }
 
 function broadcastOscTraffic(batch) {
+  require('./src/server/system-stats').noteTraffic(batch); // Settings → Performance
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.send('osc-traffic', batch);
   }
@@ -1029,6 +1065,7 @@ ipcMain.handle('save-config', async (_, incoming) => {
   require('./src/server/companion-satellite').applyConfig(config.getAll());
   require('./src/server/smaart').applyConfig(config.getAll());
   require('./src/server/shure-wireless').applyConfig(config.getAll());
+  require('./src/server/plugins').setAllowed(config.get('pluginsEnabled') === true);
   rebuildTrayMenu();
   updateKeepAwake();
   if (prev.brandLogo !== config.get('brandLogo')) require('./src/server/branding').pruneLogos();
@@ -1042,6 +1079,181 @@ ipcMain.handle('get-companion-status', () => require('./src/server/companion-sat
 // Smaart SPL's connection, for Settings → Pages
 ipcMain.handle('get-smaart-status', () => require('./src/server/smaart').getStatus());
 ipcMain.handle('get-wireless-status', () => require('./src/server/shure-wireless').getStatus());
+
+// ── Plugins (Settings → Integrations → Plugins; src/server/plugins.js) ──
+// What a plugin can ask for, if its plugin.json says so. Names as every page
+// shows them: one typed in JPMixer, else the console's, else remembered.
+function consoleForPlugins() {
+  const cfg = config.getAll();
+  const type = cfg.consoleType || 'digico';
+  const names = require('./src/server/console-names');
+  const running = !!(serverRunning && server);
+  const live = { channels: running ? server.getChannelNames() || {} : {}, auxes: running ? server.getAuxNames() || {} : {} };
+  const nameOf = (kind, overrides, n) => {
+    const typed = overrides && overrides[String(n)] && overrides[String(n)].label;
+    if (typed) return String(typed);
+    const now = live[kind][String(n)];
+    if (now !== undefined && now !== null) return String(now);
+    return names.remembered(type, kind, n) || '';
+  };
+  const count = (v) => (Number.isInteger(v) && v > 0 ? Math.min(v, 256) : 0);
+  const channels = count((running && server.getChannelCount()) || cfg.channels);
+  const mixes = count((running && server.getAuxCount()) || cfg.auxes);
+  return {
+    type,
+    demo: !!cfg.demoMode,
+    running,
+    connected: !!(running && server.isConsoleConnected && server.isConsoleConnected()),
+    channels: Array.from({ length: channels }, (_, i) => ({ number: i + 1, name: nameOf('channels', cfg.channelOverrides, i + 1) })),
+    mixes: Array.from({ length: mixes }, (_, i) => ({ number: i + 1, name: nameOf('auxes', cfg.auxOverrides, i + 1) })),
+  };
+}
+const pluginProviders = {
+  console: consoleForPlugins,
+  planningCenter: () => require('./src/server/greenroom').planningCenterForPlugins(),
+};
+const plugins = () => require('./src/server/plugins');
+ipcMain.handle('plugins-list', () => ({ folder: plugins().pluginsDir(), plugins: plugins().list() }));
+ipcMain.handle('plugins-log', (_e, id) => plugins().getLog(String(id || '')));
+ipcMain.handle('plugins-save', async (_e, changes) => {
+  const result = plugins().save(changes);
+  if (result.ok) await plugins().apply();
+  return result;
+});
+ipcMain.handle('plugins-reload', async () => { await plugins().apply({ force: true }); return { ok: true }; });
+ipcMain.handle('plugins-open-folder', () => {
+  try { fs.mkdirSync(plugins().pluginsDir(), { recursive: true }); } catch (_) {}
+  shell.openPath(plugins().pluginsDir());
+  return { ok: true };
+});
+// Turning one on: what it can do, and that it's someone else's code
+ipcMain.handle('plugins-confirm-enable', async (_e, id) => {
+  const entry = plugins().list().find((p) => p.id === id && p.manifest);
+  if (!entry) return { ok: false };
+  const m = entry.manifest;
+  const can = entry.permissions.length ? entry.permissions.map((p) => `• ${p.text}`).join('\n') : '• Nothing on JPMixer’s pages or data';
+  const { response } = await showPrompt({
+    type: 'warning', title: 'Turn on a plugin', buttons: ['Turn On', 'Cancel'], defaultId: 1, cancelId: 1,
+    message: `Turn on ${m.name}${m.author ? ` by ${m.author}` : ''}?`,
+    detail: `It can:\n${can}\n\nIt also runs its own code on this computer and can use the network. It can’t read JPMixer’s settings or passwords, or open other programs. Only turn on plugins from someone you trust.`,
+  });
+  return { ok: response === 0 };
+});
+// What a plugin can do, as the install prompts list it
+const pluginCan = (m) => (m.permissions.length ? m.permissions.map((p) => `• ${plugins().PERMISSIONS[p]}`).join('\n') : '• Nothing on JPMixer’s pages or data');
+function notifyPluginsChanged() { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('plugins-changed'); }
+// Shows what's about to be installed, then installs it (off until it's turned
+// on). `opened` is from plugin-store.js open() / openFromCatalog().
+async function confirmAndInstall(opened, origin) {
+  try {
+    const m = opened.manifest;
+    const approved = origin === 'catalog';
+    const replacing = opened.existing
+      ? `This replaces ${opened.existing.name}${opened.existing.version ? ` ${opened.existing.version}` : ''}. Its settings are kept.\n\n` : '';
+    const { response } = await showPrompt({
+      type: approved ? 'question' : 'warning',
+      title: opened.existing ? 'Update plugin' : 'Install plugin',
+      buttons: [opened.existing ? 'Replace' : 'Install', 'Cancel'], defaultId: approved ? 0 : 1, cancelId: 1,
+      message: `${opened.existing ? 'Replace with' : 'Install'} ${m.name}${m.version ? ` ${m.version}` : ''}${m.author ? ` by ${m.author}` : ''}?`,
+      detail: `${replacing}It can:\n${pluginCan(m)}\n\n${approved
+        ? 'It’s on JPMixer’s list of approved plugins.'
+        : 'It isn’t on JPMixer’s list of approved plugins, so nobody has reviewed it. Only install it if you trust whoever made it.'} It stays off until you turn it on.`,
+    });
+    if (response !== 0) return { ok: false, canceled: true };
+    const result = await plugins().install(opened.folder, { origin });
+    notifyPluginsChanged();
+    return result;
+  } finally { opened.cleanup(); }
+}
+async function importPluginPath(file) {
+  // Plugins have to be allowed first (Settings → Integrations → Plugins)
+  if (config.get('pluginsEnabled') !== true) {
+    await showPrompt({ type: 'info', title: 'Plugins are off', message: 'Allow plugins first.', detail: 'Turn on Allow plugins in Settings → Integrations → Plugins, select Save & Apply, then open the plugin again.' });
+    return { ok: false, canceled: true };
+  }
+  const opened = await require('./src/server/plugin-store').open(String(file || ''));
+  if (!opened.ok) {
+    await showPrompt({ type: 'error', title: 'Can’t install this plugin', message: 'This plugin can’t be installed.', detail: opened.error });
+    return opened;
+  }
+  return confirmAndInstall(opened, 'file');
+}
+ipcMain.handle('plugins-catalog', () => require('./src/server/plugin-store').catalog(app.getVersion()));
+ipcMain.handle('plugins-install-catalog', async (_e, id) => {
+  if (config.get('pluginsEnabled') !== true) return { ok: false, error: 'Turn on Allow plugins, then Save & Apply, first.' };
+  const opened = await require('./src/server/plugin-store').openFromCatalog(String(id || ''));
+  if (!opened.ok) return opened;
+  return confirmAndInstall(opened, 'catalog');
+});
+// A .jpmplugin or .zip, or a folder (for people making plugins)
+ipcMain.handle('plugins-import', async (event, kind) => {
+  const folder = kind === 'folder';
+  const { canceled, filePaths } = await dialog.showOpenDialog(dialogParent(event), folder
+    ? { title: 'Choose a plugin’s folder', buttonLabel: 'Import', properties: ['openDirectory'] }
+    : { title: 'Choose a plugin', buttonLabel: 'Import', properties: ['openFile'], filters: [{ name: 'JPMixer plugins', extensions: ['jpmplugin', 'zip'] }] });
+  if (canceled || !filePaths?.[0]) return { ok: false, canceled: true };
+  return importPluginPath(filePaths[0]);
+});
+// Dropped on the Plugins page
+ipcMain.handle('plugins-import-path', (_e, file) => importPluginPath(file));
+// By its folder (from the list): a broken copy can share a working plugin's id
+ipcMain.handle('plugins-remove', async (_e, folder) => {
+  const entry = plugins().list().find((p) => p.folder === folder);
+  if (!entry) return { ok: false, error: 'That plugin isn’t there any more.' };
+  const name = entry.manifest ? entry.manifest.name : entry.id;
+  const { response } = await showPrompt({
+    type: 'question', title: 'Remove plugin', buttons: ['Move to Trash', 'Cancel'], defaultId: 1, cancelId: 1,
+    message: `Remove ${name}?`, detail: 'Its folder goes to the Trash, and its settings are forgotten.',
+  });
+  if (response !== 0) return { ok: false, canceled: true };
+  // A broken copy's "id" is only its folder name: it never runs and has no
+  // settings, so it mustn't stop or forget a working plugin with that name
+  if (entry.manifest) await plugins().stopOne(entry.id);
+  try { await shell.trashItem(entry.folder); }
+  catch (e) { await plugins().apply(); return { ok: false, error: `Couldn’t move it to the Trash: ${e.message}` }; }
+  if (entry.manifest) plugins().forget(entry.id);
+  await plugins().apply();
+  return { ok: true };
+});
+
+// How to make a plugin (by hand or with an AI assistant): docs/PLUGINS.md on GitHub
+ipcMain.handle('plugins-open-guide', () => { shell.openExternal('https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md'); return { ok: true }; });
+ipcMain.handle('plugins-open-submit', () => { shell.openExternal(require('./src/server/plugin-store').SUBMIT_URL); return { ok: true }; });
+// Only the https address its plugin.json gives (checked in plugins.js)
+ipcMain.handle('plugins-open-homepage', (_e, id) => {
+  const entry = plugins().list().find((p) => p.id === id && p.manifest && p.manifest.homepage);
+  if (entry) shell.openExternal(entry.manifest.homepage);
+  return { ok: !!entry };
+});
+
+// ── Settings → Performance (src/server/system-stats.js) ──
+// What it measures, plus what only main.js knows: the server, connections,
+// the console and each integration. Read-only; no names or credentials.
+function performanceReport() {
+  const stats = require('./src/server/system-stats');
+  const s = stats.collect();
+  const running = !!(serverRunning && server);
+  const companion = require('./src/server/companion-satellite').getStatus();
+  const smaart = require('./src/server/smaart').getStatus();
+  const shure = require('./src/server/shure-wireless').getStatus();
+  const pluginList = config.get('pluginsEnabled') === true ? plugins().list().filter((p) => p.manifest && p.enabled) : [];
+  s.extra = {
+    server: { running, port: config.get('serverPort'), address: getLocalIP(), keepAwake: awakeBlocker !== null && powerSaveBlocker.isStarted(awakeBlocker) },
+    connections: running ? server.getConnectionCount() : 0,
+    console: { type: config.get('consoleType'), demo: !!config.get('demoMode'), connected: !!(running && server.isConsoleConnected && server.isConsoleConnected()) },
+    pco: { configured: !!(config.get('pcoAppId') && config.get('pcoSecret') && config.get('pcoServiceTypeId')), ...require('./src/server/pco-client').requestStats() },
+    companion: { enabled: !!companion.enabled, state: companion.state, message: companion.message },
+    smaart: { enabled: !!smaart.enabled, state: smaart.state, message: smaart.message },
+    shure: { enabled: !!shure.enabled, receivers: shure.receivers.length, connected: shure.receivers.filter((r) => r.status === 'connected').length },
+    controlApi: !!config.get('apiEnabled'),
+    pluginsAllowed: config.get('pluginsEnabled') === true,
+    plugins: pluginList.map((p) => ({ name: p.manifest.name, state: p.state })),
+  };
+  s.health = stats.health(s);
+  return s;
+}
+ipcMain.handle('get-performance', () => performanceReport());
+ipcMain.handle('copy-text', (_e, text) => { clipboard.writeText(String(text || '').slice(0, 20000)); return { ok: true }; });
 
 // iPad relay health for Settings — DiGiCo backend only (the others have no relay)
 ipcMain.handle('get-ipad-status', () => (serverRunning && server.getIpadStatus) ? server.getIpadStatus() : null);
@@ -1370,6 +1582,7 @@ ipcMain.handle('restore-backup', async (event, request) => {
       require('./src/server/companion-satellite').applyConfig(config.getAll());
       require('./src/server/smaart').applyConfig(config.getAll());
       require('./src/server/shure-wireless').applyConfig(config.getAll());
+      require('./src/server/plugins').setAllowed(config.get('pluginsEnabled') === true);
       rebuildTrayMenu();
     } else if (result.scenesChanged && serverRunning && server.applyConfigLive) server.applyConfigLive(config.getAll());
     if (result.mixes && serverRunning && server.pushDevicePresets) for (const id of result.mixes.deviceIds) server.pushDevicePresets(id);

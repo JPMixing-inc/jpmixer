@@ -138,6 +138,19 @@ function mountFoh(app, status) {
       return true;
     },
   });
+  // Plugins' cards (plugins.js). The page loads the list as a script before
+  // foh-layout.js, so the cards are there to arrange like any other; what's
+  // on them needs FOH's access code.
+  app.get('/plugin-cards.js', (req, res) => {
+    const list = require('./plugins').cards().map((c) => ({ id: c.cardId, title: c.title }));
+    res.set('Cache-Control', 'no-store');
+    res.type('application/javascript').send(`window.JPM_PLUGIN_CARDS = ${JSON.stringify(list).replace(/</g, '\\u003c')};\n`);
+  });
+  app.get('/plugin-cards', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true }); return; }
+    res.json({ ok: true, cards: require('./plugins').cards().map((c) => ({ id: c.cardId, title: c.title, card: c.card, state: c.state })) });
+  });
   app.get('/foh-data', async (req, res) => {
     if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true, role: { id: 'foh', label: ROLES.foh.label, page: ROLES.foh.page } }); return; }
     res.json(await roleData('foh', status));
@@ -204,6 +217,7 @@ function mountFoh(app, status) {
   }
 }
 
+const lastLiveId = new Map(); // "serviceType:plan" -> the live item id Planning Center last gave
 async function roleData(roleId, status) {
   const role = ROLES[roleId];
   const roleInfo = { id: roleId, label: role.label, page: role.page };
@@ -231,7 +245,11 @@ async function roleData(roleId, status) {
     const [members, items, liveItemId, upcomingPlans, planTimes] = await Promise.all([
       pco.planTeamMembers(serviceTypeId, plan.id, creds),
       pco.listPlanItems(serviceTypeId, plan.id, creds),
-      pco.getLiveItemId(serviceTypeId, plan.id, creds),
+      // A moment Planning Center doesn't answer about Live: what it said last
+      // for this plan (nothing, if it hasn't said yet), never the whole page
+      pco.getLiveItemId(serviceTypeId, plan.id, creds).then(
+        (id) => { lastLiveId.set(`${serviceTypeId}:${plan.id}`, id); return id; },
+        () => lastLiveId.get(`${serviceTypeId}:${plan.id}`) ?? null),
       pco.upcomingPlans(serviceTypeId, creds, 4).catch(() => []),
       pco.listPlanTimes(serviceTypeId, plan.id, creds),
     ]);
@@ -345,7 +363,9 @@ async function roleData(roleId, status) {
       connectionCount,
     });
   } catch (err) {
-    return reply({ ok: false, error: err.message, status: err.status || null, consoleConnected, connectionCount });
+    // temporary: worth keeping what's showing (no answer, too many requests);
+    // otherwise (a wrong login, a plan that's gone) the page shows the error
+    return reply({ ok: false, error: err.message, status: err.status || null, temporary: require('./pco-client').isTemporary(err), consoleConnected, connectionCount });
   }
 }
 

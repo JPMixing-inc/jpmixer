@@ -41,8 +41,10 @@
     <button class="tab" data-tab="smaart"><span class="nav-symbol" aria-hidden="true">◉</span>Smaart SPL</button>
     <button class="tab" data-tab="wireless"><span class="nav-symbol" aria-hidden="true">⌁</span>Shure wireless</button>
     <button class="tab" data-tab="api"><span class="nav-symbol" aria-hidden="true">⌘</span>Control API</button>
+    <button class="tab" data-tab="plugins"><span class="nav-symbol" aria-hidden="true">✚</span>Plugins</button>
     <span class="nav-section-label nav-section-second">SYSTEM</span>
     <button class="tab" data-tab="general"><span class="nav-symbol" aria-hidden="true">◎</span>General</button>
+    <button class="tab" data-tab="performance"><span class="nav-symbol" aria-hidden="true">◔</span>Performance</button>
     <button class="tab" data-tab="backup"><span class="nav-symbol" aria-hidden="true">↻</span>Backup &amp; restore</button>
     <button class="tab" data-tab="osclog"><span class="nav-symbol" aria-hidden="true">≋</span>OSC Log</button>
     <div class="sidebar-note">BUILT FOR THE STAGE<span>Your mixes. Your workspace.</span></div>
@@ -115,6 +117,7 @@
           <input type="checkbox" id="keepAwake" class="toggle" />
         </div>
       </section>
+
 
 
     </div>
@@ -551,6 +554,71 @@
         <div class="companion-status" id="smaartStatus" role="status"><span class="dot" id="smaartDot"></span><span id="smaartStatusText">Off</span></div>
         <details class="settings-help"><summary>Setting it up in Smaart</summary><div class="settings-help-body"><div class="sub">Works with Smaart 8.4 or later, and with Smaart 9 Suite or SPL (not RT or LE). In Smaart, open <strong>Options → Preferences → API</strong> and tick <strong>Enabled</strong>; the port is 26000 unless you changed it. Hover over the IP Address there to see the Smaart computer’s address, and enter it above. Leave the password empty unless one is set in that tab. The card shows the mic inputs that are calibrated and logging SPL, so start SPL logging in Smaart. Colors and alarms come from Smaart’s own settings.</div></div></details>
       </section>
+    </div>
+
+    <!-- ── Performance: how JPMixer and this computer are doing (system-stats.js) ── -->
+    <div class="tab-panel" id="tab-performance">
+      <section class="card companion-card" id="perfSummaryCard">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2>Right now</h2><p class="sub" id="perfUpdated">Measuring…</p></div>
+          <button type="button" class="btn btn-sm" id="perfCopyBtn" title="Copies these numbers as text, to send to whoever is helping. No passwords or names.">Copy report</button>
+        </div>
+        <ul class="perf-health" id="perfHealth" role="status"></ul>
+      </section>
+      <section class="card companion-card">
+        <div class="settings-heading"><h2>JPMixer</h2><p class="sub">What JPMixer itself is using. Peaks are from the last 10 minutes.</p></div>
+        <div class="perf-tiles" id="perfApp"></div>
+        <details class="settings-help"><summary id="perfProcSummary">Processes</summary><div class="settings-help-body"><div id="perfProcs"></div><p class="sub">Processor is in percent of one core, so a busy process can go over 100%. Plugins each run in a process of their own.</p></div></details>
+      </section>
+      <section class="card companion-card">
+        <div class="settings-heading"><h2>Connections</h2><p class="sub">The server, the phones and pages using it, and the console.</p></div>
+        <div class="perf-tiles" id="perfConn"></div>
+      </section>
+      <section class="card companion-card">
+        <div class="settings-heading"><h2>Integrations</h2><p class="sub">Each one that’s set up, and how it’s doing.</p></div>
+        <div class="perf-rows" id="perfIntegrations"></div>
+      </section>
+      <section class="card companion-card">
+        <div class="settings-heading"><h2>This computer</h2><p class="sub">Everything running on it, not just JPMixer.</p></div>
+        <div class="perf-tiles" id="perfComputer"></div>
+        <div class="perf-facts" id="perfComputerFacts"></div>
+      </section>
+      <section class="card companion-card">
+        <div class="settings-heading"><h2>JPMixer’s data</h2><p class="sub">Settings, mixes, backups and logs, kept on this computer.</p></div>
+        <div class="perf-facts" id="perfData"></div>
+      </section>
+    </div>
+
+    <!-- ── Plugins: add-ons in JPMixer's plugins folder (src/server/plugins.js) ── -->
+    <div class="tab-panel" id="tab-plugins">
+      <section class="card companion-card" id="pluginsAllowCard">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2>Allow plugins</h2><p class="sub">Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Each one runs on its own, so if one stops working, JPMixer and the console carry on. A plugin is someone else’s code: only add plugins from someone you trust. While this is off, no plugin runs.</p></div>
+          <input type="checkbox" id="pluginsEnabled" class="toggle" aria-label="Allow plugins" />
+        </div>
+        <p class="sub plugin-message" id="pluginsAllowNote" role="status"></p>
+      </section>
+      <section class="card companion-card" id="pluginsFind">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2>Find plugins</h2><p class="sub">Plugins that have been reviewed and approved for JPMixer. JPMixer checks each file it downloads against the approved copy.</p></div>
+          <button type="button" class="btn btn-sm" id="pluginCatalogRefresh">Refresh</button>
+        </div>
+        <p class="sub plugin-message" id="pluginCatalogStatus" role="status"></p>
+        <div class="plugin-catalog" id="pluginCatalog"></div>
+        <p class="sub">Made a plugin others could use? <button type="button" class="btn btn-sm" id="pluginSubmitBtn">Submit it for review</button></p>
+      </section>
+      <section class="card companion-card" id="pluginsIntro">
+        <div class="settings-heading"><h2>Your plugins</h2><p class="sub">Each plugin’s settings are listed under Plugins in the sidebar. To install one that isn’t on the approved list, import its .jpmplugin or .zip file, or drop the file anywhere on this page.</p></div>
+        <div class="card-row plugin-toolbar">
+          <button type="button" class="btn" id="pluginImportBtn">Import plugin…</button>
+          <button type="button" class="btn" id="pluginImportFolderBtn" title="For people making plugins: a plugin’s folder, as it is">Import folder…</button>
+          <button type="button" class="btn" id="pluginFolderBtn">Open plugins folder</button>
+          <button type="button" class="btn" id="pluginReloadBtn" title="Starts every plugin that’s on again, with any files changed in its folder">Reload plugins</button>
+        </div>
+        <p class="sub plugin-message" id="pluginsMessage" role="status"></p>
+        <p class="sub">Want to make one, yourself or with an AI assistant? <button type="button" class="btn btn-sm" id="pluginGuideBtn">Open the plugin guide</button></p>
+      </section>
+      <div id="pluginList" class="plugin-list"></div>
     </div>
 
     <div class="tab-panel" id="tab-branding">

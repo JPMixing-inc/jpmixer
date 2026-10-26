@@ -1,0 +1,65 @@
+name: Submit a plugin
+description: Ask for your JPMixer plugin to be reviewed and added to the approved list in JPMixer (Settings → Integrations → Plugins → Find plugins).
+title: "Plugin: "
+labels: ["plugin submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for making a plugin. Approved plugins are listed inside JPMixer for anyone to install, so each one is read through before it's added. The guide is in [docs/PLUGINS.md](https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md#getting-your-plugin-approved).
+
+        You can also open a pull request that adds your plugin's folder under `plugins/`. Fill this in either way, and link the pull request below.
+  - type: input
+    id: name
+    attributes:
+      label: Plugin name
+      description: As in its plugin.json.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Where its code is
+      description: A pull request here, a public repository, or a .jpmplugin / .zip attached below.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it does
+      description: What shows on FOH Home, and what it's for.
+    validations:
+      required: true
+  - type: checkboxes
+    id: permissions
+    attributes:
+      label: What it asks for in plugin.json
+      options:
+        - label: card (a card on FOH Home)
+        - label: console (channel and mix names, and whether the console is connected)
+        - label: planningCenter (the plan, what's live and what's next)
+  - type: textarea
+    id: network
+    attributes:
+      label: What it connects to
+      description: Every address, device or service it talks to on the network or the internet, and what it sends. "Nothing" is a fine answer.
+    validations:
+      required: true
+  - type: input
+    id: tested
+    attributes:
+      label: JPMixer version you tested it with
+      placeholder: "2.0.11"
+    validations:
+      required: true
+  - type: checkboxes
+    id: promises
+    attributes:
+      label: Before you submit
+      options:
+        - label: It's my own work, or I have the right to share it, and it can be kept in JPMixer's repository and installed by anyone who uses JPMixer.
+          required: true
+        - label: It only reads and shows things. It doesn't try to reach JPMixer's settings or files, or anything outside its own folder.
+          required: true
+        - label: Its code is readable (not minified or obfuscated), and any npm packages it includes are plain JavaScript.
+          required: true

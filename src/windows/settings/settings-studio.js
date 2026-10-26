@@ -6,6 +6,7 @@
   const pages = {
     start: ['Get started', 'The address phones connect to, and each part of setting JPMixer up, in order.'],
     general: ['General', 'What JPMixer does when this computer starts, and while the server runs.'],
+    performance: ['Performance', 'How hard JPMixer and this computer are working, and what’s connected.'],
     console: ['Console', 'Choose your console and connect to it.'],
     channels: ['Channels', 'Rename, group, show or hide channels. Drag rows to change their order.'],
     auxes: ['Aux mixes', 'Set mix names, colors, and what performers can do with each.'],
@@ -18,20 +19,23 @@
     pco: ['Planning Center', 'Connect your schedule and map team positions to mixes.'],
     backup: ['Backup & restore', 'Save your configuration or restore a previous backup.'],
     api: ['Control API', 'Connect Companion, Stream Deck, and external tools.'],
+    plugins: ['Plugins', 'Allow plugins, and add or remove them. Each plugin’s own settings are listed under Plugins in the sidebar.'],
     osclog: ['OSC log', 'Inspect traffic between JPMixer and your console.']
   };
   const tabs = document.querySelectorAll('.tab');
+  // A plugin's tab (added later, see settings.js) carries its own title
   const update = tab => {
-    const [title, description] = pages[tab.dataset.tab];
+    const [title, description] = pages[tab.dataset.tab] || [tab.dataset.title || tab.textContent.trim(), tab.dataset.description || ''];
     document.getElementById('settingsPageTitle').textContent = title;
     document.getElementById('settingsPageDescription').textContent = description;
-    for (const other of tabs) {
+    for (const other of document.querySelectorAll('.tab')) {
       if (other === tab) other.setAttribute('aria-current', 'page');
       else other.removeAttribute('aria-current');
     }
     document.querySelector('main').scrollTop = 0;
   };
   for (const tab of tabs) tab.addEventListener('click', () => update(tab));
+  window.jpmShowTabTitle = update; // for the tabs plugins add
   update(document.querySelector('.tab.active'));
 
   // Header wordmark: once the opening intro has finished, hovering the logo
