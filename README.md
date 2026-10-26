@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/JPMixing-inc/jpmixer/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/JPMixing-inc/jpmixer?label=release&color=e8003c&style=for-the-badge" /></a>
+  <a href="https://jpmixing.com"><img alt="Website: jpmixing.com" src="https://img.shields.io/badge/Website-jpmixing.com-e8003c?style=for-the-badge" /></a>
   <a href="docs/MANUAL.md"><img alt="User Manual" src="https://img.shields.io/badge/User%20Manual-read%20it-1f2128?style=for-the-badge" /></a>
   <a href="docs/MUSICIAN-GUIDE.md"><img alt="Musician Guide" src="https://img.shields.io/badge/Musician%20Guide-for%20the%20band-1f2128?style=for-the-badge" /></a>
   <img alt="macOS and Windows" src="https://img.shields.io/badge/macOS%20%7C%20Windows-1f2128?style=for-the-badge" />
@@ -16,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="https://jpmixing.com"><b>🌐 jpmixing.com</b></a> &nbsp;·&nbsp;
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
@@ -336,5 +338,7 @@ JPMixer runs a web server and a WebSocket bridge inside an Electron app.
 [Electron](https://www.electronjs.org/) · [Express](https://expressjs.com/) · [ws](https://github.com/websockets/ws) · [osc.js](https://github.com/colinbdclark/osc.js/) · [yauzl](https://github.com/thejoshwolfe/yauzl)
 
 ---
+
+<p align="center"><b>🌐 <a href="https://jpmixing.com">jpmixing.com</a></b></p>
 
 <p align="center"><sub>JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer/MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen &amp; Heath Limited. KLANG is a trademark of KLANG:technologies GmbH. WING is a trademark of MUSIC Tribe Global Brands Ltd. Waves and eMotion LV1 are trademarks of Waves Audio Ltd. Planning Center is a trademark of Ministry Centered Technologies.</sub></p>
