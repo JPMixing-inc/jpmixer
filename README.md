@@ -19,7 +19,7 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-11">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-12">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#consoles">Consoles</a> &nbsp;·&nbsp;
@@ -75,18 +75,24 @@
 
 ---
 
-<a id="new-in-2-0-11"></a>
+<a id="new-in-2-0-12"></a>
 
-## 🆕 New in 2.0.11
+## 🆕 New in 2.0.12
 
 | | |
 |---|---|
-| 📅 **Weekend plans with two teams** | For a plan with Saturday and Sunday services and a team for each day, JPMixer switches to Sunday's team once Saturday's service is over (90 minutes after its scheduled end, in case it runs long), instead of at about 1 AM. |
-| 🗓️ **Sunday under Coming up** | The Planning Center card shows the day being served with its times, and lists the weekend's other day under Coming up before the next weekends. |
-| 🏷️ **Console names remembered** | The channel and mix names the console reports are kept on the JPMixer computer, so Settings still shows them while the console is off. Names you type in JPMixer still win, and the remembered names are in backups. |
+| ⚡ **Updates within seconds** | The Home pages and the Green Room follow Planning Center within seconds instead of up to two minutes, and Shure batteries update every few seconds. If Planning Center doesn't answer for a moment, the screens keep what they show. |
+| 👆 **One tap on Companion buttons** | On iPads and phones, one tap always presses a Companion button once, even a tap that slides a little. |
+| 📊 **Settings → Performance** | How hard JPMixer and this computer are working, what's connected, and anything that needs attention, in plain words. Copy report sends it to whoever is helping. |
+| 🧩 **Plugins** | Add-ons from JPMixer's approved list, or your own, under Settings → Integrations → Plugins. Each runs on its own and can't read JPMixer's settings or passwords. Off until you allow them. [Make your own](docs/PLUGINS.md), by hand or with an AI assistant. |
 
 <details>
-<summary><b>Earlier releases: 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.11
+- **Weekend plans with two teams**: JPMixer switches to Sunday's team once Saturday's service is over.
+- **Sunday under Coming up** on the Planning Center card.
+- **Console names remembered** while the console is off, and kept in backups.
 
 ### 2.0.10
 - **Shure wireless**: each mic's battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room.

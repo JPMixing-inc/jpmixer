@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.11 · October 2026**
+**Version 2.0.12 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -144,7 +144,7 @@ Quit JPMixer
 
 ### The Settings window
 
-Choose **Settings…** to set everything up. The sidebar is in five groups: **Get started**; **Setup** (Console, Channels, Aux mixes); **People & pages** (Performers, Pages, Branding); **Integrations** (Planning Center, Companion, Smaart SPL, Shure wireless, Control API); and **System** (General, Backup & restore, OSC Log).
+Choose **Settings…** to set everything up. The sidebar is in five groups: **Get started**; **Setup** (Console, Channels, Aux mixes); **People & pages** (Performers, Pages, Branding); **Integrations** (Planning Center, Companion, Smaart SPL, Shure wireless, Control API, Plugins); and **System** (General, Performance, Backup & restore, OSC Log).
 
 Changes take effect when you click **Save & Apply** at the bottom right. Most changes apply live. A few, such as switching console type, restart the server, and the button then says **Saved — server restarted**. Phones reconnect by themselves a moment later.
 
@@ -524,7 +524,7 @@ JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds on
 2. In JPMixer, open **Settings → Integrations → Companion**, turn it on, enter the Companion computer’s address (`127.0.0.1` if it is this computer) and choose the grid (8 × 4 by default). Click **Save & Apply**; the status should say Connected.
 3. In Companion → Surfaces, give each JPMixer surface (JPMixer FOH Home, JPMixer ProPresenter Home, and so on) the page of buttons that station needs.
 
-The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. On a phone, a swipe that starts on a button scrolls the page without pressing it. JPMixer reconnects by itself if Companion restarts, and the card reconnects when a phone wakes up.
+The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. One tap presses once on phones and iPads, even a tap that slides a little. On a phone, a swipe that starts on a button scrolls the page without pressing it. JPMixer reconnects by itself if Companion restarts, and the card reconnects when a phone wakes up.
 
 ### Shure wireless
 
@@ -534,7 +534,7 @@ JPMixer can show each Shure wireless mic’s name, battery and transmitter, the 
 2. Tick **one spare receiver** first, outside a service, and click **Save & Apply**. Leave it a while, then tick the rest.
 3. Under each ticked receiver, choose the **Mix** its mic belongs to. That mic’s battery then shows on the musician’s phone mixer, in Monitor Engineer next to the mix, and on the FOH Wireless card.
 
-Each channel shows its name, transmitter type and frequency, and its battery as **Good** (4–5 bars), **Replace** (3, amber) or **Critical** (0–2, red), with run time on Shure rechargeables. When a transmitter is switched off the card says so and, for half an hour, what its battery was. JPMixer asks each receiver again every 15 seconds and reconnects one that stops answering.
+Each channel shows its name, transmitter type and frequency, and its battery as **Good** (4–5 bars), **Replace** (3, amber) or **Critical** (0–2, red), with run time on Shure rechargeables. When a transmitter is switched off the card says so and, for half an hour, what its battery was. JPMixer asks each receiver for its batteries and transmitters every 5 seconds (names every 15) and reconnects one that stops answering.
 
 ### SPL from Smaart
 
@@ -545,6 +545,16 @@ FOH Home can show live sound levels from Rational Acoustics Smaart in an SPL car
 3. In JPMixer, open **Settings → Integrations → Smaart SPL**, turn it on and enter the Smaart computer’s address. Leave the password empty unless one is set in Smaart’s API tab. Click **Save & Apply**; the status should say Connected and how many inputs it is reading.
 
 Each input shows a big reading (LAeq 10 unless you choose another) and a small live one (SPL A Slow), green, yellow or red by Smaart’s own color levels. When one of Smaart’s alarms trips, the input turns red and says *Over Smaart’s alarm level*. Click **Options** on the card to choose the big reading, the small one (or none), and which inputs show. The choices are saved on the JPMixer computer, so every screen that opens FOH Home shows the same; they are also under **Settings → Integrations → Smaart SPL**. The lists show Smaart’s own metric names once it is connected. With an access code on FOH Home, changing them needs the code.
+
+### Plugins
+
+Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Everything to do with them is under **Settings → Integrations → Plugins**, at the bottom of Integrations. Each plugin runs on its own, so if one stops working, JPMixer and the console carry on. A plugin can’t read JPMixer’s settings or passwords, or open other programs.
+
+1. Turn on **Allow plugins** and click **Save & Apply**. While it’s off, no plugin runs.
+2. Under **Find plugins**, click **Install** on a plugin from JPMixer’s approved list. Each one says what it can do. To install one that isn’t on the list, use **Import plugin…** with its `.jpmplugin` or `.zip` file, drop the file on the page, or double-click it. These are labelled *Not reviewed*: only install them if you trust whoever made them.
+3. Each plugin gets its own tab under Plugins in the sidebar. Turn it on there, fill in its settings, and click **Save & Apply**. If it shows a card, the card appears on FOH Home and can be arranged like any other.
+
+To make a plugin, by hand or with an AI assistant, see the [plugin guide](https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md) (**Open the plugin guide** on the Plugins page).
 
 ### The Pages tab and FOH access code
 
@@ -567,7 +577,7 @@ A full-screen, read-only display for a TV or iPad in the green room: who is serv
 
 <p align="center"><sub>Fig. 12.1 · The Green Room on a 1080p TV: the Your mix QR code, SPL from Smaart and the clock, Planning Center Live’s current and next item, and mic batteries on the team’s cards.</sub></p>
 
-- Open `http://192.168.1.20/greenroom.html` in the TV’s web browser, then press **OK** on the remote (or click anywhere) to go full screen. A browser won’t go full screen until something is pressed, so the page says so at the bottom until then. If the TV leaves full screen, press OK again. The mouse pointer hides itself after a few seconds. It can be left open: the team refreshes every 2 minutes.
+- Open `http://192.168.1.20/greenroom.html` in the TV’s web browser, then press **OK** on the remote (or click anywhere) to go full screen. A browser won’t go full screen until something is pressed, so the page says so at the bottom until then. If the TV leaves full screen, press OK again. The mouse pointer hides itself after a few seconds. It can be left open: it follows Planning Center by itself within a few seconds, and if Planning Center doesn’t answer for a moment, it keeps showing the team.
 - **Made for a 16:9 TV.** On a landscape screen everything fits on one screen with nothing to scroll. The team grid sizes itself so everyone fits, with bigger photos for a small team and smaller ones for a big team. On a phone or portrait screen it becomes a scrolling list.
 - **Clock:** the time and today’s date, top right.
 - **Your mix QR code:** beside the clock, a QR code that musicians scan with their phone’s camera to open the mix picker. Their phone needs to be on the same Wi-Fi as the JPMixer computer. Turn it off under Settings → Pages → Green Room. It shows on a TV or other landscape screen, not on a phone.
@@ -617,6 +627,10 @@ On the Get started tab, **Use Port 80** lets performers type just the computer�
 
 > [!NOTE]
 > Pick one address for performers and stick to it. The `:8080` address still works, but a phone keeps a separate My Mixes list for each address. If Get started says the Port 80 helper is outdated, click Use Port 80 again to update it.
+
+### Performance
+
+**Settings → Performance**, below General, shows how hard JPMixer and this computer are working. **Right now**, at the top, says in plain words if anything needs attention: JPMixer being held up long enough for faders to lag, the console not connected, the computer running hot, low on memory or disk, or on battery, or Planning Center being asked too often. Below it are JPMixer’s processor and memory use (with each window and plugin), the phones and pages connected, the console’s messages a second, each integration’s status, and this computer’s load, memory, disk and temperature. **Copy report** copies it all as text to send to whoever is helping; it never includes passwords or names.
 
 ---
 
