@@ -1,6 +1,6 @@
 {
   "name": "jpmixer",
-  "version": "2.0.13",
+  "version": "2.0.14",
   "description": "JPMixer — browser-based monitor mixes and production Home pages for DiGiCo, dLive, KLANG and WING consoles",
   "main": "main.js",
   "scripts": {
@@ -31,6 +31,19 @@
       "!assets/Icons For instruments/120-PNG-Images-MusicalInstrumentsBundle/**",
       "!src/**/*.test.js",
       "!src/server/_fake-electron-for-tests.js"
+    ],
+    "extraResources": [
+      {
+        "from": "plugins",
+        "to": "plugins",
+        "filter": [
+          "catalog.json",
+          "patch/**/*",
+          "smaart/**/*",
+          "shure/**/*",
+          "companion/**/*"
+        ]
+      }
     ],
     "mac": {
       "category": "public.app-category.music",
