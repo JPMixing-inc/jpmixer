@@ -3,13 +3,14 @@
 A plugin adds something to JPMixer that it doesn’t do itself. Today a plugin can:
 
 - put a card on **FOH Home**, which can be moved and resized like any other card;
-- read the console’s channel and mix names, and whether the console is connected;
+- read the console’s channel, mix and control group names, and whether the console is connected;
 - read the Planning Center plan, what’s live and what’s next;
+- have a page of its own, listed with the Home pages (JPMixer 2.0.13 and later);
 - have its own tab of settings in Settings, listed under **Plugins** at the bottom of Integrations.
 
 Plugins can’t change anything on the console yet.
 
-A plugin is a folder holding a `plugin.json` file and some JavaScript. A complete example is [`plugins/console-check`](../plugins/console-check), and [`docs/plugin-template`](plugin-template) is a starter to copy.
+A plugin is a folder holding a `plugin.json` file and some JavaScript. A complete example is [`plugins/console-check`](../plugins/console-check), and [`docs/plugin-template`](plugin-template) is a starter to copy. [`plugins/patch`](../plugins/patch) is a bigger one, with a page of its own.
 
 ## Installing a plugin
 
@@ -131,6 +132,7 @@ Installing copies the plugin there. You can also put a plugin's folder there you
 | `main` | The JavaScript file to run, inside the folder. Defaults to `index.js`. |
 | `permissions` | What the plugin uses from JPMixer (see below). |
 | `card.title` | The card's heading on FOH Home. Defaults to `name`. |
+| `page.title`, `page.entry` | With the `page` permission: the page's name on the Home pages list (defaults to `name`), and its HTML file inside the folder (defaults to `page/index.html`). |
 | `minJPMixer` | The oldest JPMixer version it works with, like `"2.1.0"`. Find plugins won't offer it to older versions. |
 | `settings` | **Required: at least one field**, up to 24. They make the plugin's own tab under Plugins in Settings, and reach the plugin as `jp.settings`. |
 
@@ -141,8 +143,9 @@ The person turning the plugin on sees this list before it's turned on.
 | Permission | Lets the plugin |
 |---|---|
 | `card` | Show a card on FOH Home (`jp.card`) |
-| `console` | See channel and mix names, and whether the console is connected (`jp.console`) |
+| `console` | See channel, control group and mix names, each channel's 48V, and whether the console is connected (`jp.console`) |
 | `planningCenter` | See the plan’s title, what’s live and what’s next (`jp.planningCenter`) |
+| `page` | Show a page of its own, listed with the Home pages (`jp.page`; see "A page of its own"). JPMixer 2.0.13 and later. |
 
 A plugin that uses something it didn't ask for gets an error.
 
@@ -190,6 +193,7 @@ module.exports = async (jp) => {
 | `jp.console.onChange(fn)` | Calls `fn(state)` when that changes. JPMixer checks about every 3 seconds. |
 | `jp.planningCenter.get()` | A promise of the plan (see below) |
 | `jp.planningCenter.onChange(fn)` | Calls `fn(plan)` when that changes. JPMixer checks about every 15 seconds. |
+| `jp.page.handle(name, fn)` | Answers its page's call `name` with whatever `fn(body)` returns (or a promise of it). See "A page of its own". |
 | `jp.onStop(fn)` | Runs `fn` before the plugin is stopped, for closing connections. It has about a second and a half. |
 
 `console.log()` and `console.error()` lines show in the **Log** on the plugin's tab in Settings, which keeps the last 200 lines.
@@ -223,12 +227,13 @@ jp.card.show({
   demo: false,             // demo mode's made-up console
   running: true,           // JPMixer's server is running
   connected: true,         // the console is connected
-  channels: [{ number: 1, name: 'Kick' }, …],
-  mixes: [{ number: 1, name: 'Vocal 1' }, …]
+  channels: [{ number: 1, name: 'Kick', phantom: true }, …],   // phantom: the channel's 48V (DiGiCo and LV1, once the desk has reported it)
+  mixes: [{ number: 1, name: 'Vocal 1' }, …],
+  groups: [{ number: 1, name: 'Drums' }, …]   // control groups (DCAs on dLive and LV1); empty while the server is off
 }
 ```
 
-Each name is the one every page shows. That's a name typed in JPMixer, else the console's own, else the last one the console reported.
+Each channel and mix name is the one every page shows. That's a name typed in JPMixer, else the console's own, else the last one the console reported. `phantom` is left out for a channel whose 48V JPMixer hasn't heard from the desk (on LV1, a channel whose input isn't a preamp), and on consoles other than DiGiCo and LV1.
 
 ### `jp.planningCenter.get()`
 
@@ -247,6 +252,45 @@ Each name is the one every page shows. That's a name typed in JPMixer, else the 
 
 - `length` is in seconds.
 - Plugins never see people's names or photos.
+
+## A page of its own
+
+With the `page` permission, a plugin can have a page: HTML, scripts, styles and images in its folder (`page/` unless `page.entry` says otherwise). JPMixer serves it at `/p/<id>/`, and lists it with the Home pages, so anyone on the network can open it on a phone, tablet or computer. Its tab in Settings has a button that opens it.
+
+The page talks to its plugin, and only to its plugin. It calls a name with some JSON; the plugin answers with `jp.page.handle`:
+
+```js
+// index.js (the plugin)
+module.exports = (jp) => {
+  let notes = [];
+  jp.page.handle('load', () => ({ notes }));
+  jp.page.handle('add', (body) => { notes.push(String(body.text).slice(0, 200)); return { notes }; });
+};
+```
+
+```js
+// page/app.js (the page)
+// JPMixer puts the page's token in its <head> as it serves it
+const TOKEN = document.querySelector('meta[name="jpmixer-token"]').content;
+async function call(name, body) {
+  const res = await fetch(`/plugin-api/my-plugin/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-JPMixer-Token': TOKEN },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error);
+  return data.result;
+}
+const { notes } = await call('load');
+```
+
+- **Errors:** an error thrown in a handler goes back to the page as `data.error`, and doesn't stop the plugin. A call that isn't answered in 10 seconds fails.
+- **Keeping things:** the page shows; the plugin keeps. Save in `jp.plugin.dataFolder`, so every screen that opens the page sees the same thing.
+- **Size:** a call's JSON can be up to 512 KB.
+- **Sandboxed:** the page is walled off from JPMixer's own pages. It can't read them or their cookies, and it has no browser storage (`localStorage` throws). It can't load scripts or styles from the internet either: put everything in its folder.
+- **Other websites are refused:** they can't call a plugin through someone's browser. Each call needs the `X-JPMixer-Token` header with the token JPMixer writes into the page's HTML (`<meta name="jpmixer-token">`). Other sites can't read it, and each plugin's page has its own, so one plugin's page can't call another plugin. Your page's HTML needs a `<head>`.
+- **Requirements:** plugin pages need JPMixer 2.0.13 or later. Set `"minJPMixer": "2.0.13"` in `plugin.json`.
 
 ## What a plugin can and can't do
 

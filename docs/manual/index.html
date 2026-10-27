@@ -196,7 +196,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 <header class="cover">
   <div class="wrap">
     <div>
-      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.12 · OCTOBER 2026</span></div>
+      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.13 · OCTOBER 2026</span></div>
       <h1 style="margin-top:34px">JPMixer User Manual</h1>
       <p class="lede">Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.</p>
       <dl class="cover-facts">
@@ -558,6 +558,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   <figure class="shot bleed"><img src="img/console.png" alt="Console Controller with sixteen input channel strips"><figcaption><b>Fig. 9.2</b>Console Controller, Inputs. Channel 14 is muted.</figcaption></figure>
   <p>The console’s main faders, mutes and solos for <span class="ui">Inputs</span>, <span class="ui">Control groups</span> (DCAs) and <span class="ui">Aux outputs</span>, from a browser. <span class="ui">Overview</span> fits more strips on screen; <span class="ui">Roomy</span> gives each strip more space. It works on DiGiCo, dLive and LV1.</p>
   <p>On DiGiCo, each strip’s <span class="ui">EQ</span> button opens the <strong>channel processing panel</strong>: input gain, 48V, phase, delay and pan; a 4-band EQ graph you can drag, with high-pass and low-pass filters; and compressor and gate.</p>
+  <p>On LV1, each strip’s <span class="ui">GAIN</span> button shows that channel’s <strong>preamp</strong> as LV1 has it, updating live: whether its gain comes from the stage box preamp or is Local, the gain, 48V, phase and trim. It’s read-only; change them on LV1. A stereo channel shows its left side.</p>
   <figure class="shot bleed"><img src="img/console-eq.png" alt="The channel processing panel open on the Kick channel, showing the EQ graph"><figcaption><b>Fig. 9.3</b>The channel processing panel (DiGiCo): Input, EQ and Dynamics.</figcaption></figure>
   <div class="callout warn"><b>Important</b><p>The Console Controller changes the main mix. Anyone on the network who opens it can move the console’s faders, so keep production Wi-Fi private.</p></div>
 
@@ -687,6 +688,17 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
     <li>Each plugin gets its own tab under Plugins in the sidebar. Turn it on there, fill in its settings, and click <span class="ui">Save &amp; Apply</span>. If it shows a card, the card appears on FOH Home and can be arranged like any other.</li>
   </ol>
   <p>To make a plugin, by hand or with an AI assistant, see the <a href="https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md">plugin guide</a> (<span class="ui">Open the plugin guide</span> on the Plugins page).</p>
+
+  <h3>The Patch plugin</h3>
+  <p><strong>Patch</strong>, on JPMixer’s approved list, draws your stage boxes and console to scale, so anyone can see what’s plugged in where. Install it and turn it on as above, then open <span class="ui">Patch</span> from the Home pages list on any phone, iPad or computer. Every screen shows and edits the same patch.</p>
+  <ul>
+    <li><strong>Add stage box</strong> adds a DiGiCo rack (D-Rack, D2-Rack, DQ-Rack, MQ-Rack, SD-Rack and the others), a Waves IONIC or DiGiGrid box, the back of a DiGiCo console or an LV1 Classic, or a generic box of any size. Racks with card slots are built from the cards you choose.</li>
+    <li>Tap a socket to name it and choose the channel, control group or mix it’s patched to; the lists use your console’s own names. A channel patched from two sockets is marked in red.</li>
+    <li><strong>48V:</strong> mark a mic socket as needing 48V. On DiGiCo and LV1, a socket patched to a channel with 48V on at the desk lights up by itself, and one marked for 48V on a channel that has it off shows in yellow.</li>
+    <li><strong>Import session</strong> reads a session saved on the console: a DiGiCo <code>.ses</code> or an LV1 <code>.emo</code>. Every box comes in with each socket named, patched and marked 48V as the session has it. A DiGiCo session doesn’t say which rack is on Dante or MADI, so the preview asks; it draws the console you mixed on, which you can change there too. Playback channels (a computer on Dante, USB or Waves) get a box of their own. The file is read on the page; nothing is sent anywhere. Importing again updates the same boxes and keeps your own notes and 48V marks.</li>
+    <li><strong>Patch sheet</strong> lists every socket, to print or download as a spreadsheet.</li>
+    <li>In its settings, <span class="ui">Lock the patch</span> makes it view-only during a service, and <span class="ui">Show a patch summary on FOH Home</span> adds a card with how much is patched.</li>
+  </ul>
 
   <h3>The Pages tab and FOH access code</h3>
   <figure class="shot"><img src="img/settings-pages.png" alt="The Pages tab: Home page picker, FOH Home with access code, and the other Home pages"><figcaption><b>Fig. 11.4</b>Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</figcaption></figure>
@@ -888,7 +900,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
       <tr><td>Ear Scenes</td><td class="yes">By snapshot name</td><td class="yes">By scene number</td><td class="yes">By scene number</td><td class="no">No</td><td class="yes">By scene name</td></tr>
       <tr><td>Built-in aux EQ</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
       <tr><td>Console Controller</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
-      <tr><td>Channel processing panel</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>Channel processing panel</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="yes">Preamp, read-only</td></tr>
     </tbody>
   </table></div>
   <p style="font-size:14px;color:var(--ink-3)">* KLANG mode reads channel names from the paired dLive, when its address is entered. DiGiCo is in regular use. dLive has been tested against dLive Director, LV1 against an LV1 show, and KLANG and WING against their published protocols; try each on your own console before a service.</p>
@@ -914,7 +926,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 </section>
 
       <footer class="end">
-        <p style="max-width:none">JPMixer User Manual · Version 2.0.12 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
+        <p style="max-width:none">JPMixer User Manual · Version 2.0.13 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
         <p style="max-width:none;font-size:12px">JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer / MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. All trademarks belong to their owners.</p>
       </footer>
     </div>

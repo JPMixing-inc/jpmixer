@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.12 · October 2026**
+**Version 2.0.13 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -377,6 +377,8 @@ The console’s main faders, mutes and solos for **Inputs**, **Control groups** 
 
 On DiGiCo, each strip’s **EQ** button opens the **channel processing panel**: input gain, 48V, phase, delay and pan; a 4-band EQ graph you can drag, with high-pass and low-pass filters; and compressor and gate.
 
+On LV1, each strip’s **GAIN** button shows that channel’s **preamp** as LV1 has it, updating live: whether its gain comes from the stage box preamp or is Local, the gain, 48V, phase and trim. It’s read-only; change them on LV1. A stereo channel shows its left side.
+
 <p align="center"><img src="manual/img/console-eq.png" alt="The channel processing panel open on the Kick channel, showing the EQ graph"></p>
 
 <p align="center"><sub>Fig. 9.3 · The channel processing panel (DiGiCo): Input, EQ and Dynamics.</sub></p>
@@ -555,6 +557,17 @@ Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with 
 3. Each plugin gets its own tab under Plugins in the sidebar. Turn it on there, fill in its settings, and click **Save & Apply**. If it shows a card, the card appears on FOH Home and can be arranged like any other.
 
 To make a plugin, by hand or with an AI assistant, see the [plugin guide](https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md) (**Open the plugin guide** on the Plugins page).
+
+### The Patch plugin
+
+**Patch**, on JPMixer’s approved list, draws your stage boxes and console to scale, so anyone can see what’s plugged in where. Install it and turn it on as above, then open **Patch** from the Home pages list on any phone, iPad or computer. Every screen shows and edits the same patch.
+
+- **Add stage box** adds a DiGiCo rack (D-Rack, D2-Rack, DQ-Rack, MQ-Rack, SD-Rack and the others), a Waves IONIC or DiGiGrid box, the back of a DiGiCo console or an LV1 Classic, or a generic box of any size. Racks with card slots are built from the cards you choose.
+- Tap a socket to name it and choose the channel, control group or mix it’s patched to; the lists use your console’s own names. A channel patched from two sockets is marked in red.
+- **48V:** mark a mic socket as needing 48V. On DiGiCo and LV1, a socket patched to a channel with 48V on at the desk lights up by itself, and one marked for 48V on a channel that has it off shows in yellow.
+- **Import session** reads a session saved on the console: a DiGiCo `.ses` or an LV1 `.emo`. Every box comes in with each socket named, patched and marked 48V as the session has it. A DiGiCo session doesn’t say which rack is on Dante or MADI, so the preview asks; it draws the console you mixed on, which you can change there too. Playback channels (a computer on Dante, USB or Waves) get a box of their own. The file is read on the page; nothing is sent anywhere. Importing again updates the same boxes and keeps your own notes and 48V marks.
+- **Patch sheet** lists every socket, to print or download as a spreadsheet.
+- In its settings, **Lock the patch** makes it view-only during a service, and **Show a patch summary on FOH Home** adds a card with how much is patched.
 
 ### The Pages tab and FOH access code
 
@@ -772,7 +785,7 @@ Every page works the same whichever console you use. What changes is what each c
 | Ear Scenes | By snapshot name | By scene number | By scene number | No | By scene name |
 | Built-in aux EQ | Yes | No | No | No | No |
 | Console Controller | Yes | Yes | No | No | Yes |
-| Channel processing panel | Yes | No | No | No | No |
+| Channel processing panel | Yes | No | No | No | Preamp, read-only |
 
 * KLANG mode reads channel names from the paired dLive, when its address is entered. DiGiCo is in regular use. dLive has been tested against dLive Director, LV1 against an LV1 show, and KLANG and WING against their published protocols; try each on your own console before a service.
 

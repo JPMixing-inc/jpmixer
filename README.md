@@ -21,7 +21,7 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-12">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-13">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#consoles">Consoles</a> &nbsp;·&nbsp;
@@ -77,19 +77,24 @@
 
 ---
 
-<a id="new-in-2-0-12"></a>
+<a id="new-in-2-0-13"></a>
 
-## 🆕 New in 2.0.12
+## 🆕 New in 2.0.13
 
 | | |
 |---|---|
-| ⚡ **Updates within seconds** | The Home pages and the Green Room follow Planning Center within seconds instead of up to two minutes, and Shure batteries update every few seconds. If Planning Center doesn't answer for a moment, the screens keep what they show. |
-| 👆 **One tap on Companion buttons** | On iPads and phones, one tap always presses a Companion button once, even a tap that slides a little. |
-| 📊 **Settings → Performance** | How hard JPMixer and this computer are working, what's connected, and anything that needs attention, in plain words. Copy report sends it to whoever is helping. |
-| 🧩 **Plugins** | Add-ons from JPMixer's approved list, or your own, under Settings → Integrations → Plugins. Each runs on its own and can't read JPMixer's settings or passwords. Off until you allow them. [Make your own](docs/PLUGINS.md), by hand or with an AI assistant. |
+| 🔌 **Patch** | A new plugin on the approved list: your stage boxes and console drawn to scale, on any phone or iPad. Tap a socket to name it and patch it to a channel or mix, see 48V at a glance, and print a patch sheet. Import a DiGiCo or LV1 session and every box comes in already named and patched, with its 48V. |
+| 🎚️ **LV1 preamps** | On LV1, the Console Controller's GAIN button shows each channel's preamp live: Preamp or Local gain, the gain, 48V, phase and trim. |
+| 🧩 **Plugin pages** | Plugins can now have a page of their own, opened from the Home pages list. Each page talks only to its own plugin. |
 
 <details>
-<summary><b>Earlier releases: 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.12
+- **Updates within seconds**: the Home pages and the Green Room follow Planning Center within seconds, and Shure batteries update every few seconds.
+- **One tap on Companion buttons** on iPads and phones.
+- **Settings → Performance**: how hard JPMixer and the computer are working, in plain words.
+- **Plugins**: add-ons from JPMixer's approved list, or your own, under Settings → Integrations → Plugins.
 
 ### 2.0.11
 - **Weekend plans with two teams**: JPMixer switches to Sunday's team once Saturday's service is over.
@@ -224,7 +229,7 @@ Every monitor mix side by side, grouped the same way as the phones. Trim a whole
 
 ### Console Controller and channel processing
 
-The console's own faders, mutes and solos for inputs, control groups or DCAs, and aux outputs, from any browser (DiGiCo, dLive and LV1). On DiGiCo, each channel opens a **processing panel**: gain, 48V, filters, a draggable 4-band EQ and dynamics.
+The console's own faders, mutes and solos for inputs, control groups or DCAs, and aux outputs, from any browser (DiGiCo, dLive and LV1). On DiGiCo, each channel opens a **processing panel**: gain, 48V, filters, a draggable 4-band EQ and dynamics. On LV1, each channel shows its **preamp** as LV1 has it, live: Preamp or Local gain, the gain, 48V, phase and trim (read-only; change them on LV1).
 
 <p align="center"><img src="docs/manual/img/console-eq.png" alt="Console Controller with the channel processing panel open" width="880" /></p>
 
