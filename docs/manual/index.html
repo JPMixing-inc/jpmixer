@@ -196,7 +196,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 <header class="cover">
   <div class="wrap">
     <div>
-      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.13 · OCTOBER 2026</span></div>
+      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.14 · OCTOBER 2026</span></div>
       <h1 style="margin-top:34px">JPMixer User Manual</h1>
       <p class="lede">Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.</p>
       <dl class="cover-facts">
@@ -358,7 +358,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   <p><span class="ui">Quit JPMixer</span> puts back anything JPMixer is holding on the console, such as sends muted from a phone, before it closes.</p>
 
   <h3>The Settings window</h3>
-  <p>Choose <span class="ui">Settings…</span> to set everything up. The sidebar is in five groups: <strong>Get started</strong>; <strong>Setup</strong> (Console, Channels, Aux mixes); <strong>People &amp; pages</strong> (Performers, Pages, Branding); <strong>Integrations</strong> (Planning Center, Companion, Smaart SPL, Shure wireless, Control API, Plugins); and <strong>System</strong> (General, Performance, Backup &amp; restore, OSC Log).</p>
+  <p>Choose <span class="ui">Settings…</span> to set everything up. The sidebar is in five groups: <strong>Get started</strong>; <strong>Setup</strong> (Console, Channels, Aux mixes); <strong>People &amp; pages</strong> (Performers, Pages, Branding); <strong>Plugins</strong> (the Plugins page, then Planning Center and each plugin you’ve installed, such as Companion, Smaart SPL, Shure wireless and Patch); and <strong>System</strong> (General, Control API, Performance, Backup &amp; restore, OSC Log).</p>
   <p>Changes take effect when you click <span class="ui">Save &amp; Apply</span> at the bottom right. Most changes apply live. A few, such as switching console type, restart the server, and the button then says <span class="ui">Saved — server restarted</span>. Phones reconnect by themselves a moment later.</p>
 
   <h3>Updates</h3>
@@ -574,6 +574,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   <p class="ch-intro">Connect Planning Center Services and JPMixer follows your schedule: each mix is named after who is on it, performers’ phones can open their own mix, and the Green Room and Home pages welcome whoever is serving.</p>
   <figure class="shot"><img src="img/settings-pco.png" alt="The Planning Center tab: connection, service and team, and the start of the mapping"><figcaption><b>Fig. 10.1</b>Settings → Planning Center. The buttons along the top jump to each section.</figcaption></figure>
 
+  <p>Planning Center is optional. <span class="ui">Use Planning Center</span>, at the top of the tab, turns it on or off; it’s on unless you turn it off. Turned off, JPMixer doesn’t contact Planning Center, and the Home pages, Green Room schedule and anything else that needs it say so. Everything set up on the tab is kept for when it’s turned back on.</p>
   <h3>Connect</h3>
   <ol class="steps">
     <li>Sign in at <code>api.planningcenteronline.com/personal_access_tokens</code> and create a personal access token.</li>
@@ -653,19 +654,22 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   <h3>Team chat</h3>
   <p>Messages go to all four stations live. Each shows who sent it and from which station. The chat clears itself when Planning Center moves on to the next service, for example from Saturday night’s plan to Sunday morning’s, and it starts empty whenever JPMixer opens.</p>
 
+  <div class="callout note"><b>Note</b><p>Companion buttons, Smaart SPL and Shure wireless are each a plugin of their own: install only the ones you use. To add one, open <span class="ui">Settings → Plugins</span> and click <span class="ui">Install</span> on it under <span class="ui">Find plugins</span>. Each comes with JPMixer, so it installs even with no internet, and it runs without Allow plugins. Its tab then appears under Plugins in the sidebar. If you used one before 2.0.14, it was moved over by itself, with its settings. Removing one turns it off and keeps its settings, for if you install it again.</p></div>
   <h3>Companion buttons</h3>
   <p>JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds one button surface per Home page.</p>
   <ol class="steps">
     <li>In Companion, allow Satellite connections (TCP port <code>16622</code> by default).</li>
-    <li>In JPMixer, open <span class="ui">Settings → Integrations → Companion</span>, turn it on, enter the Companion computer’s address (<code>127.0.0.1</code> if it is this computer) and choose the grid (8 × 4 by default). Click <span class="ui">Save &amp; Apply</span>; the status should say Connected.</li>
+    <li>In JPMixer, install <strong>Companion buttons</strong> from <span class="ui">Find plugins</span> (see the note above).</li>
+    <li>Open <span class="ui">Settings → Plugins → Companion</span>, turn it on, enter the Companion computer’s address (<code>127.0.0.1</code> if it is this computer) and choose the grid (8 × 4 by default). Click <span class="ui">Save &amp; Apply</span>; the status should say Connected.</li>
     <li>In Companion → Surfaces, give each JPMixer surface (JPMixer FOH Home, JPMixer ProPresenter Home, and so on) the page of buttons that station needs.</li>
   </ol>
   <p>The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. One tap presses once on phones and iPads, even a tap that slides a little. On a phone, a swipe that starts on a button scrolls the page without pressing it. JPMixer reconnects by itself if Companion restarts, and the card reconnects when a phone wakes up.</p>
 
   <h3>Shure wireless</h3>
-  <p>JPMixer can show each Shure wireless mic’s name, battery and transmitter, the way Wireless Workbench does, in a Wireless card on FOH Home and on Settings → Integrations → Shure wireless. It works with QLX-D, and uses the same control strings as ULX-D, SLX-D and Axient Digital. JPMixer only reads: it never changes a receiver or turns on its meters, and Wireless Workbench can stay open.</p>
+  <p>JPMixer can show each Shure wireless mic’s name, battery and transmitter, the way Wireless Workbench does, in a Wireless card on FOH Home and on Settings → Plugins → Shure wireless. It works with QLX-D, and uses the same control strings as ULX-D, SLX-D and Axient Digital. JPMixer only reads: it never changes a receiver or turns on its meters, and Wireless Workbench can stay open.</p>
   <ol class="steps">
-    <li>Open <span class="ui">Settings → Integrations → Shure wireless</span> and turn on <span class="ui">Watch Shure wireless receivers</span>. Receivers on the network appear while Wireless Workbench is open; you can also add one by its address. Every receiver JPMixer sees is remembered, so after a restart they are all listed even with Wireless Workbench closed, and each is followed by its hardware ID if its address changes. <span class="ui">Forget this receiver</span> takes an unticked one off the list.</li>
+    <li>Install <strong>Shure wireless</strong> from <span class="ui">Find plugins</span> (see the note above Companion buttons).</li>
+    <li>Open <span class="ui">Settings → Plugins → Shure wireless</span> and turn on <span class="ui">Watch Shure wireless receivers</span>. Receivers on the network appear while Wireless Workbench is open; you can also add one by its address. Every receiver JPMixer sees is remembered, so after a restart they are all listed even with Wireless Workbench closed, and each is followed by its hardware ID if its address changes. <span class="ui">Forget this receiver</span> takes an unticked one off the list.</li>
     <li>Tick <strong>one spare receiver</strong> first, outside a service, and click <span class="ui">Save &amp; Apply</span>. Leave it a while, then tick the rest.</li>
     <li>Under each ticked receiver, choose the <span class="ui">Mix</span> its mic belongs to. That mic’s battery then shows on the musician’s phone mixer, in Monitor Engineer next to the mix, and on the FOH Wireless card.</li>
   </ol>
@@ -676,17 +680,22 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   <ol class="steps">
     <li>In Smaart, open <span class="ui">Options → Preferences → API</span> and tick <span class="ui">Enabled</span>. The port is <code>26000</code> unless you changed it. Hover over <span class="ui">IP Address</span> there to see the Smaart computer’s address.</li>
     <li>In Smaart, start SPL logging on a calibrated mic input. The card shows every input that is logging.</li>
-    <li>In JPMixer, open <span class="ui">Settings → Integrations → Smaart SPL</span>, turn it on and enter the Smaart computer’s address. Leave the password empty unless one is set in Smaart’s API tab. Click <span class="ui">Save &amp; Apply</span>; the status should say Connected and how many inputs it is reading.</li>
+    <li>In JPMixer, install <strong>Smaart SPL</strong> from <span class="ui">Find plugins</span> (see the note above Companion buttons).</li>
+    <li>Open <span class="ui">Settings → Plugins → Smaart SPL</span>, turn it on and enter the Smaart computer’s address. Leave the password empty unless one is set in Smaart’s API tab. Click <span class="ui">Save &amp; Apply</span>; the status should say Connected and how many inputs it is reading.</li>
   </ol>
-  <p>Each input shows a big reading (LAeq 10 unless you choose another) and a small live one (SPL A Slow), green, yellow or red by Smaart’s own color levels. When one of Smaart’s alarms trips, the input turns red and says <em>Over Smaart’s alarm level</em>. Click <span class="ui">Options</span> on the card to choose the big reading, the small one (or none), and which inputs show. The choices are saved on the JPMixer computer, so every screen that opens FOH Home shows the same; they are also under <span class="ui">Settings → Integrations → Smaart SPL</span>. The lists show Smaart’s own metric names once it is connected. With an access code on FOH Home, changing them needs the code.</p>
+  <p>Each input shows a big reading (LAeq 10 unless you choose another) and a small live one (SPL A Slow), green, yellow or red by Smaart’s own color levels. When one of Smaart’s alarms trips, the input turns red and says <em>Over Smaart’s alarm level</em>. Click <span class="ui">Options</span> on the card to choose the big reading, the small one (or none), and which inputs show. The choices are saved on the JPMixer computer, so every screen that opens FOH Home shows the same; they are also under <span class="ui">Settings → Plugins → Smaart SPL</span>. The lists show Smaart’s own metric names once it is connected. With an access code on FOH Home, changing them needs the code.</p>
 
   <h3>Plugins</h3>
-  <p>Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Everything to do with them is under <span class="ui">Settings → Integrations → Plugins</span>, at the bottom of Integrations. Each plugin runs on its own, so if one stops working, JPMixer and the console carry on. A plugin can’t read JPMixer’s settings or passwords, or open other programs.</p>
+  <p>Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Everything to do with them is under <span class="ui">Settings → Plugins</span>. Each plugin runs on its own, so if one stops working, JPMixer and the console carry on. A plugin can’t read JPMixer’s settings or passwords, or open other programs.</p>
   <ol class="steps">
     <li>Turn on <span class="ui">Allow plugins</span> and click <span class="ui">Save &amp; Apply</span>. While it’s off, no plugin runs.</li>
     <li>Under <span class="ui">Find plugins</span>, click <span class="ui">Install</span> on a plugin from JPMixer’s approved list. Each one says what it can do. To install one that isn’t on the list, use <span class="ui">Import plugin…</span> with its <code>.jpmplugin</code> or <code>.zip</code> file, drop the file on the page, or double-click it. These are labelled <em>Not reviewed</em>: only install them if you trust whoever made them.</li>
     <li>Each plugin gets its own tab under Plugins in the sidebar. Turn it on there, fill in its settings, and click <span class="ui">Save &amp; Apply</span>. If it shows a card, the card appears on FOH Home and can be arranged like any other.</li>
   </ol>
+  <p>When a plugin on the approved list has a newer version, a red dot appears next to <span class="ui">Plugins</span> in the sidebar, and the plugin’s row has an <span class="ui">Update</span> button. JPMixer looks a minute after it starts, every 6 hours after that, and whenever you open the Plugins page. Updating keeps the plugin’s settings.</p>
+  <p>To remove a plugin, click <span class="ui">Remove…</span>: on its row under <span class="ui">Your plugins</span>, at the bottom of its own tab, or next to it in <span class="ui">Find plugins</span>. Its folder goes to the Trash. Removing Companion, Smaart or Shure also turns it off, and keeps its settings for if you install it again. Planning Center is built into JPMixer, so it can’t be removed; turn it off in its tab instead.</p>
+  <figure class="shot"><img src="img/settings-plugins.png" alt="Settings → Plugins: Planning Center, Companion buttons, Patch and Smaart SPL, each marked JPMixer Original, with its status"><figcaption><b>Fig. 11.4</b>Settings → Plugins. JPMixer’s own plugins have a red JPMixer Original badge; each row shows how it’s doing.</figcaption></figure>
+  <p>JPMixer’s own plugins (Patch, Companion buttons, Smaart SPL and Shure wireless) have a red <em>JPMixer Original</em> badge and run without Allow plugins, as long as their files are the approved ones. Companion, Smaart and Shure each get their own tab under Plugins once installed; their row in the list opens that tab.</p>
   <p>To make a plugin, by hand or with an AI assistant, see the <a href="https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md">plugin guide</a> (<span class="ui">Open the plugin guide</span> on the Plugins page).</p>
 
   <h3>The Patch plugin</h3>
@@ -701,7 +710,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   </ul>
 
   <h3>The Pages tab and FOH access code</h3>
-  <figure class="shot"><img src="img/settings-pages.png" alt="The Pages tab: Home page picker, FOH Home with access code, and the other Home pages"><figcaption><b>Fig. 11.4</b>Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</figcaption></figure>
+  <figure class="shot"><img src="img/settings-pages.png" alt="The Pages tab: Home page picker, FOH Home with access code, and the other Home pages"><figcaption><b>Fig. 11.5</b>Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</figcaption></figure>
   <p>Settings → Pages lists every page JPMixer serves with its direct link. FOH Home can have an <strong>Access code</strong>: other devices enter it once, the JPMixer computer never needs it, and changing it signs every device out. Leave it empty to turn it off.</p>
   <div class="callout warn"><b>Important</b><p>Only FOH Home can have a code. Anyone on the same network can open the other Home pages, chat and press their Companion buttons, so keep production Wi-Fi separate from guest Wi-Fi.</p></div>
 </section>
@@ -926,7 +935,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 </section>
 
       <footer class="end">
-        <p style="max-width:none">JPMixer User Manual · Version 2.0.13 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
+        <p style="max-width:none">JPMixer User Manual · Version 2.0.14 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
         <p style="max-width:none;font-size:12px">JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer / MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. All trademarks belong to their owners.</p>
       </footer>
     </div>

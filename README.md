@@ -21,9 +21,10 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-13">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-14">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
+  <a href="#plugins">Plugins</a> &nbsp;·&nbsp;
   <a href="#consoles">Consoles</a> &nbsp;·&nbsp;
   <a href="#documentation">All docs</a>
 </p>
@@ -59,6 +60,7 @@
 |---|---|
 | **[User Manual](docs/MANUAL.md)** | The whole app, chapter by chapter, with screenshots. Start here. |
 | **[Musician Guide](docs/MUSICIAN-GUIDE.md)** | For the band: the phone screen, part by part, and how to mix, save and recall your own mix. Short and phone-friendly. |
+| **[Plugins](docs/plugins/README.md)** | A page for each plugin, with pictures and how to set it up: Patch, Shure wireless, Smaart SPL, Companion buttons and Console check. |
 | [Musician Guide, designed copy](docs/musician/index.html) | The same guide as a web page made for phones. |
 | [User Manual, designed copy](docs/manual/index.html) | The same manual as a web page to read offline or print. Download the repository and open `docs/manual/index.html`. |
 | [Release notes](https://github.com/JPMixing-inc/jpmixer/releases) | What changed in each version. |
@@ -77,24 +79,29 @@
 
 ---
 
-<a id="new-in-2-0-13"></a>
+<a id="new-in-2-0-14"></a>
 
-## 🆕 New in 2.0.13
+## 🆕 New in 2.0.14
 
 | | |
 |---|---|
-| 🔌 **Patch** | A new plugin on the approved list: your stage boxes and console drawn to scale, on any phone or iPad. Tap a socket to name it and patch it to a channel or mix, see 48V at a glance, and print a patch sheet. Import a DiGiCo or LV1 session and every box comes in already named and patched, with its 48V. |
-| 🎚️ **LV1 preamps** | On LV1, the Console Controller's GAIN button shows each channel's preamp live: Preamp or Local gain, the gain, 48V, phase and trim. |
-| 🧩 **Plugin pages** | Plugins can now have a page of their own, opened from the Home pages list. Each page talks only to its own plugin. |
+| 🧩 **Choose your integrations** | Shure wireless, Smaart SPL and Companion buttons are now plugins of their own: run only the ones you use, each in its own process, so a problem with one never touches the console. Install the ones you want from Find plugins (they come with JPMixer, so no internet is needed), and each gets its own tab under Plugins. |
+| 🔁 **Nothing to do when updating** | Each one you already use moves over by itself on first launch, with all its settings, even with no internet. |
+| 🗓️ **Planning Center is optional** | A Use Planning Center switch: turned off, JPMixer doesn't contact Planning Center and nothing that needs it shows. Everything set up is kept for when it's turned back on. |
 
 <details>
-<summary><b>Earlier releases: 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.13
+- **Patch**: stage boxes and the console drawn to scale, each socket named and patched, 48V at a glance, and DiGiCo and LV1 sessions imported.
+- **LV1 preamps** live in the Console Controller.
+- **Plugin pages**: a plugin can have a page of its own, listed with the Home pages.
 
 ### 2.0.12
 - **Updates within seconds**: the Home pages and the Green Room follow Planning Center within seconds, and Shure batteries update every few seconds.
 - **One tap on Companion buttons** on iPads and phones.
 - **Settings → Performance**: how hard JPMixer and the computer are working, in plain words.
-- **Plugins**: add-ons from JPMixer's approved list, or your own, under Settings → Integrations → Plugins.
+- **Plugins**: add-ons from JPMixer's approved list, or your own, under Settings → Plugins.
 
 ### 2.0.11
 - **Weekend plans with two teams**: JPMixer switches to Sunday's team once Saturday's service is over.
@@ -263,13 +270,27 @@ FOH, ProPresenter, Lighting and Switcher each get a page that welcomes whoever P
 
 ### Green Room TV
 
-A full-screen display for the green room: the team with photos and roles, a large clock, a service countdown, and **Now / Up next** from Planning Center Live with time left. A **QR code** opens the mix picker on a musician's phone, and with the integrations below it shows the room's **SPL** and each person's **mic battery**. It fits a 16:9 TV with nothing to scroll, however big the team.
+A full-screen display for the green room: the team with photos and roles, a large clock, a service countdown, and **Now / Up next** from Planning Center Live with time left. A **QR code** opens the mix picker on a musician's phone, and with the Smaart SPL and Shure wireless plugins below it shows the room's **SPL** and each person's **mic battery**. It fits a 16:9 TV with nothing to scroll, however big the team.
 
 <p align="center"><img src="docs/manual/img/green-room.png" alt="Green Room on a TV: QR code, SPL, clock, Now and Up next, and the team with mic batteries" width="880" /></p>
 
-### Shure wireless and Smaart SPL
+<a id="plugins"></a>
 
-Under **Settings → Integrations**, JPMixer can read your **Shure wireless** receivers (QLX-D, and the same strings on ULX-D, SLX-D and Axient Digital) and **Rational Acoustics Smaart**. Give each mic its mix, and its battery shows on that musician's phone and in Monitor Engineer. FOH Home gets an SPL card and a Wireless card. Both integrations only read: JPMixer never changes a receiver or a Smaart measurement.
+## 🧩 Plugins
+
+Install only what you use, from **Settings → Plugins → Find plugins**. Each plugin runs on its own, so if one stops working, JPMixer and the console carry on. JPMixer's own plugins have a red **JPMixer Original** badge, and Settings tells you when one has an update. Each has a page with pictures and how to set it up:
+
+| | Plugin | What it does |
+|---|---|---|
+| <a href="docs/plugins/patch.md"><img src="docs/plugins/img/patch-foh-card.png" width="150" alt="Patch" /></a> | **[Patch](docs/plugins/patch.md)** | Your stage boxes and console drawn to scale: tap a socket to name it and patch it, import an LV1 or DiGiCo session, and see 48V at a glance. |
+| <a href="docs/plugins/shure.md"><img src="docs/plugins/img/shure-card.png" width="150" alt="Shure wireless" /></a> | **[Shure wireless](docs/plugins/shure.md)** | Each wireless mic's battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room. QLX-D, ULX-D, SLX-D and Axient Digital. Only reads. |
+| <a href="docs/plugins/smaart.md"><img src="docs/plugins/img/smaart-card.png" width="150" alt="Smaart SPL" /></a> | **[Smaart SPL](docs/plugins/smaart.md)** | Live sound levels from Rational Acoustics Smaart on FOH Home and the Green Room, in Smaart's own colors. Only reads. |
+| <a href="docs/plugins/companion.md"><img src="docs/plugins/img/companion-card.png" width="150" alt="Companion buttons" /></a> | **[Companion buttons](docs/plugins/companion.md)** | Bitfocus Companion buttons on each Home page, live. Tap to press, hold to hold. |
+| <a href="docs/plugins/console-check.md"><img src="docs/plugins/img/console-check-card.png" width="150" alt="Console check" /></a> | **[Console check](docs/plugins/console-check.md)** | Whether the console is connected, on FOH Home. The example to start from if you're making a plugin of your own. |
+
+<p align="center"><img src="docs/plugins/img/patch-stage-box.png" alt="Patch: a stage box with every socket named and patched" width="880" /></p>
+
+Want to make one? See the **[plugin guide](docs/PLUGINS.md)**.
 
 <a id="planning-center-and-setup"></a>
 

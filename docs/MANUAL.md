@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.13 · October 2026**
+**Version 2.0.14 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -144,7 +144,7 @@ Quit JPMixer
 
 ### The Settings window
 
-Choose **Settings…** to set everything up. The sidebar is in five groups: **Get started**; **Setup** (Console, Channels, Aux mixes); **People & pages** (Performers, Pages, Branding); **Integrations** (Planning Center, Companion, Smaart SPL, Shure wireless, Control API, Plugins); and **System** (General, Performance, Backup & restore, OSC Log).
+Choose **Settings…** to set everything up. The sidebar is in five groups: **Get started**; **Setup** (Console, Channels, Aux mixes); **People & pages** (Performers, Pages, Branding); **Plugins** (the Plugins page, then Planning Center and each plugin you’ve installed, such as Companion, Smaart SPL, Shure wireless and Patch); and **System** (General, Control API, Performance, Backup & restore, OSC Log).
 
 Changes take effect when you click **Save & Apply** at the bottom right. Most changes apply live. A few, such as switching console type, restart the server, and the button then says **Saved — server restarted**. Phones reconnect by themselves a moment later.
 
@@ -404,6 +404,8 @@ Connect Planning Center Services and JPMixer follows your schedule: each mix is 
 
 <p align="center"><sub>Fig. 10.1 · Settings → Planning Center. The buttons along the top jump to each section.</sub></p>
 
+Planning Center is optional. **Use Planning Center**, at the top of the tab, turns it on or off; it’s on unless you turn it off. Turned off, JPMixer doesn’t contact Planning Center, and the Home pages, Green Room schedule and anything else that needs it say so. Everything set up on the tab is kept for when it’s turned back on.
+
 ### Connect
 
 1. Sign in at `api.planningcenteronline.com/personal_access_tokens` and create a personal access token.
@@ -518,23 +520,28 @@ A station they have never saved starts from their layout on another station. Unt
 
 Messages go to all four stations live. Each shows who sent it and from which station. The chat clears itself when Planning Center moves on to the next service, for example from Saturday night’s plan to Sunday morning’s, and it starts empty whenever JPMixer opens.
 
+> [!NOTE]
+> Companion buttons, Smaart SPL and Shure wireless are each a plugin of their own: install only the ones you use. To add one, open **Settings → Plugins** and click **Install** on it under **Find plugins**. Each comes with JPMixer, so it installs even with no internet, and it runs without Allow plugins. Its tab then appears under Plugins in the sidebar. If you used one before 2.0.14, it was moved over by itself, with its settings. Removing one turns it off and keeps its settings, for if you install it again.
+
 ### Companion buttons
 
 JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds one button surface per Home page.
 
 1. In Companion, allow Satellite connections (TCP port `16622` by default).
-2. In JPMixer, open **Settings → Integrations → Companion**, turn it on, enter the Companion computer’s address (`127.0.0.1` if it is this computer) and choose the grid (8 × 4 by default). Click **Save & Apply**; the status should say Connected.
-3. In Companion → Surfaces, give each JPMixer surface (JPMixer FOH Home, JPMixer ProPresenter Home, and so on) the page of buttons that station needs.
+2. In JPMixer, install **Companion buttons** from **Find plugins** (see the note above).
+3. Open **Settings → Plugins → Companion**, turn it on, enter the Companion computer’s address (`127.0.0.1` if it is this computer) and choose the grid (8 × 4 by default). Click **Save & Apply**; the status should say Connected.
+4. In Companion → Surfaces, give each JPMixer surface (JPMixer FOH Home, JPMixer ProPresenter Home, and so on) the page of buttons that station needs.
 
 The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. One tap presses once on phones and iPads, even a tap that slides a little. On a phone, a swipe that starts on a button scrolls the page without pressing it. JPMixer reconnects by itself if Companion restarts, and the card reconnects when a phone wakes up.
 
 ### Shure wireless
 
-JPMixer can show each Shure wireless mic’s name, battery and transmitter, the way Wireless Workbench does, in a Wireless card on FOH Home and on Settings → Integrations → Shure wireless. It works with QLX-D, and uses the same control strings as ULX-D, SLX-D and Axient Digital. JPMixer only reads: it never changes a receiver or turns on its meters, and Wireless Workbench can stay open.
+JPMixer can show each Shure wireless mic’s name, battery and transmitter, the way Wireless Workbench does, in a Wireless card on FOH Home and on Settings → Plugins → Shure wireless. It works with QLX-D, and uses the same control strings as ULX-D, SLX-D and Axient Digital. JPMixer only reads: it never changes a receiver or turns on its meters, and Wireless Workbench can stay open.
 
-1. Open **Settings → Integrations → Shure wireless** and turn on **Watch Shure wireless receivers**. Receivers on the network appear while Wireless Workbench is open; you can also add one by its address. Every receiver JPMixer sees is remembered, so after a restart they are all listed even with Wireless Workbench closed, and each is followed by its hardware ID if its address changes. **Forget this receiver** takes an unticked one off the list.
-2. Tick **one spare receiver** first, outside a service, and click **Save & Apply**. Leave it a while, then tick the rest.
-3. Under each ticked receiver, choose the **Mix** its mic belongs to. That mic’s battery then shows on the musician’s phone mixer, in Monitor Engineer next to the mix, and on the FOH Wireless card.
+1. Install **Shure wireless** from **Find plugins** (see the note above Companion buttons).
+2. Open **Settings → Plugins → Shure wireless** and turn on **Watch Shure wireless receivers**. Receivers on the network appear while Wireless Workbench is open; you can also add one by its address. Every receiver JPMixer sees is remembered, so after a restart they are all listed even with Wireless Workbench closed, and each is followed by its hardware ID if its address changes. **Forget this receiver** takes an unticked one off the list.
+3. Tick **one spare receiver** first, outside a service, and click **Save & Apply**. Leave it a while, then tick the rest.
+4. Under each ticked receiver, choose the **Mix** its mic belongs to. That mic’s battery then shows on the musician’s phone mixer, in Monitor Engineer next to the mix, and on the FOH Wireless card.
 
 Each channel shows its name, transmitter type and frequency, and its battery as **Good** (4–5 bars), **Replace** (3, amber) or **Critical** (0–2, red), with run time on Shure rechargeables. When a transmitter is switched off the card says so and, for half an hour, what its battery was. JPMixer asks each receiver for its batteries and transmitters every 5 seconds (names every 15) and reconnects one that stops answering.
 
@@ -544,17 +551,28 @@ FOH Home can show live sound levels from Rational Acoustics Smaart in an SPL car
 
 1. In Smaart, open **Options → Preferences → API** and tick **Enabled**. The port is `26000` unless you changed it. Hover over **IP Address** there to see the Smaart computer’s address.
 2. In Smaart, start SPL logging on a calibrated mic input. The card shows every input that is logging.
-3. In JPMixer, open **Settings → Integrations → Smaart SPL**, turn it on and enter the Smaart computer’s address. Leave the password empty unless one is set in Smaart’s API tab. Click **Save & Apply**; the status should say Connected and how many inputs it is reading.
+3. In JPMixer, install **Smaart SPL** from **Find plugins** (see the note above Companion buttons).
+4. Open **Settings → Plugins → Smaart SPL**, turn it on and enter the Smaart computer’s address. Leave the password empty unless one is set in Smaart’s API tab. Click **Save & Apply**; the status should say Connected and how many inputs it is reading.
 
-Each input shows a big reading (LAeq 10 unless you choose another) and a small live one (SPL A Slow), green, yellow or red by Smaart’s own color levels. When one of Smaart’s alarms trips, the input turns red and says *Over Smaart’s alarm level*. Click **Options** on the card to choose the big reading, the small one (or none), and which inputs show. The choices are saved on the JPMixer computer, so every screen that opens FOH Home shows the same; they are also under **Settings → Integrations → Smaart SPL**. The lists show Smaart’s own metric names once it is connected. With an access code on FOH Home, changing them needs the code.
+Each input shows a big reading (LAeq 10 unless you choose another) and a small live one (SPL A Slow), green, yellow or red by Smaart’s own color levels. When one of Smaart’s alarms trips, the input turns red and says *Over Smaart’s alarm level*. Click **Options** on the card to choose the big reading, the small one (or none), and which inputs show. The choices are saved on the JPMixer computer, so every screen that opens FOH Home shows the same; they are also under **Settings → Plugins → Smaart SPL**. The lists show Smaart’s own metric names once it is connected. With an access code on FOH Home, changing them needs the code.
 
 ### Plugins
 
-Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Everything to do with them is under **Settings → Integrations → Plugins**, at the bottom of Integrations. Each plugin runs on its own, so if one stops working, JPMixer and the console carry on. A plugin can’t read JPMixer’s settings or passwords, or open other programs.
+Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Everything to do with them is under **Settings → Plugins**. Each plugin runs on its own, so if one stops working, JPMixer and the console carry on. A plugin can’t read JPMixer’s settings or passwords, or open other programs.
 
 1. Turn on **Allow plugins** and click **Save & Apply**. While it’s off, no plugin runs.
 2. Under **Find plugins**, click **Install** on a plugin from JPMixer’s approved list. Each one says what it can do. To install one that isn’t on the list, use **Import plugin…** with its `.jpmplugin` or `.zip` file, drop the file on the page, or double-click it. These are labelled *Not reviewed*: only install them if you trust whoever made them.
 3. Each plugin gets its own tab under Plugins in the sidebar. Turn it on there, fill in its settings, and click **Save & Apply**. If it shows a card, the card appears on FOH Home and can be arranged like any other.
+
+When a plugin on the approved list has a newer version, a red dot appears next to **Plugins** in the sidebar, and the plugin’s row has an **Update** button. JPMixer looks a minute after it starts, every 6 hours after that, and whenever you open the Plugins page. Updating keeps the plugin’s settings.
+
+To remove a plugin, click **Remove…**: on its row under **Your plugins**, at the bottom of its own tab, or next to it in **Find plugins**. Its folder goes to the Trash. Removing Companion, Smaart or Shure also turns it off, and keeps its settings for if you install it again. Planning Center is built into JPMixer, so it can’t be removed; turn it off in its tab instead.
+
+<p align="center"><img src="manual/img/settings-plugins.png" alt="Settings → Plugins: Planning Center, Companion buttons, Patch and Smaart SPL, each marked JPMixer Original, with its status"></p>
+
+<p align="center"><sub>Fig. 11.4 · Settings → Plugins. JPMixer’s own plugins have a red JPMixer Original badge; each row shows how it’s doing.</sub></p>
+
+JPMixer’s own plugins (Patch, Companion buttons, Smaart SPL and Shure wireless) have a red *JPMixer Original* badge and run without Allow plugins, as long as their files are the approved ones. Companion, Smaart and Shure each get their own tab under Plugins once installed; their row in the list opens that tab.
 
 To make a plugin, by hand or with an AI assistant, see the [plugin guide](https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md) (**Open the plugin guide** on the Plugins page).
 
@@ -573,7 +591,7 @@ To make a plugin, by hand or with an AI assistant, see the [plugin guide](https:
 
 <p align="center"><img src="manual/img/settings-pages.png" alt="The Pages tab: Home page picker, FOH Home with access code, and the other Home pages"></p>
 
-<p align="center"><sub>Fig. 11.4 · Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</sub></p>
+<p align="center"><sub>Fig. 11.5 · Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</sub></p>
 
 Settings → Pages lists every page JPMixer serves with its direct link. FOH Home can have an **Access code**: other devices enter it once, the JPMixer computer never needs it, and changing it signs every device out. Leave it empty to turn it off.
 

@@ -6,7 +6,7 @@ A plugin adds something to JPMixer that it doesn’t do itself. Today a plugin c
 - read the console’s channel, mix and control group names, and whether the console is connected;
 - read the Planning Center plan, what’s live and what’s next;
 - have a page of its own, listed with the Home pages (JPMixer 2.0.13 and later);
-- have its own tab of settings in Settings, listed under **Plugins** at the bottom of Integrations.
+- have its own tab of settings in Settings, listed under **Plugins** in the sidebar.
 
 Plugins can’t change anything on the console yet.
 
@@ -14,12 +14,14 @@ A plugin is a folder holding a `plugin.json` file and some JavaScript. A complet
 
 ## Installing a plugin
 
-Everything to do with plugins is in **Settings → Integrations → Plugins**, at the bottom of Integrations. Plugins are off until they're allowed: turn on **Allow plugins** there, then select **Save & Apply**.
+Everything to do with plugins is in **Settings → Plugins**. Plugins are off until they're allowed: turn on **Allow plugins** there, then select **Save & Apply**.
+
+**JPMixer's own plugins** run without Allow plugins, as long as their files are the approved ones: Patch, and from 2.0.14 Shure wireless, Smaart SPL and Companion buttons. Those three used to be built in. Each installs from **Find plugins** (from the copy that comes with JPMixer, so no internet is needed) and then gets its own tab under **Plugins** in the sidebar, set up as before. Removing one turns it off and keeps its settings. Someone updating who already used one gets its plugin by itself, with their settings, even with no internet.
 
 - **From the approved list:** **Find plugins** lists the plugins that have been reviewed for JPMixer, each with what it can do. Select **Install**.
   - JPMixer downloads it from GitHub and checks every file against the approved copy.
-  - When a newer approved version comes out, the button says **Update**.
-  - The list is only fetched when you open the Plugins page or select Refresh.
+  - When a newer approved version comes out, the button says **Update**, and the plugin's row under Your plugins gets an **Update** button.
+  - The list is fetched when you open the Plugins page or select Refresh. While any plugin is installed, JPMixer also looks a minute after it starts and then every 6 hours, and puts a red dot next to **Plugins** in the sidebar when one has an update.
 - **From a file:**
   - **Import plugin…** takes a `.jpmplugin` or `.zip` file.
   - You can also drop the file anywhere on the Plugins page, or double-click a `.jpmplugin` in Finder or Explorer.
@@ -41,7 +43,7 @@ You don't need to know much JavaScript to make a plugin, and an AI assistant can
 
 1. **Copy the starter.** Copy the [`docs/plugin-template`](plugin-template) folder from this repository and rename it. It has a `plugin.json` and a commented `index.js` that puts a card on FOH Home.
 2. **Name it.** In `plugin.json`, change `id` (lowercase, dashes, unique), `name`, `description` and `author`.
-3. **Import it.** In JPMixer, open **Settings → Integrations → Plugins** and turn on **Allow plugins**, then select **Save & Apply**. Then select **Import folder…** and choose your folder.
+3. **Import it.** In JPMixer, open **Settings → Plugins** and turn on **Allow plugins**, then select **Save & Apply**. Then select **Import folder…** and choose your folder.
 4. **Turn it on.** Open your plugin under **Plugins** in the sidebar. Turn it on, tick **Restart when its files change**, then select **Save & Apply**.
 5. **Edit and save.** Edit `index.js` (and `plugin.json`) in the plugins folder. **Open plugins folder** shows where it is. Every time you save, the plugin starts again with your changes. Anything it prints with `console.log()`, and any error, shows in the **Log** on its tab.
 
@@ -149,9 +151,11 @@ The person turning the plugin on sees this list before it's turned on.
 
 A plugin that uses something it didn't ask for gets an error.
 
+`integration` is JPMixer's own: it lets the official Shure, Smaart and Companion plugins feed JPMixer's pages and Settings. Another plugin that asks for it isn't loaded.
+
 ### Settings fields
 
-Every plugin needs at least one setting. A plugin with none won't load, and the Plugins tab says why. Each plugin gets its own tab, named after it and listed under **Plugins** at the bottom of Integrations, much like Smaart and Shure wireless have theirs. The tab shows:
+Every plugin needs at least one setting. A plugin with none won't load, and the Plugins tab says why. Each plugin gets its own tab, named after it and listed under **Plugins** in the sidebar, much like Smaart and Shure wireless have theirs. The tab shows:
 
 - the plugin's on/off switch;
 - what it can do;
@@ -194,6 +198,7 @@ module.exports = async (jp) => {
 | `jp.planningCenter.get()` | A promise of the plan (see below) |
 | `jp.planningCenter.onChange(fn)` | Calls `fn(plan)` when that changes. JPMixer checks about every 15 seconds. |
 | `jp.page.handle(name, fn)` | Answers its page's call `name` with whatever `fn(body)` returns (or a promise of it). See "A page of its own". |
+| `jp.onSettings(fn)` | Takes new settings without a restart: when they change in Settings, JPMixer calls `fn(settings)` (and `jp.settings` has them) instead of stopping and starting the plugin. Without it, a settings change restarts the plugin. JPMixer 2.0.14 and later. |
 | `jp.onStop(fn)` | Runs `fn` before the plugin is stopped, for closing connections. It has about a second and a half. |
 
 `console.log()` and `console.error()` lines show in the **Log** on the plugin's tab in Settings, which keeps the last 200 lines.
@@ -310,7 +315,7 @@ These limits come from Node's permission model. It keeps a plugin to its own fol
 
 ## Updating a plugin
 
-- **Approved plugins:** select **Update** under Find plugins.
+- **Approved plugins:** select **Update** on its row, or under Find plugins. A red dot next to **Plugins** in the sidebar says one is waiting.
 - **Others:** import the newer `.jpmplugin`, `.zip` or folder. It replaces the old one and keeps its settings.
 - **Edits made by hand:** if you edit files in the plugins folder yourself, select **Reload plugins**, or tick **Restart when its files change** on the plugin's tab.
 
