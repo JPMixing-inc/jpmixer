@@ -1,15 +1,46 @@
 'use strict';
 // Companion buttons on the Home pages: JPMixer as a Satellite client against
-// a fake Companion server speaking the Satellite API.
+// a fake Companion server speaking the Satellite API. End to end: the
+// Companion plugin (plugins/companion) in its own process, installed from the
+// copy that comes with JPMixer, and the pages served by JPMixer
+// (companion-satellite.js) from what it shares.
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+const Module = require('node:module');
+const origResolve = Module._resolveFilename;
+Module._resolveFilename = function (request, ...args) {
+  if (request === 'electron') return path.join(__dirname, '..', 'src', 'server', '_fake-electron-for-tests.js');
+  return origResolve.call(this, request, ...args);
+};
+process.env.JPM_TEST_USERDATA = fs.mkdtempSync(path.join(os.tmpdir(), 'jpmixer-companion-satellite-test-'));
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const net = require('node:net');
 const http = require('node:http');
 const express = require('express');
-const companion = require('../src/server/companion-satellite');
+const plugins = require('../src/server/plugins');
+const integrations = require('../src/server/integrations');
+const shim = require('../src/server/companion-satellite');
+const lib = require('../plugins/companion/companion'); // the plugin's own code
+
+// JPMixer's side, as main.js does it: the config to companion-satellite.js and to the plugin
+let current = {};
+const companion = {
+  applyConfig(c) { current = c; shim.applyConfig(c); return integrations.applyConfig(c); },
+  getStatus: () => shim.getStatus(),
+  mountCompanion: (app, o) => shim.mountCompanion(app, o),
+  stop: () => companion.applyConfig({ ...current, companionEnabled: false }),
+  _parse: (line) => lib._parse(line),
+};
+test.before(async () => {
+  await plugins.start({ allowed: false }); // official: no Allow plugins needed
+  assert.equal((await integrations.ensureInstalled('companion')).ok, true);
+});
+test.after(() => plugins.stopAll());
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
-async function until(fn, ms = 3000) {
+async function until(fn, ms = 8000) { // the plugin runs in a process of its own
   const end = Date.now() + ms;
   while (Date.now() < end) { const v = await fn(); if (v) return v; await wait(20); }
   throw new Error('timed out waiting');
@@ -60,8 +91,8 @@ const cfg = (port, extra = {}) => ({ companionEnabled: true, companionHost: '127
 
 test('registers one surface per Home page, using PNG images and a stable serial on new Companion', async (t) => {
   const fake = await fakeCompanion();
-  t.after(async () => { companion.stop(); await fake.close(); });
-  companion.applyConfig(cfg(fake.port));
+  t.after(async () => { await companion.stop(); await fake.close(); });
+  await companion.applyConfig(cfg(fake.port));
   await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 4);
   const adds = fake.lines.filter(l => l.startsWith('ADD-DEVICE'));
   assert.deepEqual(adds.map(l => /DEVICEID=(\S+)/.exec(l)[1]), ['jpmixer-foh', 'jpmixer-propresenter', 'jpmixer-lighting', 'jpmixer-switcher']);
@@ -77,8 +108,8 @@ test('registers one surface per Home page, using PNG images and a stable serial 
 
 test('older Companion (no CAPS): plain RGB images, no serial, and at most 32 keys', async (t) => {
   const fake = await fakeCompanion({ apiVersion: '1.4.0', caps: null });
-  t.after(async () => { companion.stop(); await fake.close(); });
-  companion.applyConfig(cfg(fake.port, { companionRows: 5 })); // 8 × 5 = 40 keys
+  t.after(async () => { await companion.stop(); await fake.close(); });
+  await companion.applyConfig(cfg(fake.port, { companionRows: 5 })); // 8 × 5 = 40 keys
   await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 4);
   const add = fake.lines.find(l => l.startsWith('ADD-DEVICE'));
   assert.match(add, /KEYS_TOTAL=32 /, 'API 1.4 allows at most 32 keys');
@@ -89,8 +120,8 @@ test('older Companion (no CAPS): plain RGB images, no serial, and at most 32 key
 test('button images reach the page, taps press them in Companion, and junk is dropped', async (t) => {
   const fake = await fakeCompanion();
   const pages = await pageServer(() => true);
-  t.after(async () => { companion.stop(); pages.close(); await fake.close(); });
-  companion.applyConfig(cfg(fake.port));
+  t.after(async () => { await companion.stop(); pages.close(); await fake.close(); });
+  await companion.applyConfig(cfg(fake.port));
   await until(() => companion.getStatus().surfaces.lighting.registered);
   const port = pages.address().port;
 
@@ -134,13 +165,13 @@ test('FOH Home’s buttons need its access code like the rest of FOH Home', asyn
 
 test('answers Companion’s pings, and says goodbye when turned off', async (t) => {
   const fake = await fakeCompanion();
-  t.after(async () => { companion.stop(); await fake.close(); });
-  companion.applyConfig(cfg(fake.port));
+  t.after(async () => { await companion.stop(); await fake.close(); });
+  await companion.applyConfig(cfg(fake.port));
   await until(() => companion.getStatus().surfaces.foh.registered);
   fake.send('PING hello-123');
   await until(() => fake.lines.includes('PONG hello-123'));
   await until(() => fake.lines.some(l => l.startsWith('PING ')), 3500); // and keeps the link alive itself
-  companion.applyConfig({ ...cfg(fake.port), companionEnabled: false });
+  await companion.applyConfig({ ...cfg(fake.port), companionEnabled: false });
   await until(() => fake.lines.includes('QUIT'));
   assert.equal(companion.getStatus().state, 'off');
   assert.equal(companion.getStatus().surfaces.foh.registered, false);
@@ -148,8 +179,8 @@ test('answers Companion’s pings, and says goodbye when turned off', async (t) 
 
 test('a refused surface or a dropped connection shows up in the status', async (t) => {
   const fake = await fakeCompanion({ autoOk: false });
-  t.after(async () => { companion.stop(); await fake.close(); });
-  companion.applyConfig(cfg(fake.port));
+  t.after(async () => { await companion.stop(); await fake.close(); });
+  await companion.applyConfig(cfg(fake.port));
   await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 4);
   for (const role of ['foh', 'propresenter', 'lighting', 'switcher']) fake.send(`ADD-DEVICE ERROR DEVICEID=jpmixer-${role} MESSAGE="Surface limit reached"`);
   await until(() => companion.getStatus().state === 'error');
@@ -160,11 +191,11 @@ test('a refused surface or a dropped connection shows up in the status', async (
 
 test('nothing to connect to: a clear message, not a crash', async (t) => {
   t.after(() => companion.stop());
-  companion.applyConfig({ companionEnabled: true, companionHost: '' });
+  await companion.applyConfig({ companionEnabled: true, companionHost: '' });
   assert.match(companion.getStatus().message, /address/);
   const closed = net.createServer(); await new Promise(r => closed.listen(0, '127.0.0.1', r));
   const port = closed.address().port; await new Promise(r => closed.close(r)); // a port nothing listens on
-  companion.applyConfig(cfg(port));
+  await companion.applyConfig(cfg(port));
   await until(() => companion.getStatus().state === 'error');
   assert.match(companion.getStatus().message, /isn’t accepting Satellite connections/);
 });

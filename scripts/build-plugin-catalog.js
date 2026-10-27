@@ -1,7 +1,7 @@
 'use strict';
 
 // Writes plugins/catalog.json: the approved plugins JPMixer lists under
-// Settings → Integrations → Plugins → Find plugins (src/server/plugin-store.js).
+// Settings → Plugins → Find plugins (src/server/plugin-store.js).
 // Run it after adding or updating an approved plugin in plugins/<id>/:
 //   node scripts/build-plugin-catalog.js
 // Each plugin's name, version and permissions come from its plugin.json; every

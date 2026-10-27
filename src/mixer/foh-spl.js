@@ -7,7 +7,7 @@
 // While Smaart SPL is off in Settings the card stays out of the way (shown
 // only in Arrange mode). Its Options button picks the two readings and which
 // inputs show; they're saved on the JPMixer computer, so every screen that
-// opens FOH Home shows the same (the same choices as Settings → Integrations → Smaart SPL).
+// opens FOH Home shows the same (the same choices as Settings → Plugins → Smaart SPL).
 (() => {
   const card = document.querySelector('[data-fh-card="spl"]');
   const body = document.getElementById('fhSpl');

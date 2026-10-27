@@ -43,7 +43,7 @@ async function load() {
     const data = await res.json();
     box.textContent = '';
     for (const page of data.pages || []) box.appendChild(card(page));
-    // Pages from plugins (Settings → Integrations → Plugins), after the Home pages
+    // Pages from plugins (Settings → Plugins), after the Home pages
     for (const p of data.plugins || []) box.appendChild(card({ id: 'plugin', href: p.href, configured: true, label: 'Plugin', page: p.title, person: null, locked: false, note: `From the ${p.plugin} plugin` }));
     notice.hidden = true;
   } catch (_) {

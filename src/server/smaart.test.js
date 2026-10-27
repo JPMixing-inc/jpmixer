@@ -1,14 +1,40 @@
 'use strict';
-// smaart.js against a stand-in Smaart API server (WebSocket, API v3 like
+// Smaart SPL against a stand-in Smaart API server (WebSocket, API v3 like
 // Smaart 8.5, or v4 like Smaart 9): finding the API path, the password,
 // the logging inputs and their live levels, and that JPMixer only ever reads.
+// It runs end to end: the Smaart plugin (plugins/smaart) in its own process,
+// installed from the copy that comes with JPMixer as moving over does, with
+// JPMixer's /smaart-spl answering from what it shares (smaart.js).
+
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const Module = require('module');
+const origResolve = Module._resolveFilename;
+Module._resolveFilename = function (request, ...args) {
+  if (request === 'electron') return path.join(__dirname, '_fake-electron-for-tests.js');
+  return origResolve.call(this, request, ...args);
+};
+process.env.JPM_TEST_USERDATA = fs.mkdtempSync(path.join(os.tmpdir(), 'jpmixer-smaart-test-'));
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
-const smaart = require('./smaart');
+const plugins = require('./plugins');
+const integrations = require('./integrations');
+const smaartShim = require('./smaart');
+const lib = require('../../plugins/smaart/smaart'); // the plugin's own connection code, for what can only be tested in here
+
+// JPMixer's side: the config to the plugin (integrations.js) and to smaart.js, as main.js does
+let current = {};
+const smaart = {
+  applyConfig(c) { current = c; smaartShim.applyConfig(c); return integrations.applyConfig(c); },
+  getStatus: () => smaartShim.getStatus(),
+  singleReading: (m, i) => smaartShim.singleReading(m, i),
+  stop() { return smaart.applyConfig({ ...current, smaartEnabled: false }); },
+};
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(check, ms = 4000) {
@@ -72,25 +98,31 @@ function standIn({ version = 3, password = '', inputs = [{ device: 'Smaart I-O',
 }
 
 let jpm; // JPMixer's /smaart-spl route
+let optionsAllowed = false, savedOptions = null;
 test.before(async () => {
+  await plugins.start({ allowed: false }); // official: no Allow plugins needed
+  const installed = await integrations.ensureInstalled('smaart');
+  assert.deepEqual(installed, { ok: true, from: 'bundled' }, 'installed from the copy that comes with JPMixer');
   const app = express();
-  smaart.mountSmaart(app);
+  // As foh.js mounts it: FOH's code, and the options saved (to the config, then the plugin)
+  smaartShim.mountSmaart(app, { canChange: () => optionsAllowed, save: (o) => { savedOptions = o; smaart.applyConfig({ ...current, smaartMetric: o.main, smaartLiveMetric: o.live, smaartHiddenInputs: o.hidden }); return true; } });
   jpm = http.createServer(app);
   await new Promise((r) => jpm.listen(0, '127.0.0.1', r));
 });
-test.after(() => { smaart.stop(); jpm.close(); });
+test.after(async () => { await plugins.stopAll(); jpm.close(); });
 const spl = () => new Promise((resolve, reject) => {
   http.get({ host: '127.0.0.1', port: jpm.address().port, path: '/smaart-spl' }, (res) => {
     let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve(JSON.parse(d)));
   }).on('error', reject);
 });
+const until2 = (fn, ms) => until(fn, ms || 8000); // the plugin starts in a process of its own
 const cfg = (port, more = {}) => ({ smaartEnabled: true, smaartHost: '127.0.0.1', smaartPort: port, smaartPassword: '', smaartMetric: '', smaartLiveMetric: '', ...more });
 
 test('reads a Smaart 8.5 input (API v3): LAeq 10 big, SPL A Slow small, in Smaart’s colours', async () => {
   const s = await standIn({ version: 3 });
   try {
-    smaart.applyConfig(cfg(s.port));
-    const data = await until(async () => { const d = await spl(); return d.inputs[0]?.main?.value ? d : null; });
+    await smaart.applyConfig(cfg(s.port));
+    const data = await until2(async () => { const d = await spl(); return d.inputs[0]?.main?.value ? d : null; });
     assert.equal(data.state, 'connected');
     assert.match(data.message, /Smaart 8\.5\.2.*1 input/);
     const input = data.inputs[0];
@@ -99,18 +131,18 @@ test('reads a Smaart 8.5 input (API v3): LAeq 10 big, SPL A Slow small, in Smaar
     assert.deepEqual(input.live, { name: 'SPL A Slow', value: 97.6, color: 'yellow', over: false });
     assert.equal(input.stale, false);
     assert.equal(smaart.getStatus().apiVersion, 3);
-  } finally { smaart.stop(); await s.close(); }
+  } finally { await smaart.stop(); await s.close(); }
 });
 
 test('Smaart 9 (API v4) works the same, and the chosen readings are used', async () => {
   const s = await standIn({ version: 4 });
   try {
-    smaart.applyConfig(cfg(s.port, { smaartMetric: 'SPL Fast', smaartLiveMetric: 'LAeq 1' }));
-    const data = await until(async () => { const d = await spl(); return d.inputs[0]?.main?.value ? d : null; });
+    await smaart.applyConfig(cfg(s.port, { smaartMetric: 'SPL Fast', smaartLiveMetric: 'LAeq 1' }));
+    const data = await until2(async () => { const d = await spl(); return d.inputs[0]?.main?.value ? d : null; });
     assert.equal(smaart.getStatus().apiVersion, 4);
     assert.deepEqual(data.inputs[0].main, { name: 'SPL Fast', value: 99.1, color: 'yellow', over: false });
     assert.deepEqual(data.inputs[0].live, { name: 'LAeq 1', value: 95, color: 'yellow', over: false });
-  } finally { smaart.stop(); await s.close(); }
+  } finally { await smaart.stop(); await s.close(); }
 });
 
 test('an alarm in Smaart marks the reading over', async () => {
@@ -118,52 +150,53 @@ test('an alarm in Smaart marks the reading over', async () => {
   try {
     s.state.violation = 'LAeq 10';
     s.state.levels['LAeq 10'] = 101.3;
-    smaart.applyConfig(cfg(s.port));
-    const data = await until(async () => { const d = await spl(); return d.inputs[0]?.main?.over ? d : null; });
+    await smaart.applyConfig(cfg(s.port));
+    const data = await until2(async () => { const d = await spl(); return d.inputs[0]?.main?.over ? d : null; });
     assert.deepEqual(data.inputs[0].main, { name: 'LAeq 10', value: 101.3, color: 'red', over: true });
-  } finally { smaart.stop(); await s.close(); }
+  } finally { await smaart.stop(); await s.close(); }
 });
 
 test('a password is sent only when Smaart asks for one, and a missing or wrong one says so', async () => {
   const s = await standIn({ password: 'church' });
   try {
-    smaart.applyConfig(cfg(s.port));
-    assert.match((await until(async () => /password/i.test(smaart.getStatus().message) && smaart.getStatus())).message, /asks for its API password/);
-    smaart.applyConfig(cfg(s.port, { smaartPassword: 'nope' }));
-    assert.match((await until(async () => /isn’t right/.test(smaart.getStatus().message) && smaart.getStatus())).message, /password isn’t right/);
-    smaart.applyConfig(cfg(s.port, { smaartPassword: 'church' }));
-    const data = await until(async () => { const d = await spl(); return d.inputs[0]?.main?.value ? d : null; });
+    await smaart.applyConfig(cfg(s.port));
+    assert.match((await until2(async () => /password/i.test(smaart.getStatus().message) && smaart.getStatus())).message, /asks for its API password/);
+    await smaart.applyConfig(cfg(s.port, { smaartPassword: 'nope' }));
+    assert.match((await until2(async () => /isn’t right/.test(smaart.getStatus().message) && smaart.getStatus())).message, /password isn’t right/);
+    await smaart.applyConfig(cfg(s.port, { smaartPassword: 'church' }));
+    const data = await until2(async () => { const d = await spl(); return d.inputs[0]?.main?.value ? d : null; });
     assert.equal(data.inputs.length, 1);
-  } finally { smaart.stop(); await s.close(); }
+  } finally { await smaart.stop(); await s.close(); }
 });
 
 test('no logging inputs, and a Smaart that isn’t running, each get a clear message', async () => {
   const s = await standIn({ inputs: [] });
   try {
-    smaart.applyConfig(cfg(s.port));
-    const st = await until(async () => smaart.getStatus().state === 'connected' && smaart.getStatus());
+    await smaart.applyConfig(cfg(s.port));
+    const st = await until2(async () => smaart.getStatus().state === 'connected' && smaart.getStatus());
     assert.match(st.message, /no inputs are logging SPL/);
-  } finally { smaart.stop(); await s.close(); }
-  smaart.applyConfig(cfg(1)); // nothing listens on port 1
-  const st = await until(async () => smaart.getStatus().state === 'error' && smaart.getStatus());
+  } finally { await smaart.stop(); await s.close(); }
+  await smaart.applyConfig(cfg(1)); // nothing listens on port 1
+  const st = await until2(async () => /Can’t reach/.test(smaart.getStatus().message) && smaart.getStatus());
   assert.match(st.message, /Can’t reach Smaart at 127\.0\.0\.1:1/);
-  smaart.stop();
+  await smaart.stop();
 });
 
 test('Settings off, or no address, does not connect', async () => {
-  smaart.applyConfig(cfg(26000, { smaartEnabled: false }));
+  await smaart.applyConfig(cfg(26000, { smaartEnabled: false }));
   assert.equal(smaart.getStatus().state, 'off');
   assert.equal((await spl()).enabled, false);
-  smaart.applyConfig(cfg(26000, { smaartHost: '' }));
-  assert.match(smaart.getStatus().message, /Enter the Smaart computer’s address/);
-  smaart.stop();
+  assert.equal(plugins.isRunning('smaart'), false, 'off: the plugin isn’t running at all');
+  await smaart.applyConfig(cfg(26000, { smaartHost: '' }));
+  assert.match((await until2(async () => /Enter the Smaart computer’s address/.test(smaart.getStatus().message) && smaart.getStatus())).message, /Enter the Smaart computer’s address/);
+  await smaart.stop();
 });
 
 test('JPMixer only reads from Smaart: queries, its password, and its own streams’ rate', async () => {
   const s = await standIn({ password: 'church', inputs: [{ device: 'Smaart I-O', channel: 'Front Left' }, { device: 'Smaart I-O', channel: 'Front Right' }] });
   try {
-    smaart.applyConfig(cfg(s.port, { smaartPassword: 'church' }));
-    await until(async () => (await spl()).inputs.filter((i) => i.main?.value).length === 2);
+    await smaart.applyConfig(cfg(s.port, { smaartPassword: 'church' }));
+    await until2(async () => (await spl()).inputs.filter((i) => i.main?.value).length === 2);
     await wait(300);
     assert.ok(s.received.length > 0);
     for (const { msg } of s.received) {
@@ -172,38 +205,36 @@ test('JPMixer only reads from Smaart: queries, its password, and its own streams
       const keys = (msg.properties || []).flatMap((p) => Object.keys(p));
       assert.ok(keys.every((k) => k === 'password' || k === 'targetFPS'), `only the password and stream rate are set: ${JSON.stringify(msg)}`);
     }
-  } finally { smaart.stop(); await s.close(); }
+  } finally { await smaart.stop(); await s.close(); }
 });
 
 test('the card’s options: readings, the small one off, inputs left off, and FOH’s code', async () => {
   const s = await standIn({ inputs: [{ device: 'Smaart I-O', channel: 'Front Left' }, { device: 'Smaart I-O', channel: 'Stage Left' }] });
-  // A JPMixer of its own, with a code check and a save, as foh.js mounts it
-  let allowed = false, saved = null;
-  const app = express();
-  smaart.mountSmaart(app, { canChange: () => allowed, save: (o) => { saved = o; smaart.applyConfig(cfg(s.port, { smaartMetric: o.main, smaartLiveMetric: o.live, smaartHiddenInputs: o.hidden })); return true; } });
-  const srv = http.createServer(app);
-  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  optionsAllowed = false; savedOptions = null;
   const call = (method, path, body) => new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port: srv.address().port, path, method, headers: { 'Content-Type': 'application/json' } }, (res) => {
+    const req = http.request({ host: '127.0.0.1', port: jpm.address().port, path, method, headers: { 'Content-Type': 'application/json' } }, (res) => {
       let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(d) }));
     });
     req.on('error', reject); req.end(body ? JSON.stringify(body) : undefined);
   });
   try {
-    smaart.applyConfig(cfg(s.port));
-    let data = (await until(async () => { const d = (await call('GET', '/smaart-spl')).body; return d.inputs.filter((i) => i.main?.value).length === 2 ? d : null; }));
+    await smaart.applyConfig(cfg(s.port));
+    let data = (await until2(async () => { const d = (await call('GET', '/smaart-spl')).body; return d.inputs.filter((i) => i.main?.value).length === 2 ? d : null; }));
     assert.deepEqual(data.metrics, ['LAeq 10', 'SPL A Slow', 'SPL Fast', 'LAeq 1'], 'Smaart’s own metric names, for the menus');
     assert.deepEqual(data.inputs.map((i) => i.key), ['Smaart I-O/Front Left', 'Smaart I-O/Stage Left']);
 
     let r = await call('POST', '/smaart-spl/options', { main: 'SPL Fast', live: 'none', hidden: ['Smaart I-O/Stage Left'] });
     assert.equal(r.status, 401, 'FOH’s code is needed to change them');
-    assert.equal(saved, null);
+    assert.equal(savedOptions, null);
 
-    allowed = true;
+    optionsAllowed = true;
+    const connectedAt = smaart.getStatus().message;
     r = await call('POST', '/smaart-spl/options', { main: 'SPL Fast', live: 'none', hidden: ['Smaart I-O/Stage Left'] });
     assert.equal(r.status, 200);
-    assert.deepEqual(saved, { main: 'SPL Fast', live: 'none', hidden: ['Smaart I-O/Stage Left'] });
-    data = (await call('GET', '/smaart-spl')).body;
+    assert.deepEqual(savedOptions, { main: 'SPL Fast', live: 'none', hidden: ['Smaart I-O/Stage Left'] });
+    // The plugin takes them as new settings: the card changes, without reconnecting to Smaart
+    data = await until2(async () => { const d = (await call('GET', '/smaart-spl')).body; return d.inputs[0]?.main?.name === 'SPL Fast' ? d : null; });
+    assert.equal(smaart.getStatus().message, connectedAt, 'still connected, not reconnected');
     const [left, stage] = data.inputs;
     assert.equal(left.main.name, 'SPL Fast');
     assert.equal(left.live, null, 'the small reading is off');
@@ -214,41 +245,41 @@ test('the card’s options: readings, the small one off, inputs left off, and FO
     assert.equal(r.status, 400, 'only metric names are taken');
     r = await call('POST', '/smaart-spl/options', { main: '', live: '', hidden: 'all' });
     assert.equal(r.status, 400);
-  } finally { smaart.stop(); srv.close(); await s.close(); }
+  } finally { optionsAllowed = false; await smaart.stop(); await s.close(); }
 });
 
 test('the Green Room’s one reading: its own metric and input, or the first input FOH shows', async () => {
   const s = await standIn({ inputs: [{ device: 'Smaart I-O', channel: 'Front Left' }, { device: 'Smaart I-O', channel: 'Stage Left' }] });
   try {
-    assert.equal(smaart.singleReading('', ''), null, 'nothing while Smaart is off');
-    smaart.applyConfig(cfg(s.port, { smaartHiddenInputs: ['Smaart I-O/Front Left'] }));
-    await until(async () => (await spl()).inputs.filter((i) => i.main?.value).length === 2);
-    assert.deepEqual(smaart.singleReading('', ''), { name: 'LAeq 10', value: 94.2, color: 'green', over: false, input: 'Stage Left', stale: false }, 'the first input the FOH card shows');
-    const r = smaart.singleReading('SPL Fast', 'Smaart I-O/Front Left');
+    assert.equal(await smaart.singleReading('', ''), null, 'nothing while Smaart is off');
+    await smaart.applyConfig(cfg(s.port, { smaartHiddenInputs: ['Smaart I-O/Front Left'] }));
+    await until2(async () => (await spl()).inputs.filter((i) => i.main?.value).length === 2);
+    assert.deepEqual(await smaart.singleReading('', ''), { name: 'LAeq 10', value: 94.2, color: 'green', over: false, input: 'Stage Left', stale: false }, 'the first input the FOH card shows');
+    const r = await smaart.singleReading('SPL Fast', 'Smaart I-O/Front Left');
     assert.equal(r.name, 'SPL Fast');
     assert.equal(r.input, 'Front Left', 'the chosen input, even if the FOH card leaves it off');
-    assert.equal(smaart.singleReading('Nope', 'Smaart I-O/Gone').name, 'LAeq 10', 'a reading or input Smaart no longer has falls back');
-    assert.deepEqual(smaart.getStatus().inputList, [{ key: 'Smaart I-O/Front Left', name: 'Front Left' }, { key: 'Smaart I-O/Stage Left', name: 'Stage Left' }]);
-  } finally { smaart.stop(); await s.close(); }
+    assert.equal((await smaart.singleReading('Nope', 'Smaart I-O/Gone')).name, 'LAeq 10', 'a reading or input Smaart no longer has falls back');
+    assert.deepEqual((await until2(async () => smaart.getStatus().inputList.length === 2 && smaart.getStatus())).inputList, [{ key: 'Smaart I-O/Front Left', name: 'Front Left' }, { key: 'Smaart I-O/Stage Left', name: 'Stage Left' }]);
+  } finally { await smaart.stop(); await s.close(); }
 });
 
-test('a Smaart that stops answering without hanging up is reconnected, not shown as connected', async () => {
+test('a Smaart that stops answering without hanging up is reconnected, not shown as connected (the plugin’s code, in here)', async () => {
   const s = await standIn();
-  smaart._setTimings(150, 300);
+  lib._setTimings(150, 300);
   try {
-    smaart.applyConfig(cfg(s.port));
-    await until(async () => smaart.getStatus().state === 'connected');
+    lib.applyConfig(cfg(s.port));
+    await until(async () => lib.getStatus().state === 'connected');
     s.state.quiet = true;
-    const st = await until(async () => smaart.getStatus().state === 'error' && smaart.getStatus(), 4000);
+    const st = await until(async () => lib.getStatus().state === 'error' && lib.getStatus(), 4000);
     assert.ok(st, 'no longer connected');
     assert.match(st.message, /stopped answering|isn’t answering|Can’t reach/);
     s.state.quiet = false;
-    assert.ok(await until(async () => smaart.getStatus().state === 'connected', 9000), 'and back when it answers again');
-  } finally { smaart.stop(); smaart._setTimings(15000, 8000); await s.close(); }
+    assert.ok(await until(async () => lib.getStatus().state === 'connected', 9000), 'and back when it answers again');
+  } finally { lib.stop(); lib._setTimings(15000, 8000); await s.close(); }
 });
 
 test('the API version is picked from what the server lists', () => {
-  assert.deepEqual(smaart._pickVersion([{ 3: '/api/v3/' }, { 4: '/api/v4/' }]), { version: 4, path: '/api/v4/' });
-  assert.deepEqual(smaart._pickVersion([{ 3: '/api/v3/' }]), { version: 3, path: '/api/v3/' });
-  assert.equal(smaart._pickVersion([{ 2: '/api/v2/' }, { 4: 'http://elsewhere/' }]), null);
+  assert.deepEqual(lib._pickVersion([{ 3: '/api/v3/' }, { 4: '/api/v4/' }]), { version: 4, path: '/api/v4/' });
+  assert.deepEqual(lib._pickVersion([{ 3: '/api/v3/' }]), { version: 3, path: '/api/v3/' });
+  assert.equal(lib._pickVersion([{ 2: '/api/v2/' }, { 4: 'http://elsewhere/' }]), null);
 });

@@ -4,7 +4,7 @@
 const net = require('net');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const wireless = require('./shure-wireless.js');
+const wireless = require('../../plugins/shure/shure.js'); // the Shure plugin's own code (shure-wireless-plugin.test.js runs it end to end)
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(check, ms = 3000) {

@@ -14,7 +14,7 @@ const definitions = [
   ['auxes', 'Aux layout & access', 'Mix names, colors, visibility, private links, and EQ access.', ['auxOverrides']],
   ['ipads', 'iPad relay connections', 'Configured OSC relay devices and ports.', ['ipadConnections']],
   ['behavior', 'Startup & backup behavior', 'Automatic startup, demo mode, snapshot recall, and backup schedule.', ['autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','autoBackupIntervalDays']],
-  ['pco', 'Planning Center setup', 'Service, team, day, aux mappings, second service, room displays, and phone assignment.', ['pcoServiceTypeId','pcoTeamId','pcoDay','pcoPositionMapping','pcoAlt','pcoIncludeUnconfirmed','pcoGreenRoomHidden','greenRoomQr','greenRoomMics','pcoUpdateAuxNames','pcoFohPositionName','pcoFohTeamId','pcoProPresenterPositionName','pcoProPresenterTeamId','pcoLightingPositionName','pcoLightingTeamId','pcoSwitcherPositionName','pcoSwitcherTeamId','pcoPhoneAssignments']],
+  ['pco', 'Planning Center setup', 'Service, team, day, aux mappings, second service, room displays, and phone assignment.', ['pcoEnabled','pcoServiceTypeId','pcoTeamId','pcoDay','pcoPositionMapping','pcoAlt','pcoIncludeUnconfirmed','pcoGreenRoomHidden','greenRoomQr','greenRoomMics','pcoUpdateAuxNames','pcoFohPositionName','pcoFohTeamId','pcoProPresenterPositionName','pcoProPresenterTeamId','pcoLightingPositionName','pcoLightingTeamId','pcoSwitcherPositionName','pcoSwitcherTeamId','pcoPhoneAssignments']],
   ['pcoCredentials', 'Planning Center credentials', 'Application ID and Secret. Kept unless you explicitly select this option.', ['pcoAppId','pcoSecret']],
   ['branding', 'Branding', 'Accent color for the pages JPMixer serves. The logo image isn’t in backups; upload it again in Settings → Branding.', ['brandAccent']],
   ['access', 'FOH Home access code', 'The code other devices enter to open FOH Home.', ['fohAccessCode']],
@@ -26,7 +26,7 @@ const definitions = [
 const types = {
   channelGroups:'array', ipadConnections:'array', pcoGreenRoomHidden:'array', smaartHiddenInputs:'array', wirelessReceivers:'array', wirelessKnown:'array', wirelessAux:'object', channelOverrides:'object', auxOverrides:'object', pcoPositionMapping:'object', pcoAlt:'object'
 };
-const booleans = new Set(['greenRoomMics','wirelessEnabled','greenRoomSpl','smaartEnabled','greenRoomQr','autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled']);
+const booleans = new Set(['pcoEnabled','greenRoomMics','wirelessEnabled','greenRoomSpl','smaartEnabled','greenRoomQr','autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled']);
 const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,64],groups:[0,64],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],smaartPort:[1,65535],autoBackupIntervalDays:[1,365] };
 function validateConfig(config) {
   if (!object(config)) throw new Error('Invalid configuration in this backup.');

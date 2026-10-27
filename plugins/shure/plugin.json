@@ -1,0 +1,13 @@
+{
+  "id": "shure",
+  "name": "Shure wireless",
+  "version": "1.0.0",
+  "description": "Each Shure wireless mic's name, battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room. Only reads: it never changes a receiver or turns on its meters.",
+  "author": "JPMixer",
+  "minJPMixer": "2.0.14",
+  "main": "index.js",
+  "permissions": ["integration"],
+  "settings": [
+    { "key": "wirelessEnabled", "label": "Watch Shure wireless receivers", "type": "checkbox", "help": "Set in Settings → Plugins → Shure wireless." }
+  ]
+}

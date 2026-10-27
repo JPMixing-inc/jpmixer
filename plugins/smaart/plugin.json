@@ -1,0 +1,13 @@
+{
+  "id": "smaart",
+  "name": "Smaart SPL",
+  "version": "1.0.0",
+  "description": "Live sound levels from Rational Acoustics Smaart on FOH Home and the Green Room. Only reads from Smaart: it never starts a measurement or changes a setting.",
+  "author": "JPMixer",
+  "minJPMixer": "2.0.14",
+  "main": "index.js",
+  "permissions": ["integration"],
+  "settings": [
+    { "key": "smaartHost", "label": "Smaart computer’s address", "type": "text", "help": "Set in Settings → Plugins → Smaart SPL." }
+  ]
+}

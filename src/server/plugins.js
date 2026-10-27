@@ -3,7 +3,7 @@
 // ── Plugins ────────────────────────────────────────────────────────────────
 // Add-ons other people write for JPMixer. Each one is a folder in
 // <userData>/plugins with a plugin.json (its name, what it asks to do, the
-// settings it needs) and a JavaScript file. Settings → Integrations → Plugins
+// settings it needs) and a JavaScript file. Settings → Plugins
 // lists them; each is off until someone turns it on there.
 //
 // Every plugin runs in its own process (plugin-runner.js), never inside
@@ -17,7 +17,7 @@
 // else's code: Settings says so before one is turned on.
 //
 // Every plugin must declare at least one setting in plugin.json: those make
-// its own tab under Settings → Integrations (settings.js), next to Smaart's
+// its own tab under Plugins in Settings (settings.js), next to Smaart's
 // and Shure's.
 //
 // A plugin with the "page" permission also has a page of its own (HTML,
@@ -45,7 +45,7 @@
 //
 // Which plugins are on, and their settings, are kept in plugins.json (not
 // config.json, so a Settings save can never drop them). Plugins as a whole
-// are off until Allow plugins (Settings → Integrations → Plugins) turns them on (pluginsEnabled
+// are off until Allow plugins (Settings → Plugins) turns them on (pluginsEnabled
 // in the config, passed in as `allowed`): while off, none runs and FOH Home
 // has no plugin cards, whatever plugins.json says.
 
@@ -64,7 +64,15 @@ const PERMISSIONS = {
   console: 'See channel, control group and mix names, each channel’s 48V, and whether the console is connected',
   planningCenter: 'See the plan’s title, what’s live and what’s next from Planning Center',
   page: 'Show a page of its own, listed with the Home pages',
+  integration: 'Feed JPMixer’s own pages and Settings (official JPMixer plugins only)',
 };
+// Official JPMixer plugins: they run without Allow plugins, as long as their
+// files are the ones installed from the approved list (or from the copy that
+// comes with JPMixer). An integration (Shure, Smaart, Companion) also has its
+// on/off and settings in JPMixer's config, in its own Settings tab
+// (integrations.js hands them over), not in plugins.json.
+const OFFICIAL = { patch: {}, shure: { integration: true }, smaart: { integration: true }, companion: { integration: true } };
+const isIntegrationId = (id) => !!(Object.hasOwn(OFFICIAL, id) && OFFICIAL[id].integration);
 const FIELD_TYPES = new Set(['text', 'password', 'number', 'checkbox', 'select']);
 const COLORS = new Set(['green', 'yellow', 'red', 'blue', 'gray']);
 const LEVELS = new Set(['ok', 'warn', 'error']);
@@ -78,6 +86,10 @@ const pluginsDir = () => path.join(app.getPath('userData'), 'plugins');
 const dataDir = (id) => path.join(app.getPath('userData'), 'plugin-data', id);
 const stateFile = () => path.join(app.getPath('userData'), 'plugins.json');
 const RUNNER = path.join(__dirname, 'plugin-runner.js');
+// The official plugins that come with JPMixer (for moving people over from
+// the versions where these were built in): beside the app, or the repo's
+// plugins/ folder when running from source
+const bundledDir = () => (app.isPackaged && process.resourcesPath ? path.join(process.resourcesPath, 'plugins') : path.join(__dirname, '..', '..', 'plugins'));
 
 const text = (v, max) => (typeof v === 'string' || typeof v === 'number' ? String(v).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : '');
 
@@ -135,6 +147,7 @@ function readManifest(folder) {
   const asked = Array.isArray(raw.permissions) ? raw.permissions : [];
   const unknown = asked.filter((p) => !Object.hasOwn(PERMISSIONS, p));
   if (unknown.length) return { ok: false, error: `Unknown permission: ${unknown.map(String).join(', ')}. This version of JPMixer knows ${Object.keys(PERMISSIONS).join(', ')}.` };
+  if (asked.includes('integration') && !isIntegrationId(id)) return { ok: false, error: 'Only JPMixer’s own integrations can ask for "integration".' };
   const settings = [];
   const keys = new Set();
   for (const f of (Array.isArray(raw.settings) ? raw.settings : []).slice(0, MAX_SETTINGS)) {
@@ -144,7 +157,7 @@ function readManifest(folder) {
     keys.add(field.key);
     settings.push(field);
   }
-  // Every plugin has its own tab under Settings → Integrations, with its settings
+  // Every plugin has its own tab under Plugins in Settings, with its settings
   if (!settings.length) return { ok: false, error: 'plugin.json needs "settings" with at least one setting. They make the plugin’s own tab in Settings, under Plugins.' };
   const name = text(raw.name, 40) || id;
   // Its page: an .html file inside its folder (page/index.html unless it says)
@@ -206,6 +219,8 @@ function saveState() {
 }
 // A plugin's settings: what's saved, as plugin.json describes them
 function settingsFor(manifest) {
+  // An integration's come from JPMixer's config, as integrations.js gives them
+  if (isIntegrationId(manifest.id)) return JSON.parse(JSON.stringify((integrations[manifest.id] && integrations[manifest.id].settings) || {}));
   const saved = (state[manifest.id] && state[manifest.id].settings) || {};
   const out = {};
   for (const f of manifest.settings) out[f.key] = coerce(f, Object.hasOwn(saved, f.key) ? saved[f.key] : f.default);
@@ -217,7 +232,7 @@ let providers = { console: null, planningCenter: null };
 const running = new Map(); // id -> run
 const crashed = new Map(); // id -> { at: [times], message }
 let started = false;
-let allowed = false; // Allow plugins (Settings → Integrations → Plugins)
+let allowed = false; // Allow plugins (Settings → Plugins)
 let pushTimers = [];
 
 function permissionFlag() {
@@ -238,6 +253,91 @@ function childEnv() {
 function fingerprint(entry, settings) {
   return crypto.createHash('sha1').update(JSON.stringify([entry.manifest, settings, entry.folder])).digest('hex');
 }
+const filesPrint = (entry) => crypto.createHash('sha1').update(JSON.stringify([entry.manifest, entry.folder])).digest('hex');
+
+// ── Official plugins ──
+// Every file's SHA-256, as installed (from the approved list, which checked
+// each against it, or the copy with JPMixer): { "index.js": "…", … }
+function hashFiles(folder) {
+  const out = {};
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === '.DS_Store') continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile()) out[path.relative(folder, p).split(path.sep).join('/')] = crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+    }
+  };
+  walk(folder);
+  return out;
+}
+const officialChecks = new Map(); // id -> { stamp, ok, folder, at }
+function stampOf(folder) {
+  const parts = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === '.DS_Store') continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile()) { const st = fs.statSync(p); parts.push(`${p}:${st.size}:${st.mtimeMs}`); }
+    }
+  };
+  walk(folder);
+  return parts.sort().join('|');
+}
+// Installed from the approved list before JPMixer recorded the files (Patch,
+// on 2.0.13): official if they're the same as the copy that comes with
+// JPMixer, and recorded from then on
+function adoptFiles(entry) {
+  try {
+    const catalog = JSON.parse(fs.readFileSync(path.join(bundledDir(), 'catalog.json'), 'utf8'));
+    const listed = (Array.isArray(catalog.plugins) ? catalog.plugins : []).find((p) => p && p.id === entry.id);
+    if (!listed || !Array.isArray(listed.files)) return false;
+    const now = hashFiles(entry.folder);
+    const want = Object.fromEntries(listed.files.map((f) => [f.path, f.sha256]));
+    if (Object.keys(now).length !== Object.keys(want).length || !Object.entries(want).every(([f, h]) => now[f] === h)) return false;
+    state = toNullProto(JSON.parse(JSON.stringify(state)));
+    state[entry.id] = { ...state[entry.id], files: now };
+    return saveState();
+  } catch (_) { return false; }
+}
+// Checked again only when a file's size or time changes, and those are
+// looked at no more than every few seconds (pages ask for every file)
+const OFFICIAL_RECHECK_MS = 5000;
+// `fresh`: look at the files now (deciding whether to start it), not a few seconds ago
+function isOfficial(entry, { fresh = false } = {}) {
+  if (!entry || !entry.manifest || !Object.hasOwn(OFFICIAL, entry.id)) return false;
+  const hit = officialChecks.get(entry.id);
+  if (!fresh && hit && hit.folder === entry.folder && Date.now() - hit.at < OFFICIAL_RECHECK_MS) return hit.ok;
+  let stamp;
+  try { stamp = stampOf(entry.folder); } catch (_) { return false; }
+  if (hit && hit.folder === entry.folder && hit.stamp === stamp) { hit.at = Date.now(); return hit.ok; }
+  loadState();
+  let saved = state[entry.id];
+  if (saved && saved.source === 'catalog' && !saved.files && adoptFiles(entry)) saved = state[entry.id];
+  let ok = false;
+  if (saved && ['catalog', 'bundled'].includes(saved.source) && saved.files && typeof saved.files === 'object') {
+    try {
+      const now = hashFiles(entry.folder);
+      const want = saved.files;
+      ok = Object.keys(now).length === Object.keys(want).length && Object.entries(want).every(([f, h]) => now[f] === h);
+    } catch (_) { ok = false; }
+  }
+  // Kept either way (a copy that doesn't match isn't hashed again until it changes)
+  officialChecks.set(entry.id, { stamp, ok, folder: entry.folder, at: Date.now() });
+  return ok;
+}
+// Should this plugin be running? An integration: when its Settings tab has it
+// on. Any other: when it's on, and plugins are allowed (or it's official).
+// Plugins being installed (their folder about to be swapped): held stopped till it's done
+const installingIds = new Set();
+function wantsRun(entry, { fresh = false } = {}) {
+  if (!entry || !entry.manifest || installingIds.has(entry.id)) return false;
+  if (isIntegrationId(entry.id)) return !!(integrations[entry.id] && integrations[entry.id].enabled) && isOfficial(entry, { fresh });
+  return !!(state[entry.id] && state[entry.id].enabled === true) && (allowed || isOfficial(entry, { fresh }));
+}
+// An integration's on/off and settings, from JPMixer's config (integrations.js)
+let integrations = Object.create(null); // id -> { enabled, settings }
 
 // The real path (macOS's temp and /var folders are symlinks), which is what
 // Node's permission checks compare against
@@ -257,14 +357,20 @@ function startOne(entry) {
     `--allow-fs-read=${path.join(real(data), '*')}`,
     `--allow-fs-write=${path.join(real(data), '*')}`,
   ];
+  // Network access stays open (integrations need it): newer Node's permission
+  // model closes it unless asked (Node 20, inside JPMixer today, doesn't)
+  if (process.allowedNodeEnvironmentFlags && process.allowedNodeEnvironmentFlags.has('--allow-net')) execArgv.push('--allow-net');
   // Packaged, the runner is inside app.asar, which Electron reads as a file
   if (RUNNER.includes(`.asar${path.sep}`)) execArgv.push(`--allow-fs-read=${RUNNER.slice(0, RUNNER.indexOf(`.asar${path.sep}`) + 5)}`);
   const run = {
-    id: manifest.id, entry, settings, fp: fingerprint(entry, settings),
+    id: manifest.id, entry, settings, fp: fingerprint(entry, settings), files: filesPrint(entry), live: false,
+    official: isOfficial(entry, { fresh: true }), // checked as it starts: the code it runs is what it loaded then
     child: null, card: null, cardAt: null, status: { level: 'ok', text: 'Starting…' },
     log: [], stopping: false, restartTimer: null, startedAt: Date.now(), lastPush: { console: '', planningCenter: '' },
   };
   running.set(manifest.id, run);
+  // A new run of an integration: JPMixer forgets what the last one shared
+  for (const fn of shareListeners.get(manifest.id) || []) { try { fn('started', null); } catch (_) {} }
   let child;
   try {
     child = fork(RUNNER, [], { execPath: process.execPath, execArgv, env: childEnv(), cwd: folder, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], serialization: 'json' });
@@ -333,6 +439,28 @@ async function onMessage(run, msg, addLog) {
     case 'status':
       run.status = { level: LEVELS.has(msg.level) ? msg.level : 'ok', text: text(msg.text, 160) };
       return;
+    case 'settings-live': // it takes new settings without a restart
+      run.live = true;
+      return;
+    case 'shares': {
+      // Only an official integration feeds JPMixer's own pages
+      if (!can('integration') || !isIntegrationId(run.id) || !run.official) { addLog('error', 'jp.integration.share: only official JPMixer integrations can use it.'); return; }
+      for (const one of (Array.isArray(msg.list) ? msg.list : []).slice(0, 500)) {
+        const event = String((one && one.event) || '');
+        if (!/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(event)) continue;
+        for (const fn of shareListeners.get(run.id) || []) { try { fn(event, one.data); } catch (e) { console.error(`[JPMixer] ${run.id} share:`, e.message); } }
+      }
+      return;
+    }
+    case 'integration-reply': {
+      const call = run.integrationCalls && run.integrationCalls.get(msg.id);
+      if (!call) return;
+      run.integrationCalls.delete(msg.id);
+      clearTimeout(call.timer);
+      if (msg.error) call.reject(Object.assign(new Error(text(msg.error, 300) || 'The plugin couldn’t do that.'), { fromPlugin: true }));
+      else call.resolve(msg.result === undefined ? null : msg.result);
+      return;
+    }
     case 'page-reply': {
       const call = run.pageCalls && run.pageCalls.get(msg.id);
       if (!call) return;
@@ -374,8 +502,12 @@ function provide(what) {
 
 function onExit(run, code, signal) {
   run.child = null;
-  for (const call of (run.pageCalls || new Map()).values()) { clearTimeout(call.timer); call.reject(new Error('The plugin stopped.')); }
-  if (run.pageCalls) run.pageCalls.clear();
+  // An integration's pages stop showing what it last shared
+  for (const fn of shareListeners.get(run.id) || []) { try { fn('stopped', null); } catch (_) {} }
+  for (const calls of [run.pageCalls, run.integrationCalls]) {
+    for (const call of (calls || new Map()).values()) { clearTimeout(call.timer); call.reject(new Error('The plugin stopped.')); }
+    if (calls) calls.clear();
+  }
   if (running.get(run.id) !== run) return;
   if (run.stopping) { running.delete(run.id); return; }
   // An unexpected exit: start it again after a pause, unless it keeps crashing
@@ -397,7 +529,7 @@ function onExit(run, code, signal) {
     running.delete(run.id);
     const entry = scan().find((e) => e.id === run.id && e.manifest);
     loadState();
-    if (allowed && entry && state[run.id] && state[run.id].enabled === true) startOne(entry);
+    if (entry && wantsRun(entry, { fresh: true })) startOne(entry);
   }, delay);
   if (run.restartTimer.unref) run.restartTimer.unref();
 }
@@ -422,11 +554,16 @@ function stopOne(id) {
 async function apply({ force = false } = {}) {
   loadState();
   const entries = scan().filter((e) => e.manifest);
-  const wanted = new Map(allowed ? entries.filter((e) => state[e.id] && state[e.id].enabled === true).map((e) => [e.id, e]) : []);
+  const wanted = new Map(entries.filter((e) => wantsRun(e, { fresh: true })).map((e) => [e.id, e]));
   const stops = [];
   for (const [id, run] of running) {
     const entry = wanted.get(id);
-    const changed = !entry || force || run.gaveUp || fingerprint(entry, settingsFor(entry.manifest)) !== run.fp;
+    const settings = entry ? settingsFor(entry.manifest) : null;
+    // Only its settings changed, and it takes them live: no restart
+    if (entry && !force && !run.gaveUp && run.live && run.child && filesPrint(entry) === run.files && fingerprint(entry, settings) !== run.fp) {
+      if (send(run, { type: 'settings', settings })) { run.settings = settings; run.fp = fingerprint(entry, settings); continue; }
+    }
+    const changed = !entry || force || run.gaveUp || fingerprint(entry, settings) !== run.fp;
     if (changed) stops.push(stopOne(id));
   }
   await Promise.all(stops);
@@ -496,6 +633,99 @@ function setAllowed(value) {
   return apply();
 }
 
+// ── Official integrations (integrations.js) ──
+// Their on/off and settings from JPMixer's config: { shure: { enabled, settings }, … }
+function setIntegrations(next) {
+  const clean = Object.create(null);
+  for (const [id, v] of Object.entries(next || {})) {
+    if (!isIntegrationId(id) || !v || typeof v !== 'object') continue;
+    clean[id] = { enabled: v.enabled === true, settings: v.settings && typeof v.settings === 'object' ? JSON.parse(JSON.stringify(v.settings)) : {} };
+  }
+  integrations = clean;
+  return started ? apply() : Promise.resolve();
+}
+// What an integration learned and JPMixer saved (Shure's receivers): its
+// settings become that, without sending them back to it (it has them), so a
+// restart starts from there and a later apply() doesn't see a change
+function noteIntegrationSettings(id, settings) {
+  if (!isIntegrationId(id) || !integrations[id] || !settings || typeof settings !== 'object') return;
+  const clean = JSON.parse(JSON.stringify(settings));
+  integrations[id] = { ...integrations[id], settings: clean };
+  const run = running.get(id);
+  if (run) { run.settings = clean; run.fp = fingerprint(run.entry, clean); }
+}
+// Something an integration shares with JPMixer: fn(event, data). 'started'
+// (data null) comes first each time a new process starts, before anything it
+// shares, and 'stopped' when one ends (stopped, crashed or turned off)
+const shareListeners = new Map(); // id -> Set(fn)
+function onShare(id, fn) {
+  if (!shareListeners.has(id)) shareListeners.set(id, new Set());
+  shareListeners.get(id).add(fn);
+  return () => shareListeners.get(id).delete(fn);
+}
+// JPMixer's own call to an integration (a Companion press, the Smaart card's options)
+const INTEGRATION_CALL_TIMEOUT_MS = 5000;
+let integrationCallId = 0;
+function callIntegration(id, name, body, timeoutMs = INTEGRATION_CALL_TIMEOUT_MS) {
+  const run = running.get(id);
+  if (!run || !run.child || !isIntegrationId(id) || !run.entry.manifest.permissions.includes('integration')) return Promise.reject(Object.assign(new Error('not running'), { notRunning: true }));
+  run.integrationCalls = run.integrationCalls || new Map();
+  if (run.integrationCalls.size >= 50) return Promise.reject(new Error('busy'));
+  return new Promise((resolve, reject) => {
+    const callId = ++integrationCallId;
+    const timer = setTimeout(() => { run.integrationCalls.delete(callId); reject(new Error('The plugin didn’t answer in time.')); }, timeoutMs);
+    run.integrationCalls.set(callId, { resolve, reject, timer });
+    if (!send(run, { type: 'integration-call', id: callId, name, body })) { clearTimeout(timer); run.integrationCalls.delete(callId); reject(Object.assign(new Error('not running'), { notRunning: true })); }
+  });
+}
+// An official plugin as it is here: installed? official? running? its status
+function officialState(id) {
+  const entry = scanSoon().find((e) => e.id === id && e.manifest);
+  const run = running.get(id);
+  return {
+    installed: !!entry, official: !!entry && isOfficial(entry), version: entry ? entry.manifest.version : null,
+    running: !!(run && run.child), state: run ? (run.gaveUp ? 'crashed' : run.child ? 'running' : 'restarting') : 'off',
+    status: run ? run.status : null,
+  };
+}
+// The version of the copy that comes with JPMixer (null if there's none)
+function bundledVersion(id) {
+  try {
+    const catalog = JSON.parse(fs.readFileSync(path.join(bundledDir(), 'catalog.json'), 'utf8'));
+    const listed = (Array.isArray(catalog.plugins) ? catalog.plugins : []).find((p) => p && p.id === id);
+    return listed && typeof listed.version === 'string' ? listed.version : null;
+  } catch (_) { return null; }
+}
+// The official plugins that come with JPMixer, as their catalog lists them
+// (for Find plugins: installable with no internet, or before they're on the
+// approved list on GitHub)
+function bundledCatalog() {
+  try {
+    const catalog = JSON.parse(fs.readFileSync(path.join(bundledDir(), 'catalog.json'), 'utf8'));
+    return (Array.isArray(catalog.plugins) ? catalog.plugins : []).filter((p) => p && Object.hasOwn(OFFICIAL, p.id));
+  } catch (_) { return []; }
+}
+// The copy of an official plugin that comes with JPMixer, after checking each
+// file against that copy's catalog: { ok, folder } or { ok: false, error }
+function checkBundled(id) {
+  if (!Object.hasOwn(OFFICIAL, id)) return { ok: false, error: 'Not an official plugin.' };
+  const listed = bundledCatalog().find((p) => p.id === id);
+  if (!listed || !Array.isArray(listed.files)) return { ok: false, error: 'The copy of this plugin that comes with JPMixer is missing.' };
+  const folder = path.join(bundledDir(), String(listed.path || id));
+  try {
+    const now = hashFiles(folder);
+    const want = Object.fromEntries(listed.files.map((f) => [f.path, f.sha256]));
+    if (Object.keys(now).length !== Object.keys(want).length || !Object.entries(want).every(([f, h]) => now[f] === h)) return { ok: false, error: 'The copy of this plugin that comes with JPMixer doesn’t match its list.' };
+  } catch (e) { return { ok: false, error: `Couldn’t read the copy that comes with JPMixer: ${e.message}` }; }
+  return { ok: true, folder };
+}
+// Installs an official plugin from the copy that comes with JPMixer (moving
+// someone over from a version where it was built in, or with no internet)
+async function installBundled(id) {
+  const check = checkBundled(id);
+  return check.ok ? install(check.folder, { origin: 'bundled' }) : check;
+}
+
 // Quitting: ask each to stop, and don't wait (each also exits when JPMixer's
 // end of the channel closes)
 function stopAll() {
@@ -515,15 +745,17 @@ function list() {
     const run = running.get(e.id);
     const on = !!(state[e.id] && state[e.id].enabled === true);
     const saved = state[e.id] || {};
-    const base = { id: e.id, folder: e.folder, enabled: on, source: saved.source || 'file', watch: saved.watch === true };
+    const base = { id: e.id, folder: e.folder, enabled: isIntegrationId(e.id) ? !!(integrations[e.id] && integrations[e.id].enabled) : on, source: saved.source || 'file', watch: saved.watch === true,
+      official: isOfficial(e), integration: isIntegrationId(e.id) };
     if (!e.manifest) return { ...base, error: e.error, state: 'invalid' };
     return {
       ...base,
       manifest: e.manifest,
       permissions: e.manifest.permissions.map((p) => ({ id: p, text: PERMISSIONS[p] })),
       settings: settingsFor(e.manifest),
-      state: run ? (run.gaveUp ? 'crashed' : run.child ? 'running' : 'restarting') : on ? 'starting' : 'off',
-      status: run ? run.status : null,
+      state: run ? (run.gaveUp ? 'crashed' : run.child ? 'running' : 'restarting') : base.enabled ? (base.official || !isIntegrationId(e.id) ? 'starting' : 'crashed') : 'off',
+      // An integration that's on but whose files changed doesn't run: said so, not "starting"
+      status: run ? run.status : base.enabled && isIntegrationId(e.id) && !base.official ? { level: 'error', text: 'Its files have changed, so it isn’t running. Save & Apply puts the approved copy back.' } : null,
       hasCard: e.manifest.permissions.includes('card'),
     };
   });
@@ -603,6 +835,8 @@ async function install(source, { origin = 'file' } = {}) {
   const check = previewInstall(source);
   if (!check.ok) return check;
   const id = check.manifest.id;
+  if (installingIds.has(id)) return { ok: false, error: 'It’s being installed already.' };
+  installingIds.add(id); // nothing starts the old copy while its folder is swapped
   const target = path.join(pluginsDir(), id);
   const temp = path.join(pluginsDir(), `.adding-${id}-${Date.now()}`);
   try {
@@ -616,13 +850,21 @@ async function install(source, { origin = 'file' } = {}) {
     fs.renameSync(temp, target);
   } catch (e) {
     try { fs.rmSync(temp, { recursive: true, force: true }); } catch (_) {}
+    installingIds.delete(id);
     await apply();
     return { ok: false, error: `Couldn’t copy it: ${e.message}` };
   }
+  installingIds.delete(id);
   crashed.delete(id);
   loadState();
   state = toNullProto(JSON.parse(JSON.stringify(state)));
-  state[id] = { enabled: false, settings: {}, ...(state[id] || {}), source: origin };
+  // An official plugin's files, as installed, so it can be told apart from a copy changed since
+  let files = null;
+  if ((origin === 'catalog' || origin === 'bundled') && Object.hasOwn(OFFICIAL, id)) { try { files = hashFiles(target); } catch (_) { files = null; } }
+  state[id] = { enabled: false, settings: {}, ...(state[id] || {}), source: origin, ...(files ? { files } : {}) };
+  if (!files) delete state[id].files;
+  officialChecks.delete(id);
+  scanned = { at: 0, list: [] }; // the folder changed: read it again next time
   saveState();
   await apply();
   return { ok: true, manifest: check.manifest, replaced: !!check.existing };
@@ -635,6 +877,7 @@ function forget(id) {
   const previous = state;
   state = toNullProto(JSON.parse(JSON.stringify(state)));
   delete state[id];
+  scanned = { at: 0, list: [] };
   if (!saveState()) { state = previous; return false; }
   return true;
 }
@@ -649,10 +892,9 @@ function scanSoon() {
   return scanned.list;
 }
 function cards() {
-  if (!allowed) return [];
   loadState();
   return scanSoon()
-    .filter((e) => e.manifest && e.manifest.permissions.includes('card') && state[e.id] && state[e.id].enabled === true)
+    .filter((e) => e.manifest && e.manifest.permissions.includes('card') && !isIntegrationId(e.id) && wantsRun(e))
     .map((e) => {
       const run = running.get(e.id);
       const stateName = run ? (run.gaveUp ? 'crashed' : run.child ? 'running' : 'restarting') : 'starting';
@@ -663,21 +905,19 @@ function cards() {
 // ── Plugin pages ──
 // A plugin that's on and has the "page" permission: its folder and page
 const pageEntry = (id) => {
-  if (!allowed || !ID.test(String(id || ''))) return null;
+  if (!ID.test(String(id || ''))) return null;
   loadState();
-  if (!(state[id] && state[id].enabled === true)) return null;
   const entry = scanSoon().find((e) => e.manifest && e.manifest.id === id && e.manifest.permissions.includes('page') && e.manifest.page);
-  if (!entry) return null;
+  if (!entry || !wantsRun(entry)) return null;
   const folder = real(entry.folder);
   const file = path.join(folder, ...entry.manifest.page.entry.split('/'));
   return { folder, dir: path.dirname(file), index: path.basename(file), title: entry.manifest.page.title };
 };
 // For the Home pages list: every plugin page that can be opened now
 function pages() {
-  if (!allowed) return [];
   loadState();
   return scanSoon()
-    .filter((e) => e.manifest && e.manifest.page && e.manifest.permissions.includes('page') && state[e.id] && state[e.id].enabled === true)
+    .filter((e) => e.manifest && e.manifest.page && e.manifest.permissions.includes('page') && wantsRun(e))
     .map((e) => ({ id: e.id, title: e.manifest.page.title, plugin: e.manifest.name, href: `/p/${e.id}/` }));
 }
 
@@ -728,7 +968,7 @@ function mountPluginPages(app) {
     if (!req.params[1]) { res.redirect(301, `/p/${id}/`); return; }
     const page = pageEntry(id);
     res.set('Cache-Control', 'no-cache');
-    if (!page) { res.status(404).type('text/plain').send('This plugin page isn’t available. Its plugin may be off, or plugins may not be allowed (Settings → Integrations → Plugins).'); return; }
+    if (!page) { res.status(404).type('text/plain').send('This plugin page isn’t available. Its plugin may be off, or plugins may not be allowed (Settings → Plugins).'); return; }
     // Express has already decoded the path once
     let rel = req.params[1].slice(1);
     if (!rel) rel = page.index;
@@ -787,9 +1027,12 @@ function processes() {
 
 module.exports = {
   processes, pages, callPage, mountPluginPages, _pageToken: (id) => pageToken(id),
+  setIntegrations, noteIntegrationSettings, bundledVersion, onShare, callIntegration, officialState, installBundled, checkBundled, bundledCatalog, isIntegrationId, OFFICIAL, bundledDir,
+  isRunning: (id) => { const run = running.get(id); return !!(run && run.child); },
+  isInstalled: (id) => scanSoon().some((e) => e.id === id && e.manifest),
   start, setAllowed, apply, restart, stopAll, stopOne, list, getLog, save, forget, cards, readManifest, scan, previewInstall, install,
   pluginsDir, dataDir, PERMISSIONS,
   _cleanCard: cleanCard, _coerce: coerce, _running: running,
   _setRestartDelays: (list) => { RESTART_DELAYS_MS.splice(0, RESTART_DELAYS_MS.length, ...list); },
-  _reset: () => { state = Object.create(null); stateLoaded = false; crashed.clear(); provided.clear(); scanned = { at: 0, list: [] }; },
+  _reset: () => { state = Object.create(null); stateLoaded = false; crashed.clear(); provided.clear(); scanned = { at: 0, list: [] }; officialChecks.clear(); },
 };

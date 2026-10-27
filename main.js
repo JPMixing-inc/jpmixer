@@ -375,10 +375,22 @@ app.whenReady().then(async () => {
   require('./src/server/companion-satellite').applyConfig(config.getAll());
   require('./src/server/smaart').applyConfig(config.getAll());
   // Receivers it sees are remembered in the config, so they're there after a restart
-  require('./src/server/shure-wireless').setSaver((patch) => config.save({ ...config.getAll(), ...patch }));
+  // (and the plugin's own copy of its settings, so a restart of it starts from what it learned)
+  require('./src/server/shure-wireless').setSaver((patch) => { config.save({ ...config.getAll(), ...patch }); require('./src/server/integrations').noteSaved('shure', config.getAll()); });
   require('./src/server/shure-wireless').applyConfig(config.getAll());
-  // Plugins that are on (Settings → Integrations → Plugins), each in its own process
+  // Shure, Smaart and Companion are official plugins now: each gets its own
+  // settings from the config, and its Settings tab's switch (integrations.js)
+  require('./src/server/integrations').applyConfig(config.getAll());
+  // Plugins that are on (Settings → Plugins), each in its own process
   require('./src/server/plugins').start({ ...pluginProviders, allowed: config.get('pluginsEnabled') === true });
+  // Moving over from a version where they were built in: each one that's on
+  // gets its plugin from the copy that comes with JPMixer (no internet needed)
+  require('./src/server/integrations').moveOver(config.getAll(), undefined, { fromCatalog: installIntegrationFromCatalog })
+    .then(() => { notifyPluginsChanged(); })
+    .catch((e) => console.error('[JPMixer] moving integrations over:', e.message));
+  // Updates for installed plugins (checkPluginUpdates)
+  setTimeout(checkPluginUpdates, 60 * 1000);
+  setInterval(checkPluginUpdates, 6 * 60 * 60 * 1000);
   // Settings → Performance: measured from launch, so its peaks cover the service
   require('./src/server/system-stats').start({ pluginProcesses: () => require('./src/server/plugins').processes(), backupsDir: () => autoBackup.backupsDir() });
   pcoClient  = require('./src/server/pco-client');
@@ -404,18 +416,18 @@ app.on('window-all-closed', (e) => {
 
 // Every quit path (tray Quit, Cmd+Q, Dock, logout, shutdown) comes through
 // here. Stopping sends muted channels' real levels back to the desk; quitting
-// without it left them at -150. Capped at 1s so a quit can never hang.
+// without it left them at -150. Plugins are waited for too: the Shure plugin
+// saves the receivers it learned last, and Companion's drops the surfaces.
+// Capped at 1.8 s so a quit can never hang.
 let quitting = false;
 app.on('before-quit', (e) => {
-  try { require('./src/server/companion-satellite').stop(); } catch (_) {} // tells Companion to drop the surfaces
-  try { require('./src/server/smaart').stop(); } catch (_) {}
-  try { require('./src/server/shure-wireless').stop(); } catch (_) {}
+  if (quitting) return;
   try { require('./src/server/console-names').flush(); } catch (_) {}
-  try { require('./src/server/plugins').stopAll(); } catch (_) {}
-  if (quitting || !serverRunning || !server) return;
   e.preventDefault();
   quitting = true;
-  Promise.race([stopServer(), new Promise(r => setTimeout(r, 1000))])
+  const plugins = Promise.resolve().then(() => require('./src/server/plugins').stopAll()).catch(() => {});
+  const desk = serverRunning && server ? stopServer() : Promise.resolve();
+  Promise.race([Promise.all([desk, plugins]), new Promise(r => setTimeout(r, 1800))])
     .catch((err) => console.error('[JPMixer] Stop on quit failed:', err))
     .finally(() => app.exit(0));
 });
@@ -1014,7 +1026,7 @@ const RESTART_KEYS = [
 // What the aux-name sync reads. The Team filter and the Green Room's hidden
 // positions only shape the Green Room display, which reads Planning Center
 // itself on each load — changing them shouldn't re-run a rename.
-const PCO_KEYS = ['pcoAppId', 'pcoSecret', 'pcoServiceTypeId', 'pcoPositionMapping', 'pcoIncludeUnconfirmed', 'pcoDay', 'pcoUpdateAuxNames', 'pcoAlt'];
+const PCO_KEYS = ['pcoEnabled', 'pcoAppId', 'pcoSecret', 'pcoServiceTypeId', 'pcoPositionMapping', 'pcoIncludeUnconfirmed', 'pcoDay', 'pcoUpdateAuxNames', 'pcoAlt'];
 
 function needsRestart(prev, next) {
   if (RESTART_KEYS.some(k => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))) return true;
@@ -1056,7 +1068,8 @@ ipcMain.handle('save-config', async (_, incoming) => {
   // off, so the aux picker stops showing them (they're pushed to phones with
   // the rest of this save). On every save with names off, not only the one
   // that turns them off: a build that didn't clear them left them behind.
-  const auxNamesCleared = config.get('pcoUpdateAuxNames') === false ? pcoAuxNames.clear().length : 0;
+  // (and with Planning Center turned off altogether: its performer names don't stay on the mixes)
+  const auxNamesCleared = config.get('pcoUpdateAuxNames') === false || config.get('pcoEnabled') === false ? pcoAuxNames.clear().length : 0;
   const restarted = await applySavedConfig(prev);
   // Reconciled separately from the console-backend restart above — the
   // Control API's own enable/port state should never force a console
@@ -1065,6 +1078,8 @@ ipcMain.handle('save-config', async (_, incoming) => {
   require('./src/server/companion-satellite').applyConfig(config.getAll());
   require('./src/server/smaart').applyConfig(config.getAll());
   require('./src/server/shure-wireless').applyConfig(config.getAll());
+  require('./src/server/integrations').applyConfig(config.getAll());
+  ensureIntegrationPlugins(); // one just turned on, whose plugin isn't installed yet
   require('./src/server/plugins').setAllowed(config.get('pluginsEnabled') === true);
   rebuildTrayMenu();
   updateKeepAwake();
@@ -1080,7 +1095,7 @@ ipcMain.handle('get-companion-status', () => require('./src/server/companion-sat
 ipcMain.handle('get-smaart-status', () => require('./src/server/smaart').getStatus());
 ipcMain.handle('get-wireless-status', () => require('./src/server/shure-wireless').getStatus());
 
-// ── Plugins (Settings → Integrations → Plugins; src/server/plugins.js) ──
+// ── Plugins (Settings → Plugins; src/server/plugins.js) ──
 // What a plugin can ask for, if its plugin.json says so. Names as every page
 // shows them: one typed in JPMixer, else the console's, else remembered.
 function consoleForPlugins() {
@@ -1148,10 +1163,12 @@ const pluginCan = (m) => (m.permissions.length ? m.permissions.map((p) => `• $
 function notifyPluginsChanged() { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('plugins-changed'); }
 // Shows what's about to be installed, then installs it (off until it's turned
 // on). `opened` is from plugin-store.js open() / openFromCatalog().
+// origin: 'catalog' (the approved list), 'bundled' (JPMixer's own, from the
+// copy that comes with it) or 'file'
 async function confirmAndInstall(opened, origin) {
   try {
     const m = opened.manifest;
-    const approved = origin === 'catalog';
+    const approved = origin === 'catalog' || origin === 'bundled';
     const replacing = opened.existing
       ? `This replaces ${opened.existing.name}${opened.existing.version ? ` ${opened.existing.version}` : ''}. Its settings are kept.\n\n` : '';
     const { response } = await showPrompt({
@@ -1159,7 +1176,9 @@ async function confirmAndInstall(opened, origin) {
       title: opened.existing ? 'Update plugin' : 'Install plugin',
       buttons: [opened.existing ? 'Replace' : 'Install', 'Cancel'], defaultId: approved ? 0 : 1, cancelId: 1,
       message: `${opened.existing ? 'Replace with' : 'Install'} ${m.name}${m.version ? ` ${m.version}` : ''}${m.author ? ` by ${m.author}` : ''}?`,
-      detail: `${replacing}It can:\n${pluginCan(m)}\n\n${approved
+      detail: `${replacing}It can:\n${pluginCan(m)}\n\n${origin === 'bundled'
+        ? 'It’s one of JPMixer’s own plugins, installed from the copy that comes with JPMixer.'
+        : approved
         ? 'It’s on JPMixer’s list of approved plugins.'
         : 'It isn’t on JPMixer’s list of approved plugins, so nobody has reviewed it. Only install it if you trust whoever made it.'} It stays off until you turn it on.`,
     });
@@ -1169,10 +1188,42 @@ async function confirmAndInstall(opened, origin) {
     return result;
   } finally { opened.cleanup(); }
 }
+// An integration turned on in Settings whose plugin isn't installed: from the
+// approved list (no prompt: it's JPMixer's own, and someone just turned it
+// on), or the copy that comes with JPMixer if there's no internet. Each save
+// looks again; integrations.js installs each one once at a time.
+// An official integration's plugin from the approved list on GitHub (no
+// prompt: it's JPMixer's own); { ok } or { ok: false, error }
+async function installIntegrationFromCatalog(id) {
+  const store = require('./src/server/plugin-store');
+  const list = await store.catalog(app.getVersion());
+  if (!list.ok) return list;
+  // A newer version that needs a newer JPMixer, or only the copy that comes
+  // with JPMixer listed: not from GitHub
+  const listed = list.plugins.find((p) => p.id === id);
+  if (!listed || listed.tooNew || listed.bundled) return { ok: false, error: 'not on the approved list for this version' };
+  const opened = await store.openFromCatalog(id);
+  if (!opened.ok) return opened;
+  try { return await plugins().install(opened.folder, { origin: 'catalog' }); } finally { opened.cleanup(); }
+}
+function ensureIntegrationPlugins() {
+  const integrations = require('./src/server/integrations');
+  const cfg = config.getAll();
+  const now = integrations.status();
+  const missing = Object.entries(integrations.INTEGRATIONS).filter(([id, info]) => cfg[info.enabledKey] === true && !now[id].official).map(([id]) => id);
+  if (!missing.length) return Promise.resolve();
+  return (async () => {
+    for (const id of missing) {
+      const result = await integrations.ensureInstalled(id, { online: true, fromCatalog: installIntegrationFromCatalog });
+      if (!result.ok) console.error(`[JPMixer] couldn’t install the ${integrations.INTEGRATIONS[id].name} plugin:`, result.error);
+    }
+    notifyPluginsChanged();
+  })();
+}
 async function importPluginPath(file) {
-  // Plugins have to be allowed first (Settings → Integrations → Plugins)
+  // Plugins have to be allowed first (Settings → Plugins)
   if (config.get('pluginsEnabled') !== true) {
-    await showPrompt({ type: 'info', title: 'Plugins are off', message: 'Allow plugins first.', detail: 'Turn on Allow plugins in Settings → Integrations → Plugins, select Save & Apply, then open the plugin again.' });
+    await showPrompt({ type: 'info', title: 'Plugins are off', message: 'Allow plugins first.', detail: 'Turn on Allow plugins in Settings → Plugins, select Save & Apply, then open the plugin again.' });
     return { ok: false, canceled: true };
   }
   const opened = await require('./src/server/plugin-store').open(String(file || ''));
@@ -1182,12 +1233,26 @@ async function importPluginPath(file) {
   }
   return confirmAndInstall(opened, 'file');
 }
-ipcMain.handle('plugins-catalog', () => require('./src/server/plugin-store').catalog(app.getVersion()));
+ipcMain.handle('plugins-catalog', async () => {
+  const result = await require('./src/server/plugin-store').catalog(app.getVersion());
+  notifyPluginUpdates();
+  return result;
+});
+// Updates for installed plugins: the approved list is looked at a minute
+// after starting, then every 6 hours, while any plugin is installed (and
+// whenever Find plugins is opened), so Settings can say one has an update
+ipcMain.handle('plugins-updates', () => require('./src/server/plugin-store').updates(app.getVersion()));
+function notifyPluginUpdates() { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('plugins-updates'); }
+function checkPluginUpdates() {
+  if (!plugins().list().some((p) => p.manifest)) return;
+  require('./src/server/plugin-store').catalog(app.getVersion()).then(notifyPluginUpdates, () => {});
+}
 ipcMain.handle('plugins-install-catalog', async (_e, id) => {
-  if (config.get('pluginsEnabled') !== true) return { ok: false, error: 'Turn on Allow plugins, then Save & Apply, first.' };
+  // JPMixer's own plugins install without Allow plugins (they run without it too)
+  if (config.get('pluginsEnabled') !== true && !Object.hasOwn(plugins().OFFICIAL, String(id || ''))) return { ok: false, error: 'Turn on Allow plugins, then Save & Apply, first.' };
   const opened = await require('./src/server/plugin-store').openFromCatalog(String(id || ''));
   if (!opened.ok) return opened;
-  return confirmAndInstall(opened, 'catalog');
+  return confirmAndInstall(opened, opened.bundled ? 'bundled' : 'catalog');
 });
 // A .jpmplugin or .zip, or a folder (for people making plugins)
 ipcMain.handle('plugins-import', async (event, kind) => {
@@ -1205,9 +1270,14 @@ ipcMain.handle('plugins-remove', async (_e, folder) => {
   const entry = plugins().list().find((p) => p.folder === folder);
   if (!entry) return { ok: false, error: 'That plugin isn’t there any more.' };
   const name = entry.manifest ? entry.manifest.name : entry.id;
+  // Shure, Smaart and Companion: their settings are JPMixer's (kept for
+  // installing it again), and removing it turns it off, so it isn't put back
+  const integrations = require('./src/server/integrations');
+  const integration = entry.manifest && Object.hasOwn(integrations.INTEGRATIONS, entry.id) ? integrations.INTEGRATIONS[entry.id] : null;
   const { response } = await showPrompt({
     type: 'question', title: 'Remove plugin', buttons: ['Move to Trash', 'Cancel'], defaultId: 1, cancelId: 1,
-    message: `Remove ${name}?`, detail: 'Its folder goes to the Trash, and its settings are forgotten.',
+    message: `Remove ${name}?`,
+    detail: integration ? 'It’s turned off and its folder goes to the Trash. Its settings are kept, for if you install it again.' : 'Its folder goes to the Trash, and its settings are forgotten.',
   });
   if (response !== 0) return { ok: false, canceled: true };
   // A broken copy's "id" is only its folder name: it never runs and has no
@@ -1216,8 +1286,13 @@ ipcMain.handle('plugins-remove', async (_e, folder) => {
   try { await shell.trashItem(entry.folder); }
   catch (e) { await plugins().apply(); return { ok: false, error: `Couldn’t move it to the Trash: ${e.message}` }; }
   if (entry.manifest) plugins().forget(entry.id);
+  if (integration && config.get(integration.enabledKey) === true) {
+    config.save({ ...config.getAll(), [integration.enabledKey]: false });
+    for (const mod of ['./src/server/companion-satellite', './src/server/smaart', './src/server/shure-wireless']) require(mod).applyConfig(config.getAll());
+    await integrations.applyConfig(config.getAll());
+  }
   await plugins().apply();
-  return { ok: true };
+  return { ok: true, turnedOff: integration ? integration.enabledKey : null };
 });
 
 // How to make a plugin (by hand or with an AI assistant): docs/PLUGINS.md on GitHub
@@ -1303,7 +1378,10 @@ ipcMain.handle('generate-api-token', () => {
 // identical to genuinely wrong credentials. Falls back to the persisted
 // config only if the renderer didn't pass anything (defensive, shouldn't
 // normally happen since settings.js always passes the live fields).
+// Planning Center turned off (Settings' switch, saved or not yet): nothing contacts it
 function pcoCreds(explicit) {
+  const off = explicit && typeof explicit.enabled === 'boolean' ? !explicit.enabled : config.get('pcoEnabled') === false;
+  if (off) throw new Error('Planning Center is turned off. Turn on Use Planning Center first.');
   const appId  = (explicit && explicit.appId)  || config.get('pcoAppId')  || '';
   const secret = (explicit && explicit.secret) || config.get('pcoSecret') || '';
   return { appId: appId.trim(), secret: secret.trim() };
@@ -1429,6 +1507,7 @@ async function autoSyncPlanningCenter() {
   // This only renames aux channels, so it's the one part this setting can
   // skip while leaving the Green Room fully functional.
   if (config.get('pcoUpdateAuxNames') === false) return;
+  if (config.get('pcoEnabled') === false) return; // Planning Center turned off
 
   const result = await runPcoSync({
     serviceTypeId,
@@ -1478,7 +1557,9 @@ function stopPcoAutoSync() {
 }
 
 ipcMain.handle('pco-sync-now', async (_, { serviceTypeId, mapping, includeUnconfirmed, day, alt, creds: explicitCreds }) => {
-  return runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, alt, creds: pcoCreds(explicitCreds) });
+  let creds;
+  try { creds = pcoCreds(explicitCreds); } catch (err) { return { ok: false, error: err.message }; }
+  return runPcoSync({ serviceTypeId, mapping, includeUnconfirmed, day, alt, creds });
 });
 
 // Opens the Green Room display in the system's default browser (not an
@@ -1594,6 +1675,8 @@ ipcMain.handle('restore-backup', async (event, request) => {
       require('./src/server/companion-satellite').applyConfig(config.getAll());
       require('./src/server/smaart').applyConfig(config.getAll());
       require('./src/server/shure-wireless').applyConfig(config.getAll());
+      require('./src/server/integrations').applyConfig(config.getAll());
+      ensureIntegrationPlugins();
       require('./src/server/plugins').setAllowed(config.get('pluginsEnabled') === true);
       rebuildTrayMenu();
     } else if (result.scenesChanged && serverRunning && server.applyConfigLive) server.applyConfigLive(config.getAll());

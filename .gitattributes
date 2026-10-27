@@ -1,0 +1,4 @@
+# Each plugin's files are checked against their SHA-256 in plugins/catalog.json
+# (installing, and moving people over from the copy that comes with JPMixer),
+# so git must never change their line endings, as GitHub's Windows builder would.
+plugins/** -text

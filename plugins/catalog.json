@@ -2,6 +2,40 @@
   "version": 1,
   "plugins": [
     {
+      "id": "companion",
+      "name": "Companion buttons",
+      "version": "1.0.0",
+      "description": "Bitfocus Companion buttons on the Home pages, live: each Home page is a button surface in Companion, and taps press the button, the same as a Stream Deck.",
+      "author": "JPMixer",
+      "permissions": [
+        "integration"
+      ],
+      "minJPMixer": "2.0.14",
+      "path": "companion",
+      "files": [
+        {
+          "path": "companion.js",
+          "size": 15535,
+          "sha256": "fd722332fe005583288c18001768127a0f71220b9d5cb0ff55c58ad0bc5f65cc"
+        },
+        {
+          "path": "index.js",
+          "size": 2128,
+          "sha256": "0c9c2201f6c92b023ffa7c7d336464a3bd7a2a6a710406cf19d71f734a057f70"
+        },
+        {
+          "path": "plugin.json",
+          "size": 528,
+          "sha256": "bea2365ba5cf7c4be5cc2864edad0411ed8c7944c8546604bf73b7ce5bdb284d"
+        },
+        {
+          "path": "README.md",
+          "size": 659,
+          "sha256": "78a8e5ccbe2f17631b7957e07cc00c37476d1da1c5a0a6688189cbbdb2a0ea62"
+        }
+      ]
+    },
+    {
       "id": "console-check",
       "name": "Console check",
       "version": "1.0.0",
@@ -88,6 +122,154 @@
           "path": "README.md",
           "size": 3484,
           "sha256": "7d0f3bff783014b5ff03a23b3738a54b43c719cafc0bbc13a39501b45d8a7ec8"
+        }
+      ]
+    },
+    {
+      "id": "shure",
+      "name": "Shure wireless",
+      "version": "1.0.0",
+      "description": "Each Shure wireless mic's name, battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room. Only reads: it never changes a receiver or turns on its meters.",
+      "author": "JPMixer",
+      "permissions": [
+        "integration"
+      ],
+      "minJPMixer": "2.0.14",
+      "path": "shure",
+      "files": [
+        {
+          "path": "index.js",
+          "size": 2815,
+          "sha256": "703b38df3d86150cc7ccccbd23b2d3964fd98f6ba9139d0723f8040bdad39471"
+        },
+        {
+          "path": "plugin.json",
+          "size": 563,
+          "sha256": "c601b5acd76f7c87479e690f42eb8af5b9329e8d9a6f55774c3159f6ee851549"
+        },
+        {
+          "path": "README.md",
+          "size": 685,
+          "sha256": "6355e6c6a39e64484bc2a9dc22bd63b52a2defcd5aa9b0ef333259a4f01976e9"
+        },
+        {
+          "path": "shure.js",
+          "size": 22405,
+          "sha256": "20d4a41f8920fc226772ba396e95aac96f5f2b6c5098ac22e5aafc707b984e84"
+        }
+      ]
+    },
+    {
+      "id": "smaart",
+      "name": "Smaart SPL",
+      "version": "1.0.0",
+      "description": "Live sound levels from Rational Acoustics Smaart on FOH Home and the Green Room. Only reads from Smaart: it never starts a measurement or changes a setting.",
+      "author": "JPMixer",
+      "permissions": [
+        "integration"
+      ],
+      "minJPMixer": "2.0.14",
+      "path": "smaart",
+      "files": [
+        {
+          "path": "index.js",
+          "size": 2027,
+          "sha256": "ab481c05e454812ab7a6880b538bb5c8af79b481747aa17baf318138cb85ddd0"
+        },
+        {
+          "path": "plugin.json",
+          "size": 509,
+          "sha256": "26521a8c5ccc1e5c7415f4fce243c2276f4e0ba8158ef15c3ef597cfd2119950"
+        },
+        {
+          "path": "README.md",
+          "size": 731,
+          "sha256": "227968d3c098e05c1fd4418820f0cd26494adac5fce7cbbc3c0d3adf72f1ab4f"
+        },
+        {
+          "path": "smaart.js",
+          "size": 16335,
+          "sha256": "b126fc905c31a0f8b5594c80e98c7e21addf16497157e1b4eb6c18b3822ecefb"
+        },
+        {
+          "path": "vendor/ws/index.js",
+          "size": 796,
+          "sha256": "924564d5be26d59b9682c4263f68320e48dde7240bd2d1ad17ec305537429dd2"
+        },
+        {
+          "path": "vendor/ws/lib/buffer-util.js",
+          "size": 3056,
+          "sha256": "8b0a45739132f82e25ea13163780abf547ccfe989267f3eb7abb475beec92da3"
+        },
+        {
+          "path": "vendor/ws/lib/constants.js",
+          "size": 503,
+          "sha256": "391e823142b8b370e55a2fd32b022deaf03b8415c56000009674ebc86a0b4f86"
+        },
+        {
+          "path": "vendor/ws/lib/event-target.js",
+          "size": 7321,
+          "sha256": "c45d3c6e12d170c860c0c3f1a050aa0f864d9806632b609a1e607d675aba128c"
+        },
+        {
+          "path": "vendor/ws/lib/extension.js",
+          "size": 6183,
+          "sha256": "852564f0f6b460287043803eae732666fb5610f676874354fc89f06aa4e986ed"
+        },
+        {
+          "path": "vendor/ws/lib/limiter.js",
+          "size": 1034,
+          "sha256": "e0469d4b83f6ba764b15f80e1766b75c136fbff68f048f4c050f0b1c7f065f69"
+        },
+        {
+          "path": "vendor/ws/lib/permessage-deflate.js",
+          "size": 14532,
+          "sha256": "02c31796f0132a335d4efe7b7adcebadbb69543a1ce65ae04aaccc3530e27ab9"
+        },
+        {
+          "path": "vendor/ws/lib/receiver.js",
+          "size": 17802,
+          "sha256": "4879edbf8e48d04d09783cf9c04b5e25f5a448247bb01279438ded2899747220"
+        },
+        {
+          "path": "vendor/ws/lib/sender.js",
+          "size": 16886,
+          "sha256": "d0791d30c3defd44dcabbddb879a901c757993fea2c00a7ffea01d53b23b4b77"
+        },
+        {
+          "path": "vendor/ws/lib/stream.js",
+          "size": 4204,
+          "sha256": "a56fcb6e2b152097ee820b6f5410b1f71e59819b45d08d9f8bda588fe39070ec"
+        },
+        {
+          "path": "vendor/ws/lib/subprotocol.js",
+          "size": 1498,
+          "sha256": "be3f6323d6f549568577dcba9004c1479d95c65a7abb0fe0c582875b9fac0b7c"
+        },
+        {
+          "path": "vendor/ws/lib/validation.js",
+          "size": 3903,
+          "sha256": "41ce8e83d0d434132e1704895fedb91f6703a701b42d91c80954ab29b2845593"
+        },
+        {
+          "path": "vendor/ws/lib/websocket-server.js",
+          "size": 17026,
+          "sha256": "29029a4d346800c792300df153df2007e9805d9d7b67b0883f9730b64f25b1c8"
+        },
+        {
+          "path": "vendor/ws/lib/websocket.js",
+          "size": 37371,
+          "sha256": "48fdb0f54c1f8ce580d3cfa2908fe7d96fe18f06f9d82306950441cb09b5db26"
+        },
+        {
+          "path": "vendor/ws/LICENSE",
+          "size": 1183,
+          "sha256": "2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef"
+        },
+        {
+          "path": "vendor/ws/package.json",
+          "size": 1753,
+          "sha256": "584ce6e7516587ba249dc910b0c04e2753f6b3f451fc3a5bc324f7735bdacc71"
         }
       ]
     }

@@ -74,4 +74,16 @@ t('a removed console type (X32, Yamaha, Custom OSC) is read as DiGiCo, which is 
   assert.equal(config.get('consoleType'), 'wing', 'supported types are kept');
 });
 
+t('Planning Center turned off: JPMixer sees no credentials, but they stay saved for turning it back on', () => {
+  assert.equal(config.save({ ...config.getAll(), pcoEnabled: true, pcoAppId: 'app-id', pcoSecret: 'secret' }), true);
+  assert.equal(config.get('pcoAppId'), 'app-id');
+  assert.equal(config.save({ ...config.getAll(), pcoEnabled: false }), true);
+  assert.equal(config.get('pcoAppId'), '', 'off: nothing to contact Planning Center with');
+  assert.equal(config.get('pcoSecret'), '');
+  assert.equal(config.getAll().pcoAppId, 'app-id', 'Settings still has them');
+  assert.equal(config.save({ ...config.getAll(), pcoEnabled: true }), true);
+  assert.equal(config.get('pcoSecret'), 'secret', 'back on: as they were');
+  assert.equal(config.save({ ...config.getAll(), pcoAppId: '', pcoSecret: '' }), true);
+});
+
 console.log(`\n${n} tests passed`);

@@ -300,8 +300,9 @@ function renderPcoPositionsFallback() {
 // whatever was last saved — otherwise Refresh/Sync would silently 401 using
 // stale (or blank) credentials until the user thought to click Save & Apply
 // first, which isn't an obvious step before testing a connection.
+// With Use Planning Center as it is here (unsaved too): off, JPMixer doesn't contact it
 function pcoCredsFromFields() {
-  return { appId: $('pcoAppId').value.trim(), secret: $('pcoSecret').value.trim() };
+  return { appId: $('pcoAppId').value.trim(), secret: $('pcoSecret').value.trim(), enabled: $('pcoEnabled').checked };
 }
 
 function renderPcoPositionsEditable(positions) {
@@ -481,7 +482,7 @@ function updatePcoAltFields() {
   const on = $('pcoAltEnabled').checked;
   $('pcoAltFields').hidden = !on;
   // Opening it the first time loads its lists
-  if (on && !pcoAltTypesLoaded && pcoCredsFromFields().appId && pcoCredsFromFields().secret) refreshPcoAltServiceTypes();
+  if (on && !pcoAltTypesLoaded && $('pcoEnabled').checked && pcoCredsFromFields().appId && pcoCredsFromFields().secret) refreshPcoAltServiceTypes();
 }
 $('pcoAltEnabled').addEventListener('change', updatePcoAltFields);
 
@@ -653,6 +654,15 @@ function renderWireless() {
   const live = new Map((wirelessLive.receivers || []).map(r => [r.ip, r]));
   const found = new Map((wirelessLive.discovered || []).filter(d => !wirelessForget.has(d.id)).map(d => [d.ip, d]));
   const ips = [...new Set([...wirelessReceivers.map(r => r.ip), ...found.keys()])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  // Its plugin installing or starting (a message only while it isn't running)
+  if (on && wirelessLive.enabled && wirelessLive.message && !ips.length) {
+    list.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'sub';
+    p.textContent = wirelessLive.message;
+    list.append(p);
+    return;
+  }
   if (!ips.length) {
     list.innerHTML = `<p class="sub">${on ? (wirelessLive.enabled ? 'No receivers found yet. They appear while Wireless Workbench is open on this network, or add one by address below.' : 'Save &amp; Apply to start looking for receivers.') : 'Turn on Watch Shure wireless receivers to look for receivers.'}</p>`;
     return;
@@ -741,7 +751,7 @@ async function refreshWirelessStatus() {
   renderWireless();
 }
 setInterval(refreshWirelessStatus, 2000);
-document.querySelector('.tab[data-tab="wireless"]').addEventListener('click', refreshWirelessStatus);
+document.querySelector('.tab[data-tab="wireless"]').addEventListener('click', () => setTimeout(refreshWirelessStatus)); // once the tab is showing
 
 // ── Companion buttons (Pages tab) ──────────────────────────────────────────
 function updateCompanionFields() {
@@ -750,6 +760,13 @@ function updateCompanionFields() {
   $('companionFields').classList.toggle('is-off', !on);
 }
 $('companionEnabled').addEventListener('change', updateCompanionFields);
+// Planning Center off: the rest of its tab greyed out (kept, not cleared)
+function updatePcoEnabled() {
+  const on = $('pcoEnabled').checked;
+  for (const el of document.querySelectorAll('#tab-pco .pco-card, #tab-pco .pco-section-nav')) el.classList.toggle('is-off', !on);
+  showPcoPluginStatus(); // its row in the Plugins list
+}
+$('pcoEnabled').addEventListener('change', updatePcoEnabled);
 // The live connection, while the Pages tab is showing
 async function refreshCompanionStatus() {
   if (!$('tab-companion').classList.contains('active')) return;
@@ -762,7 +779,7 @@ async function refreshCompanionStatus() {
   $('companionStatusText').textContent = pending ? 'Save & Apply to ' + ($('companionEnabled').checked ? 'connect.' : 'turn them off.') : s.message;
 }
 setInterval(refreshCompanionStatus, 3000);
-document.querySelector('.tab[data-tab="companion"]').addEventListener('click', refreshCompanionStatus);
+document.querySelector('.tab[data-tab="companion"]').addEventListener('click', () => setTimeout(refreshCompanionStatus)); // once the tab is showing
 $('companionEnabled').addEventListener('change', refreshCompanionStatus);
 
 // ── Smaart SPL (Pages tab) ─────────────────────────────────────────────────
@@ -842,16 +859,16 @@ async function refreshSmaartStatus() {
   const list = Array.isArray(s.inputList) ? s.inputList : [];
   if (list.map((i) => i.key).join('|') !== smaartInputs.map((i) => i.key).join('|')) { smaartInputs = list; fillGreenRoomInput($('greenRoomSplInput').value); }
   $('greenRoomSplHint').textContent = 'A live sound level beside the clock, in Smaart’s colors, marked when it’s over Smaart’s alarm level. '
-    + (s.enabled ? (s.state === 'connected' ? 'Smaart is connected.' : 'Smaart SPL is on but not connected yet; see Integrations → Smaart SPL.') : 'Needs Smaart SPL set up under Integrations.');
+    + (s.enabled ? (s.state === 'connected' ? 'Smaart is connected.' : 'Smaart SPL is on but not connected yet; see Plugins → Smaart SPL.') : 'Needs the Smaart SPL plugin, set up under Plugins.');
 }
 setInterval(refreshSmaartStatus, 3000);
-document.querySelector('.tab[data-tab="views"]').addEventListener('click', refreshSmaartStatus);
-document.querySelector('.tab[data-tab="smaart"]').addEventListener('click', refreshSmaartStatus);
+document.querySelector('.tab[data-tab="views"]').addEventListener('click', () => setTimeout(refreshSmaartStatus));
+document.querySelector('.tab[data-tab="smaart"]').addEventListener('click', () => setTimeout(refreshSmaartStatus)); // once the tab is showing
 $('smaartEnabled').addEventListener('change', refreshSmaartStatus);
 
-// ── Plugins (Integrations) ─────────────────────────────────────────────────
+// ── Plugins ────────────────────────────────────────────────────────────────
 // Each plugin in JPMixer's plugins folder (src/server/plugins.js) gets its
-// own tab under Integrations, like Smaart and Shure: on/off, what it can do,
+// own tab under Plugins, like Smaart and Shure: on/off, what it can do,
 // the settings its plugin.json asks for (every plugin has at least one), its
 // status and log. The Plugins tab lists them, and adds, updates and finds
 // them. Turning one on asks first, since it's someone else's code; like the
@@ -859,12 +876,12 @@ $('smaartEnabled').addEventListener('change', refreshSmaartStatus);
 // Remove and Reload act straight away.
 let pluginList = [];
 let pluginsAllowed = false;
-// Plugins is always at the bottom of Integrations: Allow plugins, and adding
+// Plugins has a section of its own: Allow plugins, and adding
 // and removing them. Each plugin's own tab, listed under it, shows once
 // plugins are allowed and saved.
 function showPluginsTab(on) {
   pluginsAllowed = !!on;
-  const tabs = [...document.querySelectorAll('.tab[data-plugin-tab]')];
+  const tabs = [...document.querySelectorAll('.tab[data-plugin-tab]')].filter((tab) => !tab.dataset.official);
   for (const tab of tabs) tab.hidden = !on;
   if (!on && tabs.some((tab) => tab.classList.contains('active'))) document.querySelector('.tab[data-tab="plugins"]').click();
   showPluginsAllowed();
@@ -875,8 +892,13 @@ function showPluginsAllowed() {
   const note = want === pluginsAllowed ? (pluginsAllowed ? '' : 'Turn this on, then Save & Apply, to add plugins.')
     : `Save & Apply to ${want ? 'allow plugins' : 'turn every plugin off'}.`;
   $('pluginsAllowNote').textContent = note;
-  for (const id of ['pluginsFind', 'pluginsIntro', 'pluginList']) $(id).classList.toggle('is-off', !pluginsAllowed);
+  // JPMixer's own plugins work either way: Find plugins stays usable for
+  // them, and their rows aren't greyed out; adding anyone else's needs it
+  $('pluginsIntro').classList.toggle('is-off', !pluginsAllowed);
+  for (const row of document.querySelectorAll('#pluginList .plugin-row')) row.classList.toggle('is-off', !pluginsAllowed && row.dataset.official !== '1');
+  if (pluginsAllowed !== lastCatalogAllowed && catalogLoaded) loadCatalog(true); // its Install buttons follow
 }
+let lastCatalogAllowed = null;
 $('pluginsEnabled').addEventListener('change', showPluginsAllowed);
 const pluginTabId = (id) => `plugin-${id}`;
 function openPluginTab(id) { document.querySelector(`.tab[data-plugin-tab="${CSS.escape(id)}"]`)?.click(); }
@@ -948,7 +970,14 @@ function statusBox() {
   return status;
 }
 // Where it came from: the approved list, or imported (not reviewed)
-const PLUGIN_SOURCE = { catalog: ['Approved', 'is-approved', 'Installed from JPMixer’s list of approved plugins'], file: ['Not reviewed', 'is-unreviewed', 'Imported from a file or folder: not on JPMixer’s list of approved plugins'] };
+const PLUGIN_SOURCE = { catalog: ['Approved', 'is-approved', 'Installed from JPMixer’s list of approved plugins'], file: ['Not reviewed', 'is-unreviewed', 'Imported from a file or folder: not on JPMixer’s list of approved plugins'],
+  official: ['JPMixer Original', 'is-original', 'One of JPMixer’s own plugins: it runs without Allow plugins'] };
+// Shure, Smaart and Companion are set up in their own tabs, as before (their
+// settings are JPMixer's): each tab is under Plugins once its plugin is
+// installed, and its row here opens it
+const INTEGRATION_TABS = { shure: 'wireless', smaart: 'smaart', companion: 'companion' };
+// Removing one also turns it off (main.js): its switch here follows
+const INTEGRATION_SWITCHES = { smaartEnabled: 1, wirelessEnabled: 1, companionEnabled: 1 };
 function pluginTitle(p) {
   const h2 = document.createElement('h2');
   h2.className = 'plugin-title';
@@ -959,7 +988,7 @@ function pluginTitle(p) {
     v.textContent = p.manifest.version;
     h2.append(v);
   }
-  const [label, cls, title] = PLUGIN_SOURCE[p.source] || PLUGIN_SOURCE.file;
+  const [label, cls, title] = p.official ? PLUGIN_SOURCE.official : PLUGIN_SOURCE[p.source] || PLUGIN_SOURCE.file;
   if (p.manifest) {
     const badge = document.createElement('span');
     badge.className = 'plugin-badge ' + cls;
@@ -970,9 +999,54 @@ function pluginTitle(p) {
   return h2;
 }
 // The Plugins tab: one row per plugin, with the way to its own tab
+// Planning Center is built into JPMixer, not installed: its row has no
+// Remove, and its switch is in its own tab
+function pcoPluginRow() {
+  const row = document.createElement('section');
+  row.className = 'card companion-card plugin-row';
+  const head = document.createElement('div');
+  head.className = 'card-row space-between';
+  const heading = document.createElement('div');
+  heading.className = 'settings-heading';
+  const h2 = document.createElement('h2');
+  h2.className = 'plugin-title';
+  h2.textContent = 'Planning Center';
+  const [label, cls] = PLUGIN_SOURCE.official;
+  const badge = document.createElement('span');
+  badge.className = 'plugin-badge ' + cls;
+  badge.textContent = label;
+  badge.title = 'Built into JPMixer: turn it on or off in its tab';
+  h2.append(badge);
+  const d = document.createElement('p');
+  d.className = 'sub';
+  d.textContent = 'Built into JPMixer. The team, positions, schedule and order of service from Planning Center Services.';
+  heading.append(h2, d);
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'btn btn-sm';
+  open.textContent = 'Settings';
+  open.addEventListener('click', () => document.querySelector('.tab[data-tab="pco"]').click());
+  const actions = document.createElement('div');
+  actions.className = 'plugin-row-actions';
+  actions.append(open);
+  head.append(heading, actions);
+  const status = statusBox();
+  status.id = 'pcoPluginStatus';
+  row.append(head, status);
+  return row;
+}
+function showPcoPluginStatus() {
+  const box = $('pcoPluginStatus');
+  if (!box) return;
+  const on = $('pcoEnabled').checked;
+  box.querySelector('.dot').className = on ? 'dot on' : 'dot';
+  box.querySelector('span:last-child').textContent = on ? 'On' : 'Off';
+}
 function renderPluginList() {
   const list = $('pluginList');
   list.textContent = '';
+  list.append(pcoPluginRow());
+  showPcoPluginStatus();
   if (!pluginList.length) {
     pluginMessage('No plugins yet. Add one, or put its folder in the plugins folder and select Reload plugins.');
     return;
@@ -981,6 +1055,8 @@ function renderPluginList() {
     const row = document.createElement('section');
     row.className = 'card companion-card plugin-row';
     row.dataset.pluginRow = p.folder; // by folder: a broken copy can share a working plugin's id
+    row.dataset.official = p.official ? '1' : '';
+    row.classList.toggle('is-off', !pluginsAllowed && !p.official);
     const head = document.createElement('div');
     head.className = 'card-row space-between';
     const heading = document.createElement('div');
@@ -1003,9 +1079,12 @@ function renderPluginList() {
     open.type = 'button';
     open.className = 'btn btn-sm';
     open.textContent = 'Settings';
-    open.addEventListener('click', () => openPluginTab(p.id));
+    const ownTab = p.integration && INTEGRATION_TABS[p.id];
+    open.addEventListener('click', () => (ownTab ? document.querySelector(`.tab[data-tab="${ownTab}"]`)?.click() : openPluginTab(p.id)));
     const actions = document.createElement('div');
     actions.className = 'plugin-row-actions';
+    const update = pluginUpdateButton(p);
+    if (update) actions.append(update);
     actions.append(open, pluginRemoveButton(p));
     head.append(actions);
     row.append(head, statusBox());
@@ -1018,7 +1097,7 @@ function showPluginRowStatus(row, p) {
   row.querySelector('.companion-status .dot').className = dot;
   row.querySelector('.companion-status span:last-child').textContent = text;
 }
-// Each plugin's own tab under Integrations, just above Plugins
+// Each plugin's own tab, under Plugins
 function renderPluginTabs() {
   const activeTab = document.querySelector('.tab.active');
   const wasPlugin = activeTab && activeTab.dataset.pluginTab;
@@ -1026,10 +1105,22 @@ function renderPluginTabs() {
   // through the redraw: installing or removing another plugin redraws them all
   const unsaved = collectPluginChanges({ unsavedOnly: true });
   for (const el of document.querySelectorAll('.tab[data-plugin-tab], .tab-panel[data-plugin-panel]')) el.remove();
-  let tabAfter = document.querySelector('.tab[data-tab="plugins"]');
+  // JPMixer's own (their tabs are in the page, after Planning Center's): shown while installed
+  let tabAfter = document.querySelector('.tab[data-tab="pco"]');
+  let integrationGone = false;
+  for (const tab of document.querySelectorAll('.tab[data-integration-tab]')) {
+    const installed = pluginList.find((p) => p.manifest && p.id === tab.dataset.integrationTab);
+    tab.hidden = !installed;
+    if (tab.hidden && tab.classList.contains('active')) integrationGone = true;
+    if (!tab.hidden) tabAfter = tab;
+    // At the bottom of its tab: the plugin it is, and Remove
+    const panel = $('tab-' + tab.dataset.tab);
+    panel.querySelector('.integration-plugin-card')?.remove();
+    if (installed) panel.append(integrationPluginCard(installed));
+  }
   let after = $('tab-plugins');
   for (const p of pluginList) {
-    if (!p.manifest) continue;
+    if (!p.manifest || p.integration) continue; // set up in its own tab (INTEGRATION_TABS)
     const m = p.manifest;
     const tab = document.createElement('button');
     tab.className = 'tab plugin-subtab';
@@ -1037,7 +1128,8 @@ function renderPluginTabs() {
     tab.dataset.pluginTab = p.id;
     tab.dataset.title = m.name;
     tab.dataset.description = m.description || 'A plugin’s settings.';
-    tab.hidden = !pluginsAllowed;
+    tab.dataset.official = p.official ? '1' : '';
+    tab.hidden = !pluginsAllowed && !p.official; // official ones run without Allow plugins
     const symbol = document.createElement('span');
     symbol.className = 'nav-symbol';
     symbol.setAttribute('aria-hidden', 'true');
@@ -1063,10 +1155,29 @@ function renderPluginTabs() {
     });
   }
   // Back where it was, or to the list if that plugin has gone
-  if (wasPlugin) {
+  if (integrationGone) document.querySelector('.tab[data-tab="plugins"]').click();
+  else if (wasPlugin) {
     if (document.querySelector(`.tab[data-plugin-tab="${CSS.escape(wasPlugin)}"]`)) openPluginTab(wasPlugin);
     else document.querySelector('.tab[data-tab="plugins"]').click();
   }
+}
+function integrationPluginCard(p) {
+  const card = document.createElement('section');
+  card.className = 'card companion-card integration-plugin-card';
+  const head = document.createElement('div');
+  head.className = 'card-row space-between';
+  const heading = document.createElement('div');
+  heading.className = 'settings-heading';
+  const d = document.createElement('p');
+  d.className = 'sub';
+  d.textContent = 'This is a plugin. Removing it turns it off; its settings here are kept, for if you install it again from Find plugins.';
+  heading.append(pluginTitle(p), d);
+  const status = document.createElement('p');
+  status.className = 'sub plugin-message';
+  status.setAttribute('role', 'status');
+  head.append(heading, pluginRemoveButton(p, status));
+  card.append(head, status);
+  return card;
 }
 function renderPlugins() {
   renderPluginList();
@@ -1181,7 +1292,9 @@ function pluginCard(p, unsaved) {
   showPluginStatus(card, p);
   return card;
 }
-function pluginRemoveButton(p) {
+// Remove…, wherever a plugin is shown (its row, its tab, Find plugins).
+// `statusEl`: where to say what happened (the Your plugins message if not given)
+function pluginRemoveButton(p, statusEl = null) {
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'btn btn-sm';
@@ -1189,8 +1302,14 @@ function pluginRemoveButton(p) {
   remove.addEventListener('click', async () => {
     const result = await window.jpm.pluginsRemove(p.folder).catch((e) => ({ ok: false, error: e.message }));
     if (result.canceled) return;
+    if (result.turnedOff && Object.hasOwn(INTEGRATION_SWITCHES, result.turnedOff) && $(result.turnedOff).checked) {
+      $(result.turnedOff).checked = false;
+      $(result.turnedOff).dispatchEvent(new Event('change'));
+    }
     await loadPlugins();
-    pluginMessage(result.ok ? `Removed ${p.manifest ? p.manifest.name : p.id}.` : result.error, !result.ok);
+    loadCatalog(false); // Find plugins offers it again
+    const text = result.ok ? `Removed ${p.manifest ? p.manifest.name : p.id}.` : result.error;
+    if (statusEl) { statusEl.textContent = text; statusEl.classList.toggle('is-error', !result.ok); } else pluginMessage(text, !result.ok);
   });
   return remove;
 }
@@ -1227,6 +1346,40 @@ async function loadPlugins() {
   pluginList = result.plugins || [];
   pluginMessage('');
   renderPlugins();
+  loadPluginUpdates();
+}
+// Installed plugins with an update on the approved list (main.js looks now
+// and then): a dot next to Plugins in the sidebar, and Update on each one's row
+let pluginUpdates = new Map(); // id -> { version, installedVersion }
+async function loadPluginUpdates() {
+  let list;
+  try { list = await window.jpm.pluginsUpdates(); } catch (_) { return; }
+  const next = new Map((list || []).map((u) => [u.id, u]));
+  const same = next.size === pluginUpdates.size && [...next].every(([id, u]) => pluginUpdates.get(id)?.version === u.version);
+  pluginUpdates = next;
+  const tab = document.querySelector('.tab[data-tab="plugins"]');
+  tab.classList.toggle('has-update', next.size > 0);
+  tab.title = next.size ? `${next.size === 1 ? 'A plugin has an update' : `${next.size} plugins have updates`}: ${[...next.values()].map((u) => u.name).join(', ')}` : '';
+  if (!same) renderPluginList();
+}
+window.jpm.onPluginsUpdates(() => loadPluginUpdates());
+function pluginUpdateButton(p) {
+  const u = pluginUpdates.get(p.id);
+  if (!u) return null;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-sm plugin-update-btn';
+  button.textContent = `Update to ${u.version}`;
+  button.title = `You have ${u.installedVersion}`;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    button.textContent = 'Downloading…';
+    const result = await window.jpm.pluginsInstallCatalog(p.id).catch((e) => ({ ok: false, error: e.message }));
+    button.disabled = false;
+    button.textContent = `Update to ${u.version}`;
+    afterInstall(result);
+  });
+  return button;
 }
 // While the Plugins tab or a plugin's tab is showing: each plugin's state,
 // without redrawing what's being edited
@@ -1320,12 +1473,13 @@ window.jpm.onPluginsResult?.((result) => afterInstall(result));
 window.jpm.onPluginsShow(() => document.querySelector('.tab[data-tab="plugins"]').click());
 
 // ── Find plugins: the approved list on GitHub (plugin-store.js) ──
-// Asked for only when the Plugins page is opened (once per window) or
-// Refresh is pressed, never in the background.
+// Shown when the Plugins page is opened (once per window) or Refresh is
+// pressed. (main.js also looks now and then, for the update dot.)
 let catalogLoaded = false;
 async function loadCatalog(force) {
-  if (!pluginsAllowed || (!force && !catalogLoaded)) return;
+  if (!force && !catalogLoaded) return;
   catalogLoaded = true;
+  lastCatalogAllowed = pluginsAllowed;
   const status = $('pluginCatalogStatus');
   if (force) status.textContent = 'Getting the list…';
   status.classList.remove('is-error');
@@ -1333,7 +1487,7 @@ async function loadCatalog(force) {
   try { result = await window.jpm.pluginsCatalog(); } catch (e) { result = { ok: false, error: e.message }; }
   const box = $('pluginCatalog');
   if (!result.ok) { box.textContent = ''; status.textContent = result.error; status.classList.add('is-error'); return; }
-  status.textContent = result.plugins.length ? '' : 'No approved plugins yet.';
+  status.textContent = result.notice || (result.plugins.length ? '' : 'No approved plugins yet.');
   box.replaceChildren(...result.plugins.map((p) => {
     const item = document.createElement('div');
     item.className = 'plugin-catalog-item';
@@ -1341,9 +1495,11 @@ async function loadCatalog(force) {
     const h3 = document.createElement('h3');
     h3.textContent = p.name;
     const v = document.createElement('span'); v.className = 'plugin-version'; v.textContent = p.version; h3.append(v);
+    if (p.official) { const [label, cls, title] = PLUGIN_SOURCE.official; const b = document.createElement('span'); b.className = 'plugin-badge ' + cls; b.textContent = label; b.title = title; h3.append(b); }
     info.append(h3);
     if (p.description) { const d = document.createElement('p'); d.className = 'sub'; d.textContent = p.description; info.append(d); }
     if (p.author) { const a = document.createElement('p'); a.className = 'sub'; a.textContent = `By ${p.author}`; info.append(a); }
+    if (p.bundled) { const a = document.createElement('p'); a.className = 'sub'; a.textContent = 'Comes with JPMixer, so it installs without the internet.'; info.append(a); }
     const perms = document.createElement('p');
     perms.className = 'plugin-catalog-perms';
     perms.textContent = p.permissions.length ? `It can: ${p.permissions.map((x) => x.text.charAt(0).toLowerCase() + x.text.slice(1)).join('; ')}.` : 'It doesn’t ask for anything from JPMixer.';
@@ -1354,13 +1510,18 @@ async function loadCatalog(force) {
     button.type = 'button';
     button.className = 'btn btn-sm';
     if (p.tooNew) { button.textContent = 'Install'; button.disabled = true; const n = document.createElement('span'); n.className = 'sub'; n.textContent = `Needs JPMixer ${p.minJPMixer}`; actions.append(button, n); }
-    else if (p.installedVersion && !p.update) { const done = document.createElement('span'); done.className = 'plugin-catalog-installed'; done.textContent = `Installed (${p.installedVersion})`; actions.append(done); }
+    else if (!pluginsAllowed && !p.official && !(p.installedVersion && !p.update)) { button.textContent = 'Install'; button.disabled = true; const n = document.createElement('span'); n.className = 'sub'; n.textContent = 'Allow plugins first'; actions.append(button, n); }
+    else if (p.installedVersion && !p.update) {
+      const done = document.createElement('span'); done.className = 'plugin-catalog-installed'; done.textContent = `Installed (${p.installedVersion})`; actions.append(done);
+      const have = pluginList.find((x) => x.manifest && x.id === p.id);
+      if (have) actions.append(pluginRemoveButton(have, $('pluginCatalogStatus')));
+    }
     else {
       button.textContent = p.update ? `Update to ${p.version}` : 'Install';
       button.addEventListener('click', async () => {
         button.disabled = true;
         const prev = button.textContent;
-        button.textContent = 'Downloading…';
+        button.textContent = p.bundled ? 'Installing…' : 'Downloading…';
         const result = await window.jpm.pluginsInstallCatalog(p.id).catch((e) => ({ ok: false, error: e.message }));
         button.disabled = false;
         button.textContent = prev;
@@ -1446,7 +1607,7 @@ function renderPerformance(s) {
     perfTile('Console', x.console.demo ? 'Demo mode' : x.console.connected ? 'Connected' : 'Not connected', PERF_CONSOLE[x.console.type] || x.console.type, x.console.demo ? '' : x.console.connected ? 'ok' : 'warn'),
     perfTile('Console messages', t.seen ? `${t.inPerSec} in · ${t.outPerSec} out` : '—', t.seen ? 'a second, over the last 10 s' : 'Shown for DiGiCo consoles'),
   );
-  // Integrations
+  // Connections: Planning Center, plugins, the Control API
   const rows = [];
   const p = x.pco;
   if (!p.configured) rows.push(perfRow('Planning Center', 'Not set up', ''));
@@ -2341,13 +2502,15 @@ function applyConfig(cfg) {
   $('keepAwake').checked          = cfg.keepAwake !== false;
   $('pluginsEnabled').checked     = cfg.pluginsEnabled === true;
   showPluginsTab(cfg.pluginsEnabled === true);
-  loadPlugins(); // the list under Integrations → Plugins, and each plugin's tab (shown once allowed)
+  loadPlugins(); // the Plugins list, and each plugin's tab (shown once allowed)
   $('sceneRecallEnabled').checked = !!cfg.sceneRecallEnabled;
   $('performerEarScenes').checked = cfg.performerEarScenes !== false;
   loadBranding(cfg);
   $('fohAccessCode').value = cfg.fohAccessCode || '';
   $('companionEnabled').checked = cfg.companionEnabled === true;
   updateCompanionFields();
+  $('pcoEnabled').checked = cfg.pcoEnabled !== false;
+  updatePcoEnabled();
   $('greenRoomQr').checked = cfg.greenRoomQr !== false;
   $('greenRoomMics').checked = cfg.greenRoomMics !== false;
   loadSmaart(cfg);
@@ -2447,6 +2610,7 @@ function collectConfig() {
   // Companion buttons: out-of-range numbers fall back to the defaults
   const companionInt = (v, lo, hi, d) => Number.isInteger(v) && v >= lo && v <= hi ? v : d;
   out.companionEnabled = $('companionEnabled').checked;
+  out.pcoEnabled = $('pcoEnabled').checked;
   out.wirelessEnabled  = $('wirelessEnabled').checked;
   out.wirelessReceivers = wirelessReceivers.map(r => (r.id ? { ip: r.ip, id: r.id } : { ip: r.ip }));
   out.wirelessAux = { ...wirelessAuxMap };

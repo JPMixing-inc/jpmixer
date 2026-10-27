@@ -61,7 +61,7 @@
       line.append(el('span', 'fh-plugin-row-label', row.label), el('span', 'fh-plugin-row-value', row.value));
       body.appendChild(line);
     }
-    const note = stopped ? 'This plugin stopped. See Settings → Integrations → Plugins.' : card.note;
+    const note = stopped ? 'This plugin stopped. See Settings → Plugins.' : card.note;
     if (note) body.appendChild(el('p', 'fh-plugin-note', note));
   }
 

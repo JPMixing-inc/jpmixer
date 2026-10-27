@@ -6,13 +6,18 @@
 // plugin and hands it `jp`, the only way it talks to JPMixer (see
 // docs/PLUGINS.md for what a plugin author sees):
 //   jp.plugin              { id, name, version, folder, dataFolder }
-//   jp.settings            its settings from Settings → Integrations → Plugins
+//   jp.settings            its settings from Settings → Plugins
 //   jp.card.show(card)     the FOH Home card; jp.card.clear()
 //   jp.status(text, level) the line under it in Settings ('ok' | 'warn' | 'error')
 //   jp.console.get()       Promise of the console's names; .onChange(fn)
 //   jp.planningCenter.get() Promise of the plan, live and next; .onChange(fn)
 //   jp.page.handle(name, fn)  answers its page's call `name` ("page" permission)
+//   jp.onSettings(fn)      new settings without a restart (fn gets them; jp.settings follows)
 //   jp.onStop(fn)          runs before the plugin is stopped
+// Official plugins with the "integration" permission (Shure, Smaart,
+// Companion) also feed JPMixer's own pages:
+//   jp.integration.handle(name, fn)  answers JPMixer's own call `name`
+//   jp.integration.share(event, data) sends `event` to JPMixer (in batches, every 25 ms)
 // Anything it logs (console.log) shows in its log in Settings. An error it
 // doesn't catch stops it; plugins.js starts it again.
 
@@ -34,6 +39,9 @@ let plugin = null;          // jp.plugin
 let permissions = [];
 const stopHandlers = [];
 const pageHandlers = new Map(); // call name -> fn(body)
+const integrationHandlers = new Map(); // JPMixer's own call name -> fn(body)
+const settingsHandlers = [];
+let currentSettings = Object.freeze({});
 const listeners = { console: new Set(), planningCenter: new Set() };
 const pending = new Map();  // request id -> { resolve, reject, timer }
 let nextId = 1;
@@ -79,10 +87,27 @@ function source(what, permission, label) {
   };
 }
 
+// Shared events go in batches: everything shared in the last 25 ms in one
+// message, in order (a Companion page change is a burst of key images, and
+// none can be skipped)
+const SHARE_BATCH_MS = 25, SHARE_BATCH_MAX = 500;
+const shareQueue = [];
+let shareTimer = null;
+function pumpShares() {
+  shareTimer = null;
+  while (shareQueue.length) send({ type: 'shares', list: shareQueue.splice(0, SHARE_BATCH_MAX) });
+}
+
 function makeApi(info, settings) {
+  currentSettings = Object.freeze({ ...settings });
   return Object.freeze({
     plugin: Object.freeze({ ...info }),
-    settings: Object.freeze({ ...settings }),
+    get settings() { return currentSettings; },
+    onSettings(fn) {
+      if (typeof fn !== 'function') throw new TypeError('jp.onSettings() needs a function.');
+      settingsHandlers.push(fn);
+      send({ type: 'settings-live' }); // JPMixer sends new settings here instead of restarting it
+    },
     card: Object.freeze({
       show(card) {
         needs('card', 'jp.card.show()');
@@ -95,6 +120,23 @@ function makeApi(info, settings) {
     console: Object.freeze(source('console', 'console', 'jp.console')),
     planningCenter: Object.freeze(source('planningCenter', 'planningCenter', 'jp.planningCenter')),
     onStop(fn) { if (typeof fn === 'function') stopHandlers.push(fn); },
+    integration: Object.freeze({
+      handle(name, fn) {
+        needs('integration', 'jp.integration.handle()');
+        if (!/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(String(name))) throw new TypeError('jp.integration.handle() needs a name of letters, numbers, _ and -.');
+        if (typeof fn !== 'function') throw new TypeError('jp.integration.handle() needs a function.');
+        integrationHandlers.set(String(name), fn);
+      },
+      share(event, data) {
+        needs('integration', 'jp.integration.share()');
+        if (!/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(String(event))) throw new TypeError('jp.integration.share() needs an event name of letters, numbers, _ and -.');
+        // Far too many at once: they're dropped, and JPMixer is told to ask for
+        // everything again (a Companion key can't be skipped)
+        if (shareQueue.length >= 5000) shareQueue.splice(0, shareQueue.length, { event: 'overflow', data: null });
+        shareQueue.push({ event: String(event), data: data === undefined ? null : JSON.parse(JSON.stringify(data)) });
+        if (!shareTimer) shareTimer = setTimeout(pumpShares, SHARE_BATCH_MS);
+      },
+    }),
     page: Object.freeze({
       // What the plugin's page gets back from a call: fn(body) → any JSON
       handle(name, fn) {
@@ -113,7 +155,12 @@ async function stop(code = 0) {
   const deadline = new Promise((r) => setTimeout(r, 1500));
   await Promise.race([Promise.allSettled(stopHandlers.map((fn) => Promise.resolve().then(fn))), deadline]);
   if (cardTimer) { clearTimeout(cardTimer); sendCard(); }
-  process.exit(code);
+  if (shareTimer) { clearTimeout(shareTimer); pumpShares(); }
+  // Out only once JPMixer has had everything (what the Shure plugin saves as it stops)
+  const out = () => process.exit(code);
+  if (!process.connected) { out(); return; }
+  setTimeout(out, 300).unref();
+  try { process.send({ type: 'bye' }, out); } catch (_) { out(); }
 }
 
 function fail(err) {
@@ -125,7 +172,7 @@ function fail(err) {
 
 process.on('uncaughtException', fail);
 process.on('unhandledRejection', fail);
-process.on('disconnect', () => process.exit(0)); // JPMixer quit
+process.on('disconnect', () => stop(0)); // JPMixer quit: its stop handlers still run (closing connections)
 
 // Page calls wait until the plugin has started (its main function has
 // returned, or 2 s have passed: a plugin may keep running in it), so one that
@@ -173,6 +220,25 @@ process.on('message', (msg) => {
     })
       .then((result) => { try { reply({ result: result === undefined ? null : JSON.parse(JSON.stringify(result)) }); } catch (e) { reply({ error: 'The plugin’s answer wasn’t JSON.' }); } })
       .catch((e) => { if (!(e && e.quiet)) console.error((e && e.stack) || e); reply({ error: (e && e.message) || String(e) }); });
+    return;
+  }
+  // JPMixer's own call (an official integration): answered like a page's
+  if (msg.type === 'integration-call') {
+    const reply = (out) => send({ type: 'integration-reply', id: msg.id, ...out });
+    whenStarted().then(() => {
+      const fn = integrationHandlers.get(msg.name);
+      if (!fn) throw Object.assign(new Error(`This plugin doesn’t answer "${String(msg.name)}".`), { quiet: true });
+      return fn(msg.body);
+    })
+      .then((result) => { try { reply({ result: result === undefined ? null : JSON.parse(JSON.stringify(result)) }); } catch (e) { reply({ error: 'The plugin’s answer wasn’t JSON.' }); } })
+      .catch((e) => { if (!(e && e.quiet)) console.error((e && e.stack) || e); reply({ error: (e && e.message) || String(e) }); });
+    return;
+  }
+  if (msg.type === 'settings') {
+    currentSettings = Object.freeze({ ...(msg.settings || {}) });
+    for (const fn of settingsHandlers) {
+      try { Promise.resolve(fn(currentSettings)).catch(fail); } catch (e) { fail(e); }
+    }
     return;
   }
   if (msg.type === 'stop') stop(0);

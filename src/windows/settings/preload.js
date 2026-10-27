@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('jpm', {
   pluginsOpenSubmit:      ()   => ipcRenderer.invoke('plugins-open-submit'),
   pluginsOpenPage:        (id) => ipcRenderer.invoke('plugins-open-page', id),
   onPluginsChanged:       (cb) => ipcRenderer.on('plugins-changed', () => cb()),
+  pluginsUpdates:         ()   => ipcRenderer.invoke('plugins-updates'),
+  onPluginsUpdates:       (cb) => ipcRenderer.on('plugins-updates', () => cb()),
   onPluginsShow:          (cb) => ipcRenderer.on('plugins-show', () => cb()),
   onPluginsResult:        (cb) => ipcRenderer.on('plugins-result', (_, result) => cb(result)),
   // A file dropped on the page: where it is on disk

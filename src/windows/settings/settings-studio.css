@@ -401,6 +401,9 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .plugin-perms-label { font-size: 11px; font-weight: 600; letter-spacing: .4px; color: var(--jp-secondary); margin-bottom: -10px; }
 .plugin-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .plugin-fields.is-off { opacity: .5; }
+.plugin-row.is-off { opacity: .55; }
+#tab-pco .pco-card.is-off, #tab-pco .pco-section-nav.is-off { opacity: .5; }
+#tab-pco .pco-switch-card { margin-bottom: 16px; }
 .plugin-fields .field-row input:not([type="checkbox"]), .plugin-fields .field-row select { width: 100%; min-width: 0; min-height: 40px; }
 .plugin-field-help { font-size: 11px; line-height: 1.5; color: var(--jp-secondary); margin-top: 4px; }
 .plugin-field-check { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -541,9 +544,9 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .perf-table td { padding: 6px 8px; border-bottom: 1px solid var(--jp-line); color: var(--jp-label); }
 .perf-table th:not(:first-child), .perf-table td:not(:first-child) { text-align: right; }
 @media (max-width: 900px) { .perf-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-/* Plugins: each plugin's tab sits under Plugins, at the bottom of Integrations */
-.tab.plugin-subtab { min-height: 36px; padding: 7px 12px 7px 34px; font-size: 12px; }
-.tab.plugin-subtab .nav-symbol { font-size: 10px; }
+/* Plugins: each plugin's tab sits under Plugins */
+.tab.plugin-subtab { min-height: 36px; padding: 7px 10px 7px 28px; gap: 8px; font-size: 12px; }
+.tab.plugin-subtab .nav-symbol { font-size: 10px; width: 14px; flex: none; } /* a long name (Planning Center) doesn't squeeze it */
 #pluginsIntro.is-off, #pluginList.is-off, #pluginsFind.is-off { opacity: .45; pointer-events: none; }
 .plugin-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .plugin-catalog { display: flex; flex-direction: column; }
@@ -558,5 +561,10 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .plugin-badge { font-size: 10px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; border: 1px solid var(--jp-edge); color: var(--jp-secondary); }
 .plugin-badge.is-approved { color: #7fd99a; border-color: #2f5a3d; }
 .plugin-badge.is-unreviewed { color: #e0b25a; border-color: #6b5530; }
+/* An installed plugin has an update (settings.js loadPluginUpdates) */
+.tab[data-tab="plugins"].has-update::after { content: ''; width: 8px; height: 8px; margin-left: auto; border-radius: 50%; background: var(--accent); flex: none; }
+.plugin-update-btn { color: #fff; background: var(--accent); border-color: var(--accent); }
+.plugin-update-btn:hover { background: var(--accent-dim); border-color: var(--accent-dim); }
+.plugin-badge.is-original { color: #fff; background: var(--accent); border-color: var(--accent); }
 .plugin-watch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--jp-edge); border-radius: 9px; font-size: 12px; color: var(--jp-label); }
 #tab-plugins.is-dropping #pluginsIntro { outline: 2px dashed var(--accent); outline-offset: 4px; }

@@ -35,15 +35,17 @@
     <button class="tab" data-tab="performers"><span class="nav-symbol" aria-hidden="true">♫</span>Performers</button>
     <button class="tab" data-tab="views"><span class="nav-symbol" aria-hidden="true">▦</span>Pages</button>
     <button class="tab" data-tab="branding"><span class="nav-symbol" aria-hidden="true">◐</span>Branding</button>
-    <span class="nav-section-label nav-section-second">INTEGRATIONS</span>
-    <button class="tab" data-tab="pco"><span class="nav-symbol" aria-hidden="true">◷</span>Planning Center</button>
-    <button class="tab" data-tab="companion"><span class="nav-symbol" aria-hidden="true">▣</span>Companion</button>
-    <button class="tab" data-tab="smaart"><span class="nav-symbol" aria-hidden="true">◉</span>Smaart SPL</button>
-    <button class="tab" data-tab="wireless"><span class="nav-symbol" aria-hidden="true">⌁</span>Shure wireless</button>
-    <button class="tab" data-tab="api"><span class="nav-symbol" aria-hidden="true">⌘</span>Control API</button>
+    <span class="nav-section-label nav-section-second">PLUGINS</span>
     <button class="tab" data-tab="plugins"><span class="nav-symbol" aria-hidden="true">✚</span>Plugins</button>
+    <!-- Planning Center: built in, with its own on/off. Then JPMixer's own
+         plugins, each shown once it's installed (settings.js renderPluginTabs) -->
+    <button class="tab plugin-subtab" data-tab="pco"><span class="nav-symbol" aria-hidden="true">◷</span>Planning Center</button>
+    <button class="tab plugin-subtab" data-tab="companion" data-integration-tab="companion" hidden><span class="nav-symbol" aria-hidden="true">▣</span>Companion</button>
+    <button class="tab plugin-subtab" data-tab="smaart" data-integration-tab="smaart" hidden><span class="nav-symbol" aria-hidden="true">◉</span>Smaart SPL</button>
+    <button class="tab plugin-subtab" data-tab="wireless" data-integration-tab="shure" hidden><span class="nav-symbol" aria-hidden="true">⌁</span>Shure wireless</button>
     <span class="nav-section-label nav-section-second">SYSTEM</span>
     <button class="tab" data-tab="general"><span class="nav-symbol" aria-hidden="true">◎</span>General</button>
+    <button class="tab" data-tab="api"><span class="nav-symbol" aria-hidden="true">⌘</span>Control API</button>
     <button class="tab" data-tab="performance"><span class="nav-symbol" aria-hidden="true">◔</span>Performance</button>
     <button class="tab" data-tab="backup"><span class="nav-symbol" aria-hidden="true">↻</span>Backup &amp; restore</button>
     <button class="tab" data-tab="osclog"><span class="nav-symbol" aria-hidden="true">≋</span>OSC Log</button>
@@ -507,8 +509,8 @@
           <div class="view-page-setup">
             <p class="view-page-setup-title">On the TV</p>
             <div class="pco-setting-row"><div><label class="toggle-label" for="greenRoomQr">Show a QR code for the aux picker</label><p class="sub">Musicians scan it with their phone’s camera to open the mix picker. Their phone needs to be on the same Wi-Fi as this computer. Shown on a TV or other landscape screen.</p></div><input type="checkbox" id="greenRoomQr" class="toggle" /></div>
-            <div class="pco-setting-row"><div><label class="toggle-label" for="greenRoomMics">Show mic batteries</label><p class="sub">While someone’s wireless mic is on, its battery shows on their card: Good, Replace or Critical. Uses the mix their position is mapped to on the Planning Center tab, and the mix each mic has under Integrations → Shure wireless.</p></div><input type="checkbox" id="greenRoomMics" class="toggle" /></div>
-            <div class="pco-setting-row"><div><label class="toggle-label" for="greenRoomSpl">Show SPL from Smaart</label><p class="sub" id="greenRoomSplHint">A live sound level beside the clock, in Smaart’s colors, marked when it’s over Smaart’s alarm level. Needs Smaart SPL set up under Integrations.</p></div><input type="checkbox" id="greenRoomSpl" class="toggle" /></div>
+            <div class="pco-setting-row"><div><label class="toggle-label" for="greenRoomMics">Show mic batteries</label><p class="sub">While someone’s wireless mic is on, its battery shows on their card: Good, Replace or Critical. Uses the mix their position is mapped to on the Planning Center tab, and the mix each mic has under Plugins → Shure wireless.</p></div><input type="checkbox" id="greenRoomMics" class="toggle" /></div>
+            <div class="pco-setting-row"><div><label class="toggle-label" for="greenRoomSpl">Show SPL from Smaart</label><p class="sub" id="greenRoomSplHint">A live sound level beside the clock, in Smaart’s colors, marked when it’s over Smaart’s alarm level. Needs the Smaart SPL plugin, set up under Plugins.</p></div><input type="checkbox" id="greenRoomSpl" class="toggle" /></div>
             <div class="companion-fields smaart-fields green-room-spl-fields" id="greenRoomSplFields">
               <div class="field-row"><label for="greenRoomSplMetric">Reading</label><select id="greenRoomSplMetric"></select></div>
               <div class="field-row"><label for="greenRoomSplInput">Input</label><select id="greenRoomSplInput"></select></div>
@@ -575,7 +577,7 @@
         <div class="perf-tiles" id="perfConn"></div>
       </section>
       <section class="card companion-card">
-        <div class="settings-heading"><h2>Integrations</h2><p class="sub">Each one that’s set up, and how it’s doing.</p></div>
+        <div class="settings-heading"><h2>Connections</h2><p class="sub">Planning Center, each plugin and the Control API: how each is doing.</p></div>
         <div class="perf-rows" id="perfIntegrations"></div>
       </section>
       <section class="card companion-card">
@@ -593,7 +595,7 @@
     <div class="tab-panel" id="tab-plugins">
       <section class="card companion-card" id="pluginsAllowCard">
         <div class="card-row space-between">
-          <div class="settings-heading"><h2>Allow plugins</h2><p class="sub">Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Each one runs on its own, so if one stops working, JPMixer and the console carry on. A plugin is someone else’s code: only add plugins from someone you trust. While this is off, no plugin runs.</p></div>
+          <div class="settings-heading"><h2>Allow plugins</h2><p class="sub">Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Each one runs on its own, so if one stops working, JPMixer and the console carry on. A plugin is someone else’s code: only add plugins from someone you trust. While this is off, only JPMixer’s own plugins run (marked JPMixer Original).</p></div>
           <input type="checkbox" id="pluginsEnabled" class="toggle" aria-label="Allow plugins" />
         </div>
         <p class="sub plugin-message" id="pluginsAllowNote" role="status"></p>
@@ -660,6 +662,12 @@
 
     <!-- ── Planning Center tab ── -->
     <div class="tab-panel" id="tab-pco">
+      <section class="card pco-switch-card">
+        <div class="card-row space-between">
+          <div class="settings-heading"><h2>Use Planning Center</h2><p class="sub">The team, positions, schedule and order of service from Planning Center Services: who gets which mix, the Home pages, chat and the Green Room. Turned off, JPMixer doesn’t contact Planning Center and nothing that needs it shows. Everything set up here is kept for when it’s turned back on.</p></div>
+          <input type="checkbox" id="pcoEnabled" class="toggle" aria-label="Use Planning Center" />
+        </div>
+      </section>
 
       <nav class="pco-section-nav" aria-label="Planning Center sections">
         <a href="#pco-connection">Connection</a><a href="#pco-schedule">Service &amp; team</a><a href="#pco-mapping">Aux mapping</a><a href="#pco-sync">Sync</a><a href="#pco-home-pages">Home pages</a><a href="#pco-alt">Second service</a>
@@ -924,7 +932,7 @@
   </main>
 
   <footer>
-    <div class="footer-meta"><span class="version">v2.0.13</span><span>Changes apply when you save.</span></div>
+    <div class="footer-meta"><span class="version">v2.0.14</span><span>Changes apply when you save.</span></div>
     <button class="btn btn-primary" id="saveBtn">Save &amp; Apply</button>
   </footer>
 

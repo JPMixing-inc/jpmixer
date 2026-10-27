@@ -1,6 +1,6 @@
 'use strict';
 
-// Mic batteries for a mix (Settings → Integrations → Shure wireless gives
+// Mic batteries for a mix (Settings → Plugins → Shure wireless gives
 // each wireless channel a mix): on the musician's phone mixer, for the mix
 // they're on, and in Monitor Engineer, for every mix. From /wireless-aux
 // (shure-wireless.js) every 15 seconds. Nothing shows while wireless

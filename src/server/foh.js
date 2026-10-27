@@ -135,6 +135,7 @@ function mountFoh(app, status) {
     save: (o) => {
       if (!config.save({ ...config.getAll(), smaartMetric: o.main, smaartLiveMetric: o.live, smaartHiddenInputs: o.hidden })) return false;
       require('./smaart').applyConfig(config.getAll());
+      require('./integrations').applyConfig(config.getAll()); // the plugin: new settings, no reconnect
       return true;
     },
   });
@@ -204,7 +205,9 @@ function mountFoh(app, status) {
         const data = await roleData(id, null).catch(() => null);
         person = data && data.ok && data.engineer ? data.engineer.name : null;
       }
-      return { id, page: role.page, label: role.label, href: `/${id}.html`, configured, person, locked };
+      // Planning Center turned off on purpose: said so, rather than "not set up"
+      const note = config.get('pcoEnabled') === false ? 'Planning Center is off' : undefined;
+      return { id, page: role.page, label: role.label, href: `/${id}.html`, configured, person, locked, ...(note ? { note } : {}) };
     }));
     res.json({ ok: true, pages, plugins: require('./plugins').pages() }); // plugins' own pages, listed after the Home pages
   });
@@ -229,7 +232,9 @@ async function roleData(roleId, status) {
 
   const appId = config.get('pcoAppId');
   const secret = config.get('pcoSecret');
-  const notSetUp = () => reply({ ok: false, error: `The ${role.page} page isn’t set up yet — choose who it welcomes in JPMixer Settings → Pages.`, consoleConnected, connectionCount });
+  const notSetUp = () => reply({ ok: false, error: config.get('pcoEnabled') === false
+    ? `Planning Center is turned off in JPMixer Settings, so the ${role.page} page has no schedule to show.`
+    : `The ${role.page} page isn’t set up yet — choose who it welcomes in JPMixer Settings → Pages.`, consoleConnected, connectionCount });
 
   if (!appId || !secret || !config.get('pcoServiceTypeId') || !pcoServices.rolePicked(roleId)) return notSetUp();
 

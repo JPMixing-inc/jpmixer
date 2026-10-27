@@ -110,23 +110,26 @@ test('the approved list: installed and up-to-date, an update, and a file that do
   for (const [p, d] of Object.entries(files)) served.set(`/plugins/listed/${p}`, d);
   served.set('/plugins/catalog.json', JSON.stringify({ version: 1, plugins: [entry('1.2.0'), { id: 'Bad Id', path: 'x', files: [] }] }));
 
+  const fromList = (l) => l.plugins.filter((p) => !p.bundled); // not JPMixer's own copies (below)
   const list = await store().catalog('2.0.11');
   assert.equal(list.ok, true, list.error);
-  assert.deepEqual(list.plugins.map((p) => p.id), ['listed'], 'entries that aren’t valid are left out');
-  assert.equal(list.plugins[0].installedVersion, null);
+  assert.deepEqual(fromList(list).map((p) => p.id), ['listed'], 'entries that aren’t valid are left out');
+  assert.equal(fromList(list)[0].installedVersion, null);
 
   const opened = await store().openFromCatalog('listed');
   assert.equal(opened.ok, true, opened.error);
   assert.equal((await plugins.install(opened.folder, { origin: 'catalog' })).ok, true);
   opened.cleanup();
   assert.equal(plugins.list().find((p) => p.id === 'listed').source, 'catalog');
-  assert.equal((await store().catalog('2.0.11')).plugins[0].installedVersion, '1.2.0');
+  assert.equal(fromList(await store().catalog('2.0.11'))[0].installedVersion, '1.2.0');
 
   // A newer version on the list shows as an update; one needing a newer JPMixer can't be installed
   served.set('/plugins/catalog.json', JSON.stringify({ version: 1, plugins: [{ ...entry('1.3.0'), minJPMixer: '9.0.0' }] }));
-  const later = (await store().catalog('2.0.11')).plugins[0];
+  const later = fromList(await store().catalog('2.0.11'))[0];
   assert.equal(later.update, true);
   assert.equal(later.tooNew, true);
+  assert.deepEqual(store().updates('2.0.11').filter((u) => u.id === 'listed'), [], 'not counted as an update: it needs a newer JPMixer');
+  assert.deepEqual(store().updates('9.0.0').filter((u) => u.id === 'listed'), [{ id: 'listed', name: 'Listed', version: '1.3.0', installedVersion: '1.2.0' }], 'for the dot and the row’s Update');
 
   // A file that doesn't match the list's hash: nothing is installed
   served.set('/plugins/catalog.json', JSON.stringify({ version: 1, plugins: [entry('1.2.0', true)] }));
@@ -135,8 +138,34 @@ test('the approved list: installed and up-to-date, an update, and a file that do
   assert.equal(bad.ok, false);
   assert.match(bad.error, /doesn’t match the approved copy/);
 
+  // No list on GitHub: JPMixer's own plugins are still listed, from the copies that come with it
   served.delete('/plugins/catalog.json');
-  assert.match((await store().catalog('2.0.11')).error, /isn’t published yet/);
+  const offline = await store().catalog('2.0.14');
+  assert.equal(offline.ok, true);
+  assert.match(offline.notice, /isn’t published yet\. Showing the plugins that come with JPMixer/);
+  assert.ok(offline.plugins.length && offline.plugins.every((p) => p.bundled && p.official));
+});
+
+test('JPMixer’s own plugins that aren’t on the list yet install from the copies that come with it', async () => {
+  // The list on GitHub has only Patch, and a Smaart that needs a newer JPMixer
+  const smaart = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'plugins', 'catalog.json'), 'utf8')).plugins.find((p) => p.id === 'smaart');
+  served.set('/plugins/catalog.json', JSON.stringify({ version: 1, plugins: [{ ...smaart, version: '9.0.0', minJPMixer: '9.0.0' }] }));
+  const list = await store().catalog('2.0.14');
+  const byId = Object.fromEntries(list.plugins.map((p) => [p.id, p]));
+  assert.equal(list.notice, '');
+  assert.deepEqual(['companion', 'shure', 'smaart'].map((id) => [byId[id].bundled, byId[id].official, byId[id].integration, byId[id].tooNew]), [[true, true, true, false], [true, true, true, false], [true, true, true, false]],
+    'listed from the copy here, Smaart too (the list’s one needs a newer JPMixer)');
+  // Installed from where it is: checked, official, and the copy that comes with JPMixer left alone
+  const opened = await store().openFromCatalog('companion');
+  assert.equal(opened.ok, true, opened.error);
+  assert.equal(opened.bundled, true);
+  const result = await plugins.install(opened.folder, { origin: 'bundled' });
+  opened.cleanup();
+  assert.equal(result.ok, true, result.error);
+  assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'plugins', 'companion', 'plugin.json')), 'nothing removed from the copy that comes with JPMixer');
+  assert.equal(plugins.list().find((p) => p.id === 'companion').official, true);
+  assert.equal((await store().catalog('2.0.14')).plugins.find((p) => p.id === 'companion').installedVersion, byId.companion.version, 'and shown as installed');
+  served.delete('/plugins/catalog.json');
 });
 
 test('the repo’s plugins/catalog.json matches the plugins/ folder', () => {

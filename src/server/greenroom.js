@@ -148,10 +148,12 @@ function qrSvg(text) {
 
 function mountGreenRoom(app) {
   // SPL from Smaart on the TV (Settings → Pages → Green Room), when Smaart SPL is on
-  app.get('/greenroom-spl', (req, res) => {
+  app.get('/greenroom-spl', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     const enabled = config.get('greenRoomSpl') === true && config.get('smaartEnabled') === true;
-    res.json({ ok: true, enabled, reading: enabled ? require('./smaart').singleReading(String(config.get('greenRoomSplMetric') || ''), String(config.get('greenRoomSplInput') || '')) : null });
+    // From the Smaart plugin (smaart.js asks it)
+    const reading = enabled ? await require('./smaart').singleReading(String(config.get('greenRoomSplMetric') || ''), String(config.get('greenRoomSplInput') || '')) : null;
+    res.json({ ok: true, enabled, reading });
   });
 
   app.get('/greenroom-qr', (req, res) => {

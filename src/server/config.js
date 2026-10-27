@@ -70,6 +70,11 @@ const DEFAULTS = {
   // Planning Center Services — auto-labels aux mixes from the schedule
   // (Settings' "Planning Center" tab). Credentials stored the same way
   // dlivePassword/apiToken already are; see pco-client.js.
+  // Planning Center as a whole (Settings → Planning Center → Use Planning
+  // Center). Off: get() answers '' for its credentials, so JPMixer never
+  // contacts it and everything that needs it hides as when it isn't set up;
+  // the credentials and the rest stay saved for when it's turned back on.
+  pcoEnabled: true,
   pcoAppId: '',
   pcoSecret: '',
   pcoServiceTypeId: '',
@@ -128,7 +133,7 @@ const DEFAULTS = {
   wirelessKnown: [], // [{ id, ip, model }] every receiver seen; saved by shure-wireless.js
   wirelessAux: {},   // { "id/channel": aux }
   smaartEnabled: false,
-  // Plugins (plugins.js): off until turned on in Settings → Integrations → Plugins. Which
+  // Plugins (plugins.js): off until turned on in Settings → Plugins. Which
   // ones are on, and their settings, are in plugins.json.
   pluginsEnabled: false,
   smaartHost: '',
@@ -192,6 +197,7 @@ function save(incoming) {
 }
 
 function get(key) {
+  if ((key === 'pcoAppId' || key === 'pcoSecret') && get('pcoEnabled') === false) return '';
   return _config[key] !== undefined ? _config[key] : DEFAULTS[key];
 }
 

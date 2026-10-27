@@ -172,20 +172,32 @@ function newer(a, b) {
 }
 
 let lastCatalog = null; // { at, plugins } — the last good list, for installing from it
+const tooNewFor = (e, appVersion) => !!(e.minJPMixer && appVersion && newer(e.minJPMixer, appVersion) > 0);
 // The approved list, each with whether it's installed and if there's an
-// update: { ok, plugins, submitUrl } or { ok: false, error }
+// update: { ok, plugins, submitUrl, notice? } or { ok: false, error }. JPMixer's
+// own plugins that come with it are listed too (bundled: true) when the list
+// on GitHub doesn't have them, or has only a version for a newer JPMixer, or
+// can't be reached: those install from the copy here, with no internet.
 async function catalog(appVersion) {
-  let raw;
+  let raw, error = null;
   try { raw = JSON.parse((await fetchLimited(CATALOG_URL, MAX_CATALOG_BYTES)).toString('utf8')); }
   catch (e) {
-    return { ok: false, submitUrl: SUBMIT_URL, error: e.message === 'not-found' ? 'The list of approved plugins isn’t published yet.' : e.name === 'AbortError' ? 'GitHub didn’t answer in time. Check the internet connection.' : 'Couldn’t get the list of approved plugins. Check the internet connection.' };
+    error = e.message === 'not-found' ? 'The list of approved plugins isn’t published yet.' : e.name === 'AbortError' ? 'GitHub didn’t answer in time. Check the internet connection.' : 'Couldn’t get the list of approved plugins. Check the internet connection.';
   }
-  const entries = (raw && Array.isArray(raw.plugins) ? raw.plugins : []).map(cleanEntry).filter(Boolean);
+  const online = (raw && Array.isArray(raw.plugins) ? raw.plugins : []).map(cleanEntry).filter(Boolean);
+  const bundled = plugins.bundledCatalog().map(cleanEntry).filter(Boolean).map((e) => ({ ...e, bundled: true }));
+  if (error && !bundled.length) return { ok: false, submitUrl: SUBMIT_URL, error };
+  const entries = online.map((e) => {
+    const here = bundled.find((b) => b.id === e.id);
+    return here && tooNewFor(e, appVersion) && !tooNewFor(here, appVersion) ? here : e;
+  });
+  for (const b of bundled) if (!entries.some((e) => e.id === b.id)) entries.push(b);
   lastCatalog = { at: Date.now(), plugins: entries };
   const installed = new Map(plugins.list().filter((p) => p.manifest).map((p) => [p.id, p]));
   return {
     ok: true,
     submitUrl: SUBMIT_URL,
+    notice: error ? `${error} Showing the plugins that come with JPMixer.` : '',
     plugins: entries.map((e) => {
       const have = installed.get(e.id);
       return {
@@ -194,7 +206,10 @@ async function catalog(appVersion) {
         installedVersion: have ? have.manifest.version : null,
         installedFrom: have ? have.source : null,
         update: !!(have && newer(e.version, have.manifest.version) > 0),
-        tooNew: !!(e.minJPMixer && appVersion && newer(e.minJPMixer, appVersion) > 0),
+        tooNew: tooNewFor(e, appVersion),
+        official: Object.hasOwn(plugins.OFFICIAL, e.id), // JPMixer's own: installs and runs without Allow plugins
+        integration: plugins.isIntegrationId(e.id),
+        bundled: !!e.bundled, // installs from the copy that comes with JPMixer
         minJPMixer: e.minJPMixer,
       };
     }),
@@ -202,10 +217,18 @@ async function catalog(appVersion) {
 }
 
 // Downloads one approved plugin into a scratch folder, checking every file
-// against the list: { ok, folder, manifest, existing, cleanup }
+// against the list: { ok, folder, manifest, existing, cleanup, bundled? }
 async function openFromCatalog(id) {
   const entry = lastCatalog && lastCatalog.plugins.find((p) => p.id === id);
   if (!entry) return { ok: false, error: 'Refresh the list of approved plugins, then try again.' };
+  if (entry.bundled) {
+    // The copy that comes with JPMixer: checked against its own list, and
+    // installed from where it is (nothing to clean up after)
+    const here = plugins.checkBundled(id);
+    if (!here.ok) return here;
+    const check = plugins.previewInstall(here.folder);
+    return check.ok ? { ...check, folder: here.folder, bundled: true, cleanup: () => {} } : check;
+  }
   const base = CATALOG_URL.replace(/[^/]*$/, ''); // each plugin's path is beside catalog.json
   const dir = scratchDir('downloading');
   try {
@@ -226,4 +249,15 @@ async function openFromCatalog(id) {
   return { ...check, folder: dir, cleanup: () => removeDir(dir) };
 }
 
-module.exports = { catalog, openFromCatalog, open, CATALOG_URL, SUBMIT_URL, _safeRelative: safeRelative, _newer: newer };
+// Installed plugins with a newer version on the list fetched last (none
+// until it's been fetched): [{ id, name, version, installedVersion }]. One
+// needing a newer JPMixer isn't counted: it can't be installed yet.
+function updates(appVersion) {
+  if (!lastCatalog) return [];
+  const installed = new Map(plugins.list().filter((p) => p.manifest).map((p) => [p.id, p]));
+  return lastCatalog.plugins
+    .filter((e) => installed.has(e.id) && newer(e.version, installed.get(e.id).manifest.version) > 0 && !tooNewFor(e, appVersion))
+    .map((e) => ({ id: e.id, name: e.name, version: e.version, installedVersion: installed.get(e.id).manifest.version }));
+}
+
+module.exports = { catalog, updates, openFromCatalog, open, CATALOG_URL, SUBMIT_URL, _safeRelative: safeRelative, _newer: newer };
