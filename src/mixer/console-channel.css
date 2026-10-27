@@ -16,6 +16,7 @@
 .chp-head h2 { margin-top: 4px; font-size: 20px; font-weight: 650; color: var(--text); overflow-wrap: anywhere; }
 .chp-close { flex: none; width: 40px; height: 40px; border: 1px solid var(--jp-edge); border-radius: 10px; background: var(--jp-card); color: var(--jp-label); font-size: 15px; cursor: pointer; }
 .chp-tabs { display: flex; gap: 6px; padding: 0 20px 10px; border-bottom: 1px solid var(--jp-line); }
+.chp-tabs[hidden], .chp-tabs button[hidden] { display: none; }
 .chp-tabs button { flex: 1; min-height: 38px; border: 1px solid var(--jp-line); border-radius: 9px; background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .chp-tabs button[aria-selected="true"] { background: rgba(var(--jp-accent-rgb), .15); border-color: rgba(var(--jp-accent-rgb), .55); color: var(--text); }
 .chp-status { min-height: 0; padding: 0 20px; color: var(--jp-secondary); font-size: 11px; }
@@ -29,6 +30,12 @@
 .chp-toggle { min-height: 36px; padding: 0 14px; border: 1px solid var(--jp-edge); border-radius: 18px; background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .chp-toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .chp-toggle.armed { background: #6e552b; border-color: #e0b25a; color: #fff; }
+/* Read-only (LV1's preamp): shown as the console has it, not movable here */
+.chp-toggle.ro { cursor: default; }
+.chp-toggle.ro:not(.on) { opacity: .7; }
+.chp-slider.ro input[type="range"] { opacity: .75; cursor: default; }
+.chp-choice button:disabled { cursor: default; }
+.chp-choice button:disabled:not([aria-pressed="true"]) { opacity: .55; }
 
 .chp-slider { display: grid; gap: 4px; }
 .chp-slider-head { display: flex; justify-content: space-between; align-items: baseline; color: var(--jp-label); font-size: 12px; }

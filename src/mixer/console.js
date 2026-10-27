@@ -23,7 +23,7 @@ let ws             = null;
 let chConfig       = [];  // [{channel, label, enabled, ...}]
 let auxConfig      = [];  // [{channel, label, colour, enabled, ...}]
 let cgConfig       = [];  // [{channel, label}]
-let channelProcessing = true; // false: no gain/EQ/dynamics panel on this console
+let channelProcessing = true; // false: no gain/EQ/dynamics panel on this console; 'preamp': its preamp only (LV1)
 let consoleFaders  = {};  // ch → dB
 let consoleMutes   = {};  // ch → bool
 let consoleSolos   = {};  // ch → bool
@@ -108,8 +108,8 @@ function onMessage(json) {
       cgFaders      = {}; cgMutes      = {}; cgSolos      = {};
       send({ type: 'request-console-state' });
     }
-    // Consoles whose gain/EQ/dynamics this page can't open (LV1) leave the panel out
-    channelProcessing = json.config.channelProcessing !== false;
+    // Consoles whose gain/EQ/dynamics this page can't open leave the panel out; LV1 shows its preamps
+    channelProcessing = json.config.channelProcessing === undefined ? true : json.config.channelProcessing;
     chConfig  = json.config.channels || [];
     auxConfig = json.config.aux || [];
     cgConfig  = json.config.controlGroups || [];
@@ -471,8 +471,8 @@ function buildChStrip(ch) {
   const openBtn = document.createElement('button');
   openBtn.type = 'button';
   openBtn.className = 'ch-open-btn';
-  openBtn.textContent = 'EQ';
-  openBtn.setAttribute('aria-label', `Open ${ch.label || 'channel ' + ch.channel} processing: gain, EQ and dynamics`);
+  openBtn.textContent = channelProcessing === 'preamp' ? 'GAIN' : 'EQ';
+  openBtn.setAttribute('aria-label', channelProcessing === 'preamp' ? `Show ${ch.label || 'channel ' + ch.channel}’s preamp: gain, 48V, phase and trim` : `Open ${ch.label || 'channel ' + ch.channel} processing: gain, EQ and dynamics`);
   const openPanel = () => window.channelPanel?.open(ch.channel, ch.label || `Ch ${ch.channel}`);
   if (channelProcessing) {
     openBtn.addEventListener('click', openPanel);

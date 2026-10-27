@@ -1145,7 +1145,21 @@ function pluginCard(p, unsaved) {
   lines.className = 'plugin-log-lines';
   log.append(summary, lines);
   log.addEventListener('toggle', () => { if (log.open) refreshPluginLog(p.id, lines); });
-  actions.append(log, pluginRemoveButton(p));
+  actions.append(log);
+  // A plugin with a page of its own: open it (it's also on the Home pages list)
+  if (m.page) {
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'btn btn-sm';
+    open.textContent = `Open ${m.page.title}`;
+    open.title = 'Opens its page in the browser. It’s also listed with the Home pages.';
+    open.addEventListener('click', async () => {
+      const result = await window.jpm.pluginsOpenPage(p.id).catch((e) => ({ ok: false, error: e.message }));
+      if (!result.ok) { const t = card.querySelector('.companion-status span:last-child'); if (t) t.textContent = result.error; }
+    });
+    actions.append(open);
+  }
+  actions.append(pluginRemoveButton(p));
   card.append(actions);
 
   const updateFields = () => {

@@ -154,6 +154,17 @@ async function main() {
     console.log('ok - repeated request-console-state calls do not crash the server (pacing engaged, not a burst)');
   }
 
+  // ── 48V per channel, for plugins ────────────────────────────────────────
+  {
+    assert.deepEqual(server.getPhantom(), { 1: false, 2: false, 3: true, 4: true, 5: false, 6: false, 7: true, 8: true }, 'demo mode: 48V on a few channels');
+    ws.send(JSON.stringify({ type: 'console-param', ch: 5, path: 'Channel_Input/phantom', value: 1 }));
+    ws.send(JSON.stringify({ type: 'console-param', ch: 3, path: 'Channel_Input/phantom', value: 0 }));
+    await new Promise((r) => setTimeout(r, 100));
+    const now = server.getPhantom();
+    assert.equal(now[5], true); assert.equal(now[3], false);
+    console.log('ok - getPhantom() follows each channel’s 48V as it changes');
+  }
+
   ws.close();
   server.stop();
 

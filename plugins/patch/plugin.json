@@ -1,0 +1,16 @@
+{
+  "id": "patch",
+  "name": "Patch",
+  "version": "1.0.0",
+  "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to.",
+  "author": "JPMixer",
+  "minJPMixer": "2.0.13",
+  "main": "index.js",
+  "permissions": ["page", "console", "card"],
+  "page": { "title": "Patch", "entry": "page/index.html" },
+  "card": { "title": "Patch" },
+  "settings": [
+    { "key": "locked", "label": "Lock the patch", "type": "checkbox", "default": false, "help": "Anyone can open the Patch page, but nobody can change it. Handy during a service." },
+    { "key": "showCard", "label": "Show a patch summary on FOH Home", "type": "checkbox", "default": false, "help": "How many sockets are patched, and any channel patched from two sockets." }
+  ]
+}

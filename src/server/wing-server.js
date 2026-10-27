@@ -620,7 +620,7 @@ function pushDevicePresets(deviceId) {
   shared.pushDevicePresets(connections, deviceId);
 }
 
-module.exports = { getConnectedDevicesInfo, pushDevicePresets,
+module.exports = { getConnectedDevicesInfo, pushDevicePresets, getControlGroups: () => [], // no control groups yet
   start, stop, applyConfigLive, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,

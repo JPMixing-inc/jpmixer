@@ -18,7 +18,17 @@
 //
 // Every plugin must declare at least one setting in plugin.json: those make
 // its own tab under Settings → Integrations (settings.js), next to Smaart's
-// and Shure's. A plugin never gets the config. It gets its own settings, and only the
+// and Shure's.
+//
+// A plugin with the "page" permission also has a page of its own (HTML,
+// scripts and images in its folder), served at /p/<id>/ and listed with the
+// Home pages. It's served sandboxed (CSP sandbox without same-origin), so it
+// can't read JPMixer's own pages or their cookies, and it talks only to its
+// plugin: POST /plugin-api/<id>/<name> reaches the plugin's
+// jp.page.handle(name, fn) and answers with what fn returns
+// (mountPluginPages, below).
+//
+// A plugin never gets the config. It gets its own settings, and only the
 // data its plugin.json asks for (PERMISSIONS below), from the providers
 // main.js hands to start(). It talks to JPMixer only through messages:
 //   card      a card on FOH Home (title, a big value, rows, a note)
@@ -51,8 +61,9 @@ const ID = /^[a-z][a-z0-9-]{1,29}$/;
 const KEY = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 const PERMISSIONS = {
   card: 'Show a card on FOH Home',
-  console: 'See channel and mix names, and whether the console is connected',
+  console: 'See channel, control group and mix names, each channel’s 48V, and whether the console is connected',
   planningCenter: 'See the plan’s title, what’s live and what’s next from Planning Center',
+  page: 'Show a page of its own, listed with the Home pages',
 };
 const FIELD_TYPES = new Set(['text', 'password', 'number', 'checkbox', 'select']);
 const COLORS = new Set(['green', 'yellow', 'red', 'blue', 'gray']);
@@ -136,6 +147,15 @@ function readManifest(folder) {
   // Every plugin has its own tab under Settings → Integrations, with its settings
   if (!settings.length) return { ok: false, error: 'plugin.json needs "settings" with at least one setting. They make the plugin’s own tab in Settings, under Plugins.' };
   const name = text(raw.name, 40) || id;
+  // Its page: an .html file inside its folder (page/index.html unless it says)
+  let page = null;
+  if (asked.includes('page')) {
+    const entryRel = String((raw.page && raw.page.entry) || 'page/index.html');
+    const pageEntry = path.resolve(folder, entryRel);
+    if (!pageEntry.startsWith(path.resolve(folder) + path.sep) || !/\.html?$/i.test(pageEntry)) return { ok: false, error: '"page.entry" must be an .html file inside the plugin’s folder.' };
+    if (!fs.existsSync(pageEntry)) return { ok: false, error: `${entryRel} (its page) is missing.` };
+    page = { title: text(raw.page && raw.page.title, 40) || name, entry: path.relative(folder, pageEntry).split(path.sep).join('/') };
+  }
   return {
     ok: true,
     manifest: {
@@ -147,6 +167,7 @@ function readManifest(folder) {
       permissions: [...new Set(asked)],
       settings,
       cardTitle: text(raw.card && raw.card.title, 40) || name,
+      page,
     },
   };
 }
@@ -312,6 +333,15 @@ async function onMessage(run, msg, addLog) {
     case 'status':
       run.status = { level: LEVELS.has(msg.level) ? msg.level : 'ok', text: text(msg.text, 160) };
       return;
+    case 'page-reply': {
+      const call = run.pageCalls && run.pageCalls.get(msg.id);
+      if (!call) return;
+      run.pageCalls.delete(msg.id);
+      clearTimeout(call.timer);
+      if (msg.error) call.reject(Object.assign(new Error(text(msg.error, 300) || 'The plugin couldn’t do that.'), { fromPlugin: true }));
+      else call.resolve(msg.result === undefined ? null : msg.result);
+      return;
+    }
     case 'request': {
       const what = msg.what;
       if (!['console', 'planningCenter'].includes(what) || !can(what)) { send(run, { type: 'reply', id: msg.id, error: `plugin.json doesn’t ask for the "${String(what)}" permission.` }); return; }
@@ -344,6 +374,8 @@ function provide(what) {
 
 function onExit(run, code, signal) {
   run.child = null;
+  for (const call of (run.pageCalls || new Map()).values()) { clearTimeout(call.timer); call.reject(new Error('The plugin stopped.')); }
+  if (run.pageCalls) run.pageCalls.clear();
   if (running.get(run.id) !== run) return;
   if (run.stopping) { running.delete(run.id); return; }
   // An unexpected exit: start it again after a pause, unless it keeps crashing
@@ -628,13 +660,133 @@ function cards() {
     });
 }
 
+// ── Plugin pages ──
+// A plugin that's on and has the "page" permission: its folder and page
+const pageEntry = (id) => {
+  if (!allowed || !ID.test(String(id || ''))) return null;
+  loadState();
+  if (!(state[id] && state[id].enabled === true)) return null;
+  const entry = scanSoon().find((e) => e.manifest && e.manifest.id === id && e.manifest.permissions.includes('page') && e.manifest.page);
+  if (!entry) return null;
+  const folder = real(entry.folder);
+  const file = path.join(folder, ...entry.manifest.page.entry.split('/'));
+  return { folder, dir: path.dirname(file), index: path.basename(file), title: entry.manifest.page.title };
+};
+// For the Home pages list: every plugin page that can be opened now
+function pages() {
+  if (!allowed) return [];
+  loadState();
+  return scanSoon()
+    .filter((e) => e.manifest && e.manifest.page && e.manifest.permissions.includes('page') && state[e.id] && state[e.id].enabled === true)
+    .map((e) => ({ id: e.id, title: e.manifest.page.title, plugin: e.manifest.name, href: `/p/${e.id}/` }));
+}
+
+// A call from a plugin's page to the plugin's jp.page.handle(name, fn)
+const PAGE_CALL_TIMEOUT_MS = 10000;
+let pageCallId = 0;
+function callPage(id, name, body) {
+  const run = running.get(id);
+  if (!run || !run.child || !run.entry.manifest.permissions.includes('page')) return Promise.reject(Object.assign(new Error('The plugin isn’t running right now.'), { status: 503 }));
+  run.pageCalls = run.pageCalls || new Map();
+  if (run.pageCalls.size >= 20) return Promise.reject(Object.assign(new Error('The plugin is busy. Try again.'), { status: 429 }));
+  return new Promise((resolve, reject) => {
+    const callId = ++pageCallId;
+    const timer = setTimeout(() => { run.pageCalls.delete(callId); reject(Object.assign(new Error('The plugin didn’t answer in time.'), { status: 504 })); }, PAGE_CALL_TIMEOUT_MS);
+    run.pageCalls.set(callId, { resolve, reject, timer });
+    if (!send(run, { type: 'page-call', id: callId, name, body })) { clearTimeout(timer); run.pageCalls.delete(callId); reject(Object.assign(new Error('The plugin isn’t running right now.'), { status: 503 })); }
+  });
+}
+
+// GET /p/<id>/…        the plugin's page and its files, sandboxed
+// POST /plugin-api/<id>/<name>   { …JSON } → the plugin → JSON
+// A sandboxed page has an opaque origin, so its calls arrive with
+// Origin: null, the same as a sandboxed frame on any other website. So each
+// call also carries the page's token (X-JPMixer-Token), which JPMixer writes
+// into the page's HTML as it serves it (<meta name="jpmixer-token">). Another
+// site can't read that HTML (no CORS) or frame the page (frame-ancestors),
+// and another plugin's page gets its own plugin's token, not this one's.
+const PAGE_CSP = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads; frame-ancestors 'self'";
+// Kept across restarts (in userData), so an open page still works after JPMixer restarts
+let pageSecret = null;
+function secret() {
+  if (pageSecret) return pageSecret;
+  const file = path.join(app.getPath('userData'), 'plugin-pages.key');
+  try {
+    const saved = fs.readFileSync(file, 'utf8').trim();
+    if (/^[0-9a-f]{64}$/.test(saved)) return (pageSecret = saved);
+  } catch (_) { /* made below */ }
+  pageSecret = crypto.randomBytes(32).toString('hex');
+  try { fs.writeFileSync(file, pageSecret, { mode: 0o600 }); } catch (e) { console.error('[JPMixer] Couldn’t save the plugin page key:', e.message); }
+  return pageSecret;
+}
+const pageToken = (id) => crypto.createHmac('sha256', secret()).update(`plugin-page:${id}`).digest('hex').slice(0, 40);
+const sameToken = (a, b) => typeof a === 'string' && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+function mountPluginPages(app) {
+  const express = require('express');
+  app.get(/^\/p\/([a-z][a-z0-9-]{1,29})(\/.*)?$/, (req, res) => {
+    const id = req.params[0];
+    if (!req.params[1]) { res.redirect(301, `/p/${id}/`); return; }
+    const page = pageEntry(id);
+    res.set('Cache-Control', 'no-cache');
+    if (!page) { res.status(404).type('text/plain').send('This plugin page isn’t available. Its plugin may be off, or plugins may not be allowed (Settings → Integrations → Plugins).'); return; }
+    // Express has already decoded the path once
+    let rel = req.params[1].slice(1);
+    if (!rel) rel = page.index;
+    const parts = rel.split('/');
+    if (parts.some((x) => !x || x === '..' || x.startsWith('.')) || rel.includes('\\')) { res.status(404).end(); return; }
+    const file = path.resolve(page.dir, ...parts);
+    if (!file.startsWith(page.dir + path.sep)) { res.status(404).end(); return; }
+    let stat;
+    try { stat = fs.statSync(file); } catch (_) { res.status(404).end(); return; }
+    if (!stat.isFile()) { res.status(404).end(); return; }
+    res.set('Content-Security-Policy', PAGE_CSP);
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Referrer-Policy', 'no-referrer');
+    // An HTML page gets its token, as the first thing in its <head>
+    if (/\.html?$/i.test(file)) {
+      let html;
+      try { html = fs.readFileSync(file, 'utf8'); } catch (_) { res.status(404).end(); return; }
+      const meta = `<meta name="jpmixer-token" content="${pageToken(id)}">`;
+      // In its <head>; with none, after the doctype (before it would put the page in quirks mode)
+      if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${meta}`);
+      else if (/^\s*<!doctype[^>]*>/i.test(html)) html = html.replace(/^\s*<!doctype[^>]*>/i, (m) => `${m}\n${meta}`);
+      else html = `${meta}\n${html}`;
+      res.type('html').send(html);
+      return;
+    }
+    res.sendFile(file);
+  });
+  const allowOrigin = (req) => {
+    const origin = req.headers.origin;
+    return origin === 'null' || origin === `http://${req.headers.host}` || origin === undefined;
+  };
+  app.options('/plugin-api/:id/:name', (req, res) => {
+    if (!allowOrigin(req)) { res.status(403).end(); return; }
+    res.set('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.set('Access-Control-Allow-Methods', 'POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, X-JPMixer-Plugin, X-JPMixer-Token');
+    res.set('Access-Control-Max-Age', '600');
+    res.status(204).end();
+  });
+  app.post('/plugin-api/:id/:name', express.json({ limit: '512kb' }), async (req, res) => {
+    const { id, name } = req.params;
+    res.set('Cache-Control', 'no-store');
+    const ok = allowOrigin(req) && ID.test(id) && sameToken(req.headers['x-jpmixer-token'], pageToken(id)) && /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(name);
+    if (!ok) { res.status(403).json({ ok: false, error: 'Not allowed. Reload the page.' }); return; }
+    if (req.headers.origin) res.set('Access-Control-Allow-Origin', req.headers.origin);
+    if (!pageEntry(id)) { res.status(404).json({ ok: false, error: 'This plugin isn’t on.' }); return; }
+    try { res.json({ ok: true, result: await callPage(id, name, req.body === undefined ? null : req.body) }); }
+    catch (e) { res.status(e.status || (e.fromPlugin ? 400 : 500)).json({ ok: false, error: e.message || 'The plugin couldn’t do that.' }); }
+  });
+}
+
 // For Settings → Performance: each running plugin's process
 function processes() {
   return [...running.values()].filter((r) => r.child && r.child.pid).map((r) => ({ id: r.id, name: r.entry.manifest.name, pid: r.child.pid }));
 }
 
 module.exports = {
-  processes,
+  processes, pages, callPage, mountPluginPages, _pageToken: (id) => pageToken(id),
   start, setAllowed, apply, restart, stopAll, stopOne, list, getLog, save, forget, cards, readManifest, scan, previewInstall, install,
   pluginsDir, dataDir, PERMISSIONS,
   _cleanCard: cleanCard, _coerce: coerce, _running: running,

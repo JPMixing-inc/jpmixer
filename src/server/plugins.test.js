@@ -240,3 +240,73 @@ test('a plugin that keeps crashing stops after five crashes, until it’s starte
     await plugins.stopAll();
   }
 });
+
+test('a plugin’s page is served sandboxed, and only its own page can call it', async () => {
+  plugins._reset();
+  const folder = makePlugin('paged', {
+    id: 'paged', name: 'Paged', permissions: ['page'], page: { title: 'My page' },
+    settings: [{ key: 'note', label: 'Note', type: 'text' }],
+  }, `
+    module.exports = (jp) => {
+      jp.page.handle('add', (body) => ({ sum: body.a + body.b }));
+      jp.page.handle('fail', () => { throw new Error('nope, on purpose'); });
+    };
+  `);
+  fs.mkdirSync(path.join(folder, 'page'), { recursive: true });
+  fs.writeFileSync(path.join(folder, 'page', 'index.html'), '<!doctype html><title>Paged</title>');
+  fs.writeFileSync(path.join(folder, 'page', 'app.js'), 'console.log(1)');
+  plugins.save({ paged: { enabled: true } });
+  await plugins.start({ allowed: true });
+  await until(() => plugins.list().find((p) => p.id === 'paged')?.state === 'running');
+  assert.deepEqual(plugins.pages(), [{ id: 'paged', title: 'My page', plugin: 'Paged', href: '/p/paged/' }]);
+
+  const express = require('express');
+  const http = require('http');
+  const app = express();
+  plugins.mountPluginPages(app);
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const page = await fetch(`${base}/p/paged/`);
+    assert.equal(page.status, 200);
+    // The page's token, written into its <head>
+    const token = ((await page.clone().text()).match(/<meta name="jpmixer-token" content="([0-9a-f]+)">/) || [])[1];
+    assert.ok(token, 'the page carries its token');
+    assert.match(await page.clone().text(), /^<!doctype html>\n<meta name="jpmixer-token"/, 'after the doctype, so the page isn’t in quirks mode');
+    assert.equal(token, plugins._pageToken('paged'));
+    assert.notEqual(plugins._pageToken('other'), token, 'each plugin page has its own');
+    assert.match(page.headers.get('content-security-policy'), /^sandbox allow-scripts/, 'sandboxed: no same-origin, so no cookies or JPMixer pages');
+    assert.doesNotMatch(page.headers.get('content-security-policy'), /allow-same-origin/);
+    assert.equal((await fetch(`${base}/p/paged/app.js`)).status, 200);
+    for (const bad of ['/p/paged/../plugin.json', '/p/paged/%2e%2e/plugin.json', '/p/paged/..%2fplugin.json', '/p/paged/.hidden', '/p/other/']) {
+      assert.equal((await fetch(base + bad)).status, 404, bad);
+    }
+    const call = (name, body, headers) => fetch(`${base}/plugin-api/paged/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'null', 'X-JPMixer-Token': token, ...headers }, body: JSON.stringify(body) });
+    const ok = await call('add', { a: 2, b: 3 });
+    assert.deepEqual(await ok.json(), { ok: true, result: { sum: 5 } });
+    assert.equal(ok.headers.get('access-control-allow-origin'), 'null');
+    const failed = await call('fail', {});
+    assert.equal(failed.status, 400);
+    assert.match((await failed.json()).error, /nope, on purpose/);
+    assert.match((await (await call('missing', {})).json()).error, /doesn’t answer "missing"/);
+    assert.equal((await call('add', { a: 1, b: 1 }, { Origin: 'https://evil.example' })).status, 403, 'another website can’t call it');
+    assert.equal((await call('add', { a: 1, b: 1 }, { 'X-JPMixer-Token': '' })).status, 403, 'a sandboxed frame on another site (Origin: null, no token) can’t call it');
+    assert.equal((await call('add', { a: 1, b: 1 }, { 'X-JPMixer-Token': plugins._pageToken('other') })).status, 403, 'nor another plugin’s page');
+    assert.equal((await fetch(`${base}/p/paged/app.js`)).headers.get('access-control-allow-origin'), null, 'its files can’t be read from another site');
+    const preflight = await fetch(`${base}/plugin-api/paged/add`, { method: 'OPTIONS', headers: { Origin: 'https://evil.example', 'Access-Control-Request-Method': 'POST' } });
+    assert.equal(preflight.status, 403);
+    assert.equal(plugins.list().find((p) => p.id === 'paged').state, 'running', 'an error in a handler doesn’t stop the plugin');
+
+    // Off: no page, no calls
+    plugins.save({ paged: { enabled: false } });
+    await plugins.apply();
+    plugins._reset();
+    assert.equal((await fetch(`${base}/p/paged/`)).status, 404);
+    assert.equal((await call('add', { a: 1, b: 1 })).status, 404);
+    assert.deepEqual(plugins.pages(), []);
+  } finally {
+    server.close();
+    await plugins.stopAll();
+  }
+});

@@ -1,8 +1,9 @@
 'use strict';
 
 // Console Controller → channel panel: one input channel's gain, filters, EQ
-// and dynamics (DiGiCo). The controls and their ranges come from the server
-// (src/server/digico-channel.js), so the page can only send what the server
+// and dynamics (DiGiCo), or its preamp, read-only (LV1). The controls and
+// their ranges come from the server (src/server/digico-channel.js, and
+// lv1-server.js's preampDetail), so the page can only send what the server
 // allows. Values from the desk, the iPad app or another page update it live.
 (() => {
   const SECTION_NAMES = { input: 'Input', eq: 'EQ', dynamics: 'Dynamics' };
@@ -15,6 +16,7 @@
   let values = {};             // path → value for the open channel
   let channel = null;          // open channel number
   let section = 'eq';
+  let note = '';               // the server's word on this channel (LV1: where it's changed)
   let band = 2;
   const controls = new Map();  // path → { update(value) }
   const held = new Map();      // path → hold-until time while it's being moved
@@ -92,7 +94,9 @@
     b.className = 'chp-toggle';
     b.textContent = opts.label || def.label;
     let armed = null;
+    if (def.readOnly) { b.disabled = true; b.classList.add('ro'); }
     b.addEventListener('click', () => {
+      if (def.readOnly) return;
       const on = !(values[path] >= 0.5);
       // Phantom power asks twice: switching 48V into the wrong input can pop a PA
       if (opts.confirm && on && !armed) {
@@ -125,6 +129,7 @@
     input.type = 'range';
     input.min = '0'; input.max = '1000'; input.step = '1';
     input.setAttribute('aria-label', `${opts.label || def.label}`);
+    if (def.readOnly) { input.disabled = true; row.classList.add('ro'); }
     input.addEventListener('input', () => { const v = fromPos(def, input.value / 1000); out.textContent = format(def, v); setValue(path, v, false); });
     input.addEventListener('change', () => setValue(path, fromPos(def, input.value / 1000), true));
     // Double-click the value to put it back to the middle of its range (centre pan, 0 dB EQ)
@@ -152,7 +157,8 @@
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = def.names[i];
-      b.addEventListener('click', () => { setValue(path, v, true); update(v); });
+      if (def.readOnly) b.disabled = true;
+      else b.addEventListener('click', () => { setValue(path, v, true); update(v); });
       wrap.appendChild(b);
       return b;
     });
@@ -163,13 +169,14 @@
   }
 
   function group(title, ...children) {
+    if (!children.some(Boolean)) return null; // nothing this console has
     const box = document.createElement('section');
     box.className = 'chp-group';
     if (title) { const h = document.createElement('h3'); h.textContent = title; box.appendChild(h); }
     box.append(...children.filter(Boolean));
     return box;
   }
-  const row = (...children) => { const r = document.createElement('div'); r.className = 'chp-row'; r.append(...children); return r; };
+  const row = (...children) => { if (!children.some(Boolean)) return null; const r = document.createElement('div'); r.className = 'chp-row'; r.append(...children.filter(Boolean)); return r; };
   const has = (path) => params && Object.hasOwn(params, path);
 
   // ── EQ graph ──
@@ -305,14 +312,26 @@
     if (!params) return;
     controls.clear();
     svg = null; bandBox = null;
-    for (const b of $('chpTabs').children) b.setAttribute('aria-selected', String(b.dataset.section === section));
+    // Only the sections this console has (LV1: Input); the open one if it's among them
+    const sections = Object.keys(SECTION_NAMES).filter((id) => Object.values(params).some((d) => d.section === id));
+    // Nothing to show (LV1: a channel whose input isn't a preamp): just say why
+    if (!sections.length) {
+      $('chpTabs').hidden = true;
+      $('chpBody').textContent = '';
+      $('chpStatus').textContent = note || 'The console doesn’t report any settings for this channel.';
+      return;
+    }
+    if (!sections.includes(section)) section = sections[0];
+    for (const b of $('chpTabs').children) { b.setAttribute('aria-selected', String(b.dataset.section === section)); b.hidden = !sections.includes(b.dataset.section); }
+    $('chpTabs').hidden = sections.length < 2;
     const body = $('chpBody');
     body.textContent = '';
+    const add = (...parts) => body.append(...parts.filter(Boolean)); // a group this console doesn't have is null
     const s = (p, o) => has(p) ? slider(p, o) : null;
     const t = (p, o) => has(p) ? toggle(p, o) : null;
     if (section === 'input') {
-      body.append(
-        group('Preamp', row(t('Channel_Input/phantom', { confirm: true }), t('Channel_Input/phase')), s('Channel_Input/analog_gain'), s('Channel_Input/trim')),
+      add(
+        group('Preamp', has('Channel_Input/gain_mode') ? choice('Channel_Input/gain_mode') : null, row(t('Channel_Input/phantom', { confirm: true }), t('Channel_Input/phase')), s('Channel_Input/analog_gain'), s('Channel_Input/trim')),
         group('Pan', s('Panner/pan')),
         group('Filters', row(t('Filters/lo_filter_in')), s('Filters/lo_filter_freq', { label: 'High-pass frequency' }), row(t('Filters/hi_filter_in')), s('Filters/hi_filter_freq', { label: 'Low-pass frequency' })),
         group('Delay & inserts', row(t('Channel_Delay/delay_on'), t('Insert/insert_A_in'), t('Insert/insert_B_in')), s('Channel_Delay/delay', { label: 'Delay time' }))
@@ -320,14 +339,14 @@
     } else if (section === 'eq') {
       bandBox = document.createElement('div');
       bandBox.className = 'chp-band-controls';
-      body.append(
+      add(
         group(null, row(t('EQ/eq_in', { label: 'EQ in' }), t('Filters/lo_filter_in'), t('Filters/hi_filter_in')), eqGraph(), bandBox),
         group('Filters', s('Filters/lo_filter_freq', { label: 'High-pass frequency' }), s('Filters/hi_filter_freq', { label: 'Low-pass frequency' }))
       );
       renderBandControls();
       drawEq(); // now that the graph is on the page
     } else {
-      body.append(
+      add(
         group('Compressor', row(t('Dynamics/comp_in', { label: 'Compressor in' }), t('Dynamics/comp_auto-gain_1')), s('Dynamics/comp_thresh_1'), s('Dynamics/comp_ratio_1'), s('Dynamics/comp_attack_1'), s('Dynamics/comp_release_1'), s('Dynamics/comp_gain_1'), has('Dynamics/comp_knee_1') ? choice('Dynamics/comp_knee_1') : null),
         group('Gate', row(t('Dynamics/gate_in', { label: 'Gate in' })), s('Dynamics/gate_thresh'), s('Dynamics/gate_range'), s('Dynamics/gate_attack'), s('Dynamics/gate_hold'), s('Dynamics/gate_release'))
       );
@@ -339,13 +358,14 @@
     if (!params) return;
     const inSection = Object.keys(params).filter(p => params[p].section === section);
     const missing = inSection.filter(p => values[p] === undefined).length;
-    $('chpStatus').textContent = missing ? `Reading ${missing} setting${missing === 1 ? '' : 's'} from the console…` : '';
+    $('chpStatus').textContent = missing ? `Reading ${missing} setting${missing === 1 ? '' : 's'} from the console…` : note;
   }
 
   function open(ch, label) {
     channel = ch;
     values = {};
     params = null;
+    note = '';
     $('chpNum').textContent = `CH ${String(ch).padStart(2, '0')}`;
     $('chpName').textContent = label || `Channel ${ch}`;
     $('chpBody').textContent = '';
@@ -360,6 +380,7 @@
     panel.hidden = true;
     backdrop.hidden = true;
     document.body.classList.remove('chp-open');
+    if (channel !== null) window.consoleSend?.({ type: 'close-channel-detail' }); // LV1 stops sending its changes
     channel = null;
   }
 
@@ -369,7 +390,10 @@
     onDetail(json) {
       if (json.ch !== channel) return;
       params = json.params;
-      values = { ...json.values, ...values };
+      note = json.note || '';
+      // Read-only (LV1): the console's values are the truth. Otherwise keep a
+      // value being moved here over the desk's older one.
+      values = json.readOnly ? { ...values, ...json.values } : { ...json.values, ...values };
       render();
     },
     // A value from the desk / iPad / another page for any channel's control

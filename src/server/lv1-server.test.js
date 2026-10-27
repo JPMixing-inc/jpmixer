@@ -75,6 +75,16 @@ function fakeLv1() {
           send(sock, '/Notify/Scene/Name', [tagged(fake.scene)]);
           send(sock, '/Notify/SceneList', [3, 0, 'SONG 1', 1, 'SONG 2', 2, 'SONG 3'].map(tagged));
           send(sock, '/Notify/CurSceneIndex', [tagged(['SONG 1', 'SONG 2', 'SONG 3'].indexOf(fake.scene))]);
+          // Preamps as a real LV1 17.6 sent them (2026-10-26): [type, index, side, value, applies]
+          // KICK: a mic preamp with 48V on. BASS: stereo, 48V on its right side only.
+          // KEYS: no preamp (a digital input). VOX: nothing reported.
+          for (const [addr, args] of [
+            ['/Notify/RangePRGain', [0, 0, 0, -3, 60, 1]], ['/Notify/TrackInGain', [0, 0, 0, 30]], ['/Notify/LocalGainState', [0, 0, 0, 0, 1]],
+            ['/Notify/PhantomState', [0, 0, 0, 1, 1]], ['/Notify/PhaseState', [0, 0, 0, 0, 1]], ['/Notify/TrackTrim', [0, 0, 0, -2.5]],
+            ['/Notify/PhantomState', [0, 1, 0, 0, 1]], ['/Notify/PhantomState', [0, 1, 1, 1, 1]], ['/Notify/RangePRGain', [0, 1, 0, -3, 60, 1]], ['/Notify/TrackInGain', [0, 1, 0, 12]],
+            ['/Notify/PhantomState', [0, 2, 0, 0, 0]], ['/Notify/RangePRGain', [0, 2, 0, 0, 0, 0.001]],
+            ['/Notify/PhantomState', [8, 0, 0, 1, 1]], // a talkback track, not an input
+          ]) send(sock, addr, args.map(tagged));
         } else if (m.address === '/Get/Sends') {
           sendsFor(sock, m.args[0]);
         } else if (m.address === '/Set/Aux/Send/Gain' && srcType === 0) {
@@ -149,6 +159,59 @@ test('LV1 backend end to end', async (t) => {
     assert.deepEqual(config.aux.map(x => x.stereo), [true, false], 'the mono monitor mix has no pan');
     assert.equal(config.snapshot, 'SONG 1');
     assert.deepEqual(server.getAuxNames(), { 1: 'BAND IEM', 2: 'VOX IEM' });
+  });
+
+  await t.test('LV1\'s preamps: 48V for plugins, and the Console Controller\'s panel read-only and live', async () => {
+    assert.deepEqual(server.getPhantom(), { 1: true, 2: true }, 'KICK on; BASS on (either side); KEYS has no preamp; talkback isn\'t an input');
+    a.got.length = 0;
+    a.send(JSON.stringify({ type: 'request-channel-detail', ch: 1, section: 'eq' }));
+    assert.ok(await until(() => a.got.some(j => j.type === 'channel-detail')));
+    const d = a.last(j => j.type === 'channel-detail');
+    assert.equal(d.readOnly, true);
+    assert.deepEqual(Object.keys(d.params).sort(), ['Channel_Input/analog_gain', 'Channel_Input/gain_mode', 'Channel_Input/phantom', 'Channel_Input/phase', 'Channel_Input/trim']);
+    assert.ok(Object.values(d.params).every(p => p.readOnly && p.section === 'input'));
+    assert.deepEqual([d.params['Channel_Input/analog_gain'].min, d.params['Channel_Input/analog_gain'].max], [-3, 60], 'the preamp\'s own range');
+    assert.deepEqual(d.values, { 'Channel_Input/gain_mode': 0, 'Channel_Input/analog_gain': 30, 'Channel_Input/phantom': 1, 'Channel_Input/phase': 0, 'Channel_Input/trim': -2.5 });
+
+    // 48V switched off on LV1: the open panel follows, and so do plugins
+    a.got.length = 0;
+    fake.notifyAll('/Notify/PhantomState', [0, 0, 0, 0, 1]);
+    assert.ok(await until(() => a.got.some(j => j.address === '/Input_Channels/1/Channel_Input/phantom' && j.args[0] === 0)));
+    assert.equal(server.getPhantom()[1], false);
+    assert.ok(!a.got.some(j => j.type === 'channel-detail'), 'the same controls: only the new values');
+    // Repatched to a digital input: the panel is sent again, without 48V
+    a.got.length = 0;
+    fake.notifyAll('/Notify/RangePRGain', [0, 0, 0, 0, 0, 0.001]);
+    fake.notifyAll('/Notify/PhantomState', [0, 0, 0, 0, 0]);
+    assert.ok(await until(() => a.got.some(j => j.type === 'channel-detail')));
+    assert.equal(a.last(j => j.type === 'channel-detail').params['Channel_Input/phantom'], undefined);
+    // The panel can't change LV1\'s preamp
+    const before = fake.received.length;
+    a.send(JSON.stringify({ type: 'console-param', ch: 1, path: 'Channel_Input/phantom', value: 1 }));
+    await wait(150);
+    assert.equal(fake.received.length, before, 'nothing went to LV1');
+    // A channel LV1 hasn\'t reported a preamp for says so
+    a.got.length = 0;
+    a.send(JSON.stringify({ type: 'request-channel-detail', ch: 4 }));
+    assert.ok(await until(() => a.got.some(j => j.type === 'channel-detail')));
+    assert.deepEqual(a.last(j => j.type === 'channel-detail').params, {});
+    assert.match(a.last(j => j.type === 'channel-detail').note, /hasn’t reported a preamp/);
+    // A channel past LV1's count is answered too (the panel never waits)
+    a.got.length = 0;
+    a.send(JSON.stringify({ type: 'request-channel-detail', ch: 99 }));
+    assert.ok(await until(() => a.got.some(j => j.type === 'channel-detail' && j.ch === 99)));
+    assert.match(a.last(j => j.type === 'channel-detail').note, /hasn’t reported this channel/);
+    // Closed: that channel's preamp changes stop coming to this screen
+    a.send(JSON.stringify({ type: 'request-channel-detail', ch: 1 }));
+    assert.ok(await until(() => a.got.some(j => j.type === 'channel-detail' && j.ch === 1)));
+    a.send(JSON.stringify({ type: 'close-channel-detail' }));
+    await wait(100);
+    a.got.length = 0;
+    // Put KICK back for the rest (with the panel closed, nothing about it is pushed)
+    fake.notifyAll('/Notify/RangePRGain', [0, 0, 0, -3, 60, 1]);
+    fake.notifyAll('/Notify/PhantomState', [0, 0, 0, 1, 1]);
+    await wait(250);
+    assert.equal(a.got.some(j => j.type === 'channel-detail' || /^\/Input_Channels\/1\/Channel_Input\/(analog_gain|phantom|trim|phase|gain_mode)$/.test(j.address || '')), false, 'nothing pushed for a closed panel');
   });
 
   await t.test('a phone reads a mix as LV1 has it', async () => {
@@ -243,10 +306,10 @@ test('LV1 backend end to end', async (t) => {
     assert.ok(await until(() => fake.state.on['2:0'] === false));
   });
 
-  await t.test('the Console Controller gets LV1\'s DCAs as control groups, and no processing panel', () => {
+  await t.test('the Console Controller gets LV1\'s DCAs as control groups, and a preamp-only channel panel', () => {
     const config = showConfig;
     assert.deepEqual(config.controlGroups, [{ channel: 1, label: 'DRUM DCA' }, { channel: 2, label: 'VOX DCA' }]);
-    assert.equal(config.channelProcessing, false);
+    assert.equal(config.channelProcessing, 'preamp');
   });
 
   await t.test('the Console Controller opens showing LV1\'s faders and mutes', async () => {
@@ -293,12 +356,6 @@ test('LV1 backend end to end', async (t) => {
     assert.ok(await until(() => a.got.some(j => j.type === 'aux-relabeled' && j.aux === 2 && j.label === 'VOX 1')));
     fake.notifyAll('/Notify/Track/Name', [12, 1, 'VOCALS', true]);
     assert.ok(await until(() => a.got.some(j => j.address === '/Control_Groups/2/name' && j.args[0] === 'VOCALS')), 'a DCA renamed on LV1');
-  });
-
-  await t.test('the processing panel is told there\'s nothing to show', async () => {
-    a.got.length = 0;
-    a.send(JSON.stringify({ type: 'request-channel-detail', ch: 1, section: 'input' }));
-    assert.ok(await until(() => a.got.some(j => j.type === 'channel-detail' && j.unsupported === true)));
   });
 
   await t.test('a scene change on LV1 tells the phones and lays the saved Ear Scene over it', async () => {

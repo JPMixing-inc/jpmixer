@@ -93,6 +93,7 @@ const inputNames = new Map();   // channel (1-based) -> name from LV1
 // "type:n" (n from 1) -> { gain, mute, solo }
 const tracks = new Map();
 let dcas = [];                  // DCA names by number - 1 (JPMixer's control groups)
+const getControlGroups = () => dcas.map((name, i) => ({ channel: i + 1, label: name || `DCA ${i + 1}` })); // also for plugins
 // The Console Controller's addresses for each LV1 track type it shows
 // LV1's mixes in its own order: JPMixer's aux N is the Nth, and that
 // position is how LV1 addresses its sends. Each is an aux bus or a
@@ -119,6 +120,14 @@ const pendingReleases = new Map();
 // not just the last: during a drag LV1 confirms earlier values after
 // newer ones went out, and passing those on put faders back where they'd been.
 const recentWrites = new Map();
+
+// Each input's preamp as LV1 reports it, in its opening state and the moment
+// it changes: input channel (1-based) -> { 0: side, 1: side } where side 0 is
+// a mono input or the left of a stereo one, and each side is { phantom,
+// phantomOk, gain, min, max, local, localOk, phase, phaseOk, trim }. *Ok is
+// LV1 saying the control applies (no preamp: no 48V). Shown read-only on the
+// Console Controller's channel panel; 48V also goes to plugins.
+const preamps = new Map();
 
 const levelKey = (ch, aux) => `${ch}:${aux}`;
 // LV1 reports its own counts once connected; Settings' are the fallback
@@ -173,8 +182,8 @@ function buildConfig(extra = {}) {
     config: {
       channels: shared.buildChannelList(chCount(), serverCfg, i => inputNames.get(i)),
       aux: auxilaries,
-      controlGroups: dcas.map((name, i) => ({ channel: i + 1, label: name || `DCA ${i + 1}` })),
-      channelProcessing: false, // the Console Controller's EQ/dynamics panel is DiGiCo-only
+      controlGroups: getControlGroups(),
+      channelProcessing: 'preamp', // the Console Controller's channel panel shows LV1's preamps, read-only
       snapshot: currentScene || '—',
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
       earScenes: serverCfg.performerEarScenes !== false,
@@ -367,6 +376,7 @@ function onLv1Message(m) {
       inputNames.clear();
       for (const t of inputs) inputNames.set(t.index + 1, t.name);
       inputCount = inputs.length;
+      preamps.clear(); // the new show's preamps follow
       tracks.clear();
       for (const t of all) tracks.set(`${t.type}:${t.index + 1}`, { gain: t.gain, mute: t.mute, solo: false, stereo: t.stereo });
       dcas = [];
@@ -501,8 +511,99 @@ function onLv1Message(m) {
       setTimeout(() => { if (currentScene === name) { applySceneByName(name); requestAllSends(); } }, 300);
       return;
     }
+    case '/Notify/PhantomState': case '/Notify/PhaseState': case '/Notify/LocalGainState':
+    case '/Notify/TrackInGain': case '/Notify/TrackTrim': case '/Notify/RangePRGain':
+      onPreampMessage(m.address, a);
+      return;
     default:
   }
+}
+
+// Preamp messages all start [track type, index, side]; only inputs are kept
+function preampSide(a) {
+  const [type, index, side] = a;
+  if (type !== P.TRACK.INPUT || !Number.isInteger(index) || index < 0 || index >= 512 || (side !== 0 && side !== 1)) return null;
+  const ch = index + 1;
+  if (!preamps.has(ch)) preamps.set(ch, {});
+  const p = preamps.get(ch);
+  return { ch, side: p[side] || (p[side] = {}) };
+}
+const flag = (v) => v === 1 || v === true;
+function onPreampMessage(address, a) {
+  const x = preampSide(a);
+  if (!x) return;
+  const s = x.side, v = a[3];
+  // The trailing "applies" flag isn't in every message (the opening state of trim and gain leaves it out)
+  const ok = a.length < 5 || flag(a[4]);
+  switch (address) {
+    case '/Notify/PhantomState':   s.phantom = flag(v); s.phantomOk = ok; break;
+    case '/Notify/PhaseState':     s.phase = flag(v); s.phaseOk = ok; break;
+    case '/Notify/LocalGainState': s.local = flag(v); s.localOk = ok; break;
+    case '/Notify/TrackInGain':    if (Number.isFinite(v)) s.gain = v; break;
+    case '/Notify/TrackTrim':      if (Number.isFinite(v)) s.trim = v; break;
+    case '/Notify/RangePRGain':    if (Number.isFinite(v) && Number.isFinite(a[4])) { s.min = v; s.max = a[4]; } break;
+    default: return;
+  }
+  preampChanged(x.ch);
+}
+
+// What the channel panel shows for an input: the controls LV1 says it has,
+// read-only, in the Console Controller's own paths (see console-channel.js)
+function preampDetail(ch) {
+  const p = preamps.get(ch) || {};
+  const s = p[0] || {};
+  const params = {}, values = {};
+  const hasPreamp = Number.isFinite(s.min) && Number.isFinite(s.max) && s.max > s.min;
+  if (s.localOk) {
+    params['Channel_Input/gain_mode'] = { kind: 'enum', values: [0, 1], names: ['Preamp', 'Local'], label: 'Gain from', section: 'input', readOnly: true };
+    values['Channel_Input/gain_mode'] = s.local ? 1 : 0;
+  }
+  if ((hasPreamp || s.local) && Number.isFinite(s.gain)) {
+    params['Channel_Input/analog_gain'] = { kind: 'num', min: hasPreamp ? s.min : -3, max: hasPreamp ? s.max : 60, unit: 'dB', label: s.local ? 'Local gain' : 'Preamp gain', section: 'input', readOnly: true };
+    values['Channel_Input/analog_gain'] = s.gain;
+  }
+  if (s.phantomOk) {
+    params['Channel_Input/phantom'] = { kind: 'bool', label: '48V', section: 'input', readOnly: true };
+    values['Channel_Input/phantom'] = (s.phantom || (p[1] && p[1].phantomOk && p[1].phantom)) ? 1 : 0;
+  }
+  if (s.phaseOk) {
+    params['Channel_Input/phase'] = { kind: 'bool', label: 'Phase Ø', section: 'input', readOnly: true };
+    values['Channel_Input/phase'] = s.phase ? 1 : 0;
+  }
+  if (Number.isFinite(s.trim)) {
+    params['Channel_Input/trim'] = { kind: 'num', min: -24, max: 24, unit: 'dB', label: 'Trim', section: 'input', readOnly: true };
+    values['Channel_Input/trim'] = s.trim;
+  }
+  const note = !Object.keys(params).length
+    ? 'LV1 hasn’t reported a preamp for this channel. Its input may not be a stage box mic input.'
+    : `From LV1${p[1] ? ' (left side of this stereo channel)' : ''}. Change these on LV1 itself.`;
+  return { type: 'channel-detail', ch, params, values, note, readOnly: true };
+}
+// Pages with this channel's panel open get its preamp as it changes: the
+// whole panel when what it has changed (a repatch), else the new values
+const preampTimers = new Map();
+function preampChanged(ch) {
+  if (preampTimers.has(ch)) return;
+  preampTimers.set(ch, setTimeout(() => {
+    preampTimers.delete(ch);
+    const detail = preampDetail(ch);
+    const shape = JSON.stringify(detail.params) + detail.note;
+    for (const conn of connections) {
+      if (conn._detailCh !== ch || conn.readyState !== WebSocket.OPEN) continue;
+      if (conn._detailShape !== shape) { conn._detailShape = shape; conn.send(JSON.stringify(detail)); }
+      for (const [path, v] of Object.entries(detail.values)) conn.send(JSON.stringify({ address: `/Input_Channels/${ch}/${path}`, args: [v] }));
+    }
+  }, 60));
+}
+// 48V per input for plugins, once LV1 has reported it: { "5": true, … }.
+// A stereo input's is on if either side is.
+function getPhantom() {
+  const out = {};
+  for (const [ch, p] of preamps) {
+    const sides = [p[0], p[1]].filter(s => s && s.phantomOk && typeof s.phantom === 'boolean');
+    if (sides.length) out[String(ch)] = sides.some(s => s.phantom);
+  }
+  return out;
 }
 
 function trackState(type, n) {
@@ -600,7 +701,9 @@ function resetState() {
   currentScene = null;
   sceneList = []; sceneIndex = null;
   inputNames.clear(); mixes.length = 0; inputCount = 0;
-  tracks.clear(); dcas = [];
+  tracks.clear(); dcas = []; preamps.clear();
+  for (const t of preampTimers.values()) clearTimeout(t);
+  preampTimers.clear();
   levelCache.clear(); panCache.clear(); onCache.clear();
   silencedSends.clear(); pendingReleases.clear(); recentWrites.clear();
   pacer.clear();
@@ -764,9 +867,22 @@ function start(cfg) {
       if (msg.type === 'cg-mute')       { consoleWrite(ws, 'cg', msg.cg, 'mute', msg.muted); return; }
       if (msg.type === 'cg-solo')       { consoleWrite(ws, 'cg', msg.cg, 'solo', msg.soloed); return; }
       if (msg.type === 'request-channel-detail') {
-        try { ws.send(JSON.stringify({ type: 'channel-detail', ch: msg.ch, params: {}, values: {}, unsupported: true })); } catch (_) {}
+        const ch = parseInt(msg.ch, 10);
+        // Always answered, so the panel never waits: a channel LV1 hasn't reported has nothing to show
+        if (!(ch >= 1 && ch <= chCount())) {
+          try { ws.send(JSON.stringify({ type: 'channel-detail', ch: msg.ch, params: {}, values: {}, readOnly: true, note: 'LV1 hasn’t reported this channel.' })); } catch (_) {}
+          return;
+        }
+        const detail = preampDetail(ch);
+        ws._detailCh = ch;
+        ws._detailShape = JSON.stringify(detail.params) + detail.note;
+        try { ws.send(JSON.stringify(detail)); } catch (_) {}
         return;
       }
+      // The panel was closed: no more of that channel's preamp changes to this screen
+      if (msg.type === 'close-channel-detail') { ws._detailCh = null; return; }
+      // Its preamp is LV1's to change: nothing from the panel goes to LV1
+      if (msg.type === 'console-param') return;
 
       // Raw OSC-address-shaped messages from mixer.js (send_level / send_pan,
       // and the same addresses ending /? when a phone picks a mix)
@@ -918,7 +1034,7 @@ function oscLogRecordsFolder() { return null; }
 // After Settings merges device groups — see shared-handlers.js
 function pushDevicePresets(deviceId) { shared.pushDevicePresets(connections, deviceId); }
 
-module.exports = { getConnectedDevicesInfo, pushDevicePresets,
+module.exports = { getConnectedDevicesInfo, pushDevicePresets, getControlGroups, getPhantom,
   start, stop, applyConfigLive, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,

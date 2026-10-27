@@ -11,6 +11,7 @@
 //   jp.status(text, level) the line under it in Settings ('ok' | 'warn' | 'error')
 //   jp.console.get()       Promise of the console's names; .onChange(fn)
 //   jp.planningCenter.get() Promise of the plan, live and next; .onChange(fn)
+//   jp.page.handle(name, fn)  answers its page's call `name` ("page" permission)
 //   jp.onStop(fn)          runs before the plugin is stopped
 // Anything it logs (console.log) shows in its log in Settings. An error it
 // doesn't catch stops it; plugins.js starts it again.
@@ -32,6 +33,7 @@ const send = (msg) => { try { if (process.connected) process.send(msg); } catch 
 let plugin = null;          // jp.plugin
 let permissions = [];
 const stopHandlers = [];
+const pageHandlers = new Map(); // call name -> fn(body)
 const listeners = { console: new Set(), planningCenter: new Set() };
 const pending = new Map();  // request id -> { resolve, reject, timer }
 let nextId = 1;
@@ -93,6 +95,15 @@ function makeApi(info, settings) {
     console: Object.freeze(source('console', 'console', 'jp.console')),
     planningCenter: Object.freeze(source('planningCenter', 'planningCenter', 'jp.planningCenter')),
     onStop(fn) { if (typeof fn === 'function') stopHandlers.push(fn); },
+    page: Object.freeze({
+      // What the plugin's page gets back from a call: fn(body) → any JSON
+      handle(name, fn) {
+        needs('page', 'jp.page.handle()');
+        if (!/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(String(name))) throw new TypeError('jp.page.handle() needs a name of letters, numbers, _ and -.');
+        if (typeof fn !== 'function') throw new TypeError('jp.page.handle() needs a function.');
+        pageHandlers.set(String(name), fn);
+      },
+    }),
   });
 }
 
@@ -116,6 +127,14 @@ process.on('uncaughtException', fail);
 process.on('unhandledRejection', fail);
 process.on('disconnect', () => process.exit(0)); // JPMixer quit
 
+// Page calls wait until the plugin has started (its main function has
+// returned, or 2 s have passed: a plugin may keep running in it), so one that
+// arrives while it's still setting up isn't told the plugin doesn't answer
+let started = false;
+const startWaiters = [];
+const whenStarted = () => (started ? Promise.resolve() : new Promise((resolve) => startWaiters.push(resolve)));
+function markStarted() { if (started) return; started = true; for (const resolve of startWaiters.splice(0)) resolve(); }
+
 process.on('message', (msg) => {
   if (!msg || typeof msg !== 'object') return;
   if (msg.type === 'start' && !plugin) {
@@ -126,7 +145,8 @@ process.on('message', (msg) => {
     const fn = typeof main === 'function' ? main : main && typeof main.default === 'function' ? main.default : null;
     if (!fn) { fail(new Error(`${plugin.id}: its main file must export a function, like module.exports = (jp) => { … }.`)); return; }
     send({ type: 'status', level: 'ok', text: 'Running' });
-    try { Promise.resolve(fn(makeApi(plugin, msg.settings || {}))).catch(fail); } catch (e) { fail(e); }
+    setTimeout(markStarted, 2000).unref();
+    try { Promise.resolve(fn(makeApi(plugin, msg.settings || {}))).catch(fail).finally(markStarted); } catch (e) { markStarted(); fail(e); }
     return;
   }
   if (msg.type === 'reply') {
@@ -141,6 +161,18 @@ process.on('message', (msg) => {
     for (const fn of listeners[msg.type]) {
       try { Promise.resolve(fn(msg.data)).catch(fail); } catch (e) { fail(e); }
     }
+    return;
+  }
+  if (msg.type === 'page-call') {
+    const reply = (out) => send({ type: 'page-reply', id: msg.id, ...out });
+    // An error thrown here goes back to the page, and doesn't stop the plugin
+    whenStarted().then(() => {
+      const fn = pageHandlers.get(msg.name);
+      if (!fn) throw Object.assign(new Error(`This plugin doesn’t answer "${String(msg.name)}".`), { quiet: true });
+      return fn(msg.body);
+    })
+      .then((result) => { try { reply({ result: result === undefined ? null : JSON.parse(JSON.stringify(result)) }); } catch (e) { reply({ error: 'The plugin’s answer wasn’t JSON.' }); } })
+      .catch((e) => { if (!(e && e.quiet)) console.error((e && e.stack) || e); reply({ error: (e && e.message) || String(e) }); });
     return;
   }
   if (msg.type === 'stop') stop(0);

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Patch · JPMixer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-left">
+      <a class="back" href="/home.html">‹ Home pages</a>
+      <h1>Patch</h1>
+      <span class="console" id="console" role="status"></span>
+    </div>
+    <div class="top-right">
+      <span class="save" id="saveState" role="status" aria-live="polite"></span>
+      <button type="button" class="btn" id="importLv1" title="Read the stage boxes and patch from a session saved on LV1 (.emo) or a DiGiCo (.ses)">Import session</button>
+      <button type="button" class="btn primary" id="addBox">Add stage box</button>
+    </div>
+  </header>
+  <p class="banner" id="banner" role="status" hidden></p>
+  <nav class="tabs" id="tabs" aria-label="Stage boxes"></nav>
+  <main id="main" aria-live="off"></main>
+
+  <dialog id="boxDialog" aria-labelledby="boxDialogTitle">
+    <form method="dialog" id="boxForm">
+      <h2 id="boxDialogTitle">Add a stage box</h2>
+      <label>Stage box<select id="boxModel" required></select></label>
+      <p class="about" id="boxAbout"></p>
+      <div class="two">
+        <label>Name<input id="boxName" maxlength="40" placeholder="Stage left" autocomplete="off"></label>
+        <label>Where it is<input id="boxLocation" maxlength="40" placeholder="Behind the drum riser" autocomplete="off"></label>
+      </div>
+      <div id="boxSetup" class="setup"></div>
+      <p class="about" id="boxKeepNote" hidden>Names and patches stay on the sockets that are still there.</p>
+      <div class="actions">
+        <button type="button" class="btn" id="boxCancel">Cancel</button>
+        <button type="submit" class="btn primary" id="boxSave">Add</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="importDialog" aria-labelledby="importTitle">
+    <form method="dialog" id="importForm">
+      <h2 id="importTitle">Import a session</h2>
+      <p class="about" id="importAbout"></p>
+      <div class="setup" id="importChoices"></div>
+      <ul class="import-list" id="importList"></ul>
+      <p class="about" id="importLeft"></p>
+      <label class="check" id="importReplaceRow"><input type="checkbox" id="importReplace"><span>Remove the other stage boxes on this page</span></label>
+      <p class="about" id="importNote"></p>
+      <div class="actions">
+        <button type="button" class="btn" id="importCancel">Cancel</button>
+        <button type="submit" class="btn primary" id="importGo">Import</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="tip" id="tip" role="tooltip" hidden></div>
+  <script src="boxes.js"></script>
+  <script src="sqlite.js"></script>
+  <script src="lv1-session.js"></script>
+  <script src="digico-session.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

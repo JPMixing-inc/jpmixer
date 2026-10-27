@@ -138,6 +138,8 @@ function mountFoh(app, status) {
       return true;
     },
   });
+  // Plugins' own pages, sandboxed, and their calls to their plugin (plugins.js)
+  require('./plugins').mountPluginPages(app);
   // Plugins' cards (plugins.js). The page loads the list as a script before
   // foh-layout.js, so the cards are there to arrange like any other; what's
   // on them needs FOH's access code.
@@ -204,7 +206,7 @@ function mountFoh(app, status) {
       }
       return { id, page: role.page, label: role.label, href: `/${id}.html`, configured, person, locked };
     }));
-    res.json({ ok: true, pages });
+    res.json({ ok: true, pages, plugins: require('./plugins').pages() }); // plugins' own pages, listed after the Home pages
   });
   app.get('/role-data', async (req, res) => {
     const roleId = String(req.query.role || '');

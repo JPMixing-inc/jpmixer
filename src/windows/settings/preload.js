@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('jpm', {
   pluginsImport:          (kind) => ipcRenderer.invoke('plugins-import', kind),
   pluginsImportPath:      (file) => ipcRenderer.invoke('plugins-import-path', file),
   pluginsOpenSubmit:      ()   => ipcRenderer.invoke('plugins-open-submit'),
+  pluginsOpenPage:        (id) => ipcRenderer.invoke('plugins-open-page', id),
   onPluginsChanged:       (cb) => ipcRenderer.on('plugins-changed', () => cb()),
   onPluginsShow:          (cb) => ipcRenderer.on('plugins-show', () => cb()),
   onPluginsResult:        (cb) => ipcRenderer.on('plugins-result', (_, result) => cb(result)),

@@ -1098,14 +1098,18 @@ function consoleForPlugins() {
   };
   const count = (v) => (Number.isInteger(v) && v > 0 ? Math.min(v, 256) : 0);
   const channels = count((running && server.getChannelCount()) || cfg.channels);
+  // 48V as the desk last reported it (DiGiCo, LV1); left out for a channel it hasn't
+  const phantom = running && server.getPhantom ? server.getPhantom() || {} : {};
   const mixes = count((running && server.getAuxCount()) || cfg.auxes);
   return {
     type,
     demo: !!cfg.demoMode,
     running,
     connected: !!(running && server.isConsoleConnected && server.isConsoleConnected()),
-    channels: Array.from({ length: channels }, (_, i) => ({ number: i + 1, name: nameOf('channels', cfg.channelOverrides, i + 1) })),
+    channels: Array.from({ length: channels }, (_, i) => ({ number: i + 1, name: nameOf('channels', cfg.channelOverrides, i + 1), ...(typeof phantom[String(i + 1)] === 'boolean' ? { phantom: phantom[String(i + 1)] } : {}) })),
     mixes: Array.from({ length: mixes }, (_, i) => ({ number: i + 1, name: nameOf('auxes', cfg.auxOverrides, i + 1) })),
+    // Control groups (DCAs on dLive and LV1), as the console names them; none while the server is off
+    groups: running && server.getControlGroups ? (server.getControlGroups() || []).map((g) => ({ number: g.channel, name: String(g.label || '') })) : [],
   };
 }
 const pluginProviders = {
@@ -1218,6 +1222,14 @@ ipcMain.handle('plugins-remove', async (_e, folder) => {
 
 // How to make a plugin (by hand or with an AI assistant): docs/PLUGINS.md on GitHub
 ipcMain.handle('plugins-open-guide', () => { shell.openExternal('https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md'); return { ok: true }; });
+// A plugin's own page (plugins.js mountPluginPages), in the browser
+ipcMain.handle('plugins-open-page', (_e, id) => {
+  if (!serverRunning) return { ok: false, error: 'Start the server first (Get started).' };
+  const entry = plugins().pages().find((p) => p.id === id);
+  if (!entry) return { ok: false, error: 'Turn the plugin on and Save & Apply first.' };
+  shell.openExternal(`http://localhost:${config.get('serverPort') || 8080}${entry.href}`);
+  return { ok: true };
+});
 ipcMain.handle('plugins-open-submit', () => { shell.openExternal(require('./src/server/plugin-store').SUBMIT_URL); return { ok: true }; });
 // Only the https address its plugin.json gives (checked in plugins.js)
 ipcMain.handle('plugins-open-homepage', (_e, id) => {

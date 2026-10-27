@@ -178,6 +178,8 @@ function dcaCoord(baseN, dca)    { try { return P.coordinate(baseN, 'dca', dca);
 // as Settings' Control Groups count).
 const STRIP_PATH = { input: 'Input_Channels', aux: 'Aux_Outputs', cg: 'Control_Groups' };
 const dcaCount = () => Math.max(0, Math.min(24, Number.isInteger(serverCfg.groups) ? serverCfg.groups : 8));
+// The DCAs (JPMixer's control groups), by number, with their names (also for plugins)
+const getControlGroups = () => Array.from({ length: dcaCount() }, (_, i) => ({ channel: i + 1, label: nameCache.get(`dca:${i + 1}`) || `DCA ${i + 1}` }));
 const consoleState = new Map(); // "input:3" / "aux:2" / "cg:1" -> { gain, mute, solo }
 let consolePrimed = false;      // the console's faders/mutes have been asked for
 function stripCoord(baseN, kind, n) {
@@ -409,7 +411,7 @@ function buildConfig() {
     config: {
       channels,
       aux: auxilaries,
-      controlGroups: Array.from({ length: dcaCount() }, (_, i) => ({ channel: i + 1, label: nameCache.get(`dca:${i + 1}`) || `DCA ${i + 1}` })),
+      controlGroups: getControlGroups(),
       channelProcessing: false, // the Console Controller's EQ/dynamics panel is DiGiCo-only
       snapshot: currentSceneNumber != null ? String(currentSceneNumber) : '—',
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
@@ -1148,7 +1150,7 @@ function pushDevicePresets(deviceId) {
   shared.pushDevicePresets(connections, deviceId);
 }
 
-module.exports = { getConnectedDevicesInfo, pushDevicePresets,
+module.exports = { getConnectedDevicesInfo, pushDevicePresets, getControlGroups,
   start, stop, applyConfigLive, getChannelNames, getAuxNames, getChannelCount, getAuxCount,
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,

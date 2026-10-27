@@ -1,0 +1,17 @@
+# Patch
+
+An official JPMixer plugin: patch screens for your stage boxes.
+
+- **Your boxes:** add the stage boxes on your stage: DiGiCo racks (D-Rack, D2-Rack, DQ-Rack, MQ-Rack, SD-Rack, SD-MiNi, SD-Nano and the 4REA4 boxes), Waves SoundGrid boxes for eMotion LV1 (IONIC 16 and 24, DiGiGrid IOX and IOS), the back of the console itself (every current DiGiCo: Quantum 225, 338, 5, 7/SD7 and 852, SD5, SD9, SD10, SD11/SD11i, SD12/SD12-96, S21 and S31; and the LV1 Classic), or a generic box with any number of inputs and outputs. Racks with card slots are built from the cards you choose.
+- **Patching a socket:** tap or click a socket to name it and choose the console channel, control group or aux mix it's patched to. The lists use your console's own names. With a mouse, hover over a socket to see what's on it.
+- **Import a DiGiCo session:** choose a session saved on the console (`.ses`, tested with Quantum 225) and its patch comes in: the console's own I/O, drawn as the back of the console the session is from (or the one you choose in the preview), and the rack on Dante or MADI as the box you choose (a DQ-Rack by default, or A168D, D2-Rack and the others; as many as it takes), each socket named and patched to its channel or mix, and marked 48V where the session has 48V on. A DiGiCo session doesn't say which rack is on a port, so the preview asks; channels from other Dante devices, USB and Waves (a playback computer, a SoundGrid server) go on a playback box for each, one socket per channel, named for it, with a note saying which console channel it is ("On the console as Dante 35."); the preview can leave them off; anything past the racks is listed.
+- **Import an LV1 session:** choose a session saved on LV1 (`.emo`) and every stage box in it is added, drawn as it is, with each socket named and patched to the channel or mix LV1 has on it (stereo channels across two sockets, splits noted). Sockets with 48V on in the session are marked 48V. Importing again updates those boxes and keeps your own notes and 48V marks. The file is read in the page; nothing is sent anywhere. LV1's IONIC 16 and 24 and the LV1 Classic console's own I/O (its back, and the headphone output on its front edge) are drawn as themselves; other devices (DiGiGrid, MADI interfaces) come in as generic boxes their size.
+- **48V phantom power:** mark a mic input as needing 48V. On a DiGiCo (directly or through the iPad relay) and on LV1, JPMixer also hears each channel's 48V from the desk: a socket patched to a channel with 48V on lights up by itself, and choosing that channel marks the socket. A socket marked for 48V on a channel the desk has it off for is shown in yellow, with a warning. "48V from the desk" copies the desk's 48V into the patch, so the patch sheet shows it with the console off.
+- **Checks:** a channel patched from two sockets is marked in red.
+- **Views:** one tab per stage box, all boxes together, and a patch sheet to print or download as a spreadsheet (CSV).
+- **Lock the patch** in its settings to make it view-only during a service.
+- **FOH Home:** optionally, a summary card of how much is patched.
+
+Each box is drawn to scale from the maker's photos: zoom in and out, drag to move, or Expand one side to fill the window. The IONIC 24's back and the 4REA4 floor and wall boxes' sizes are approximate.
+
+Needs JPMixer 2.0.13 or later, with Allow plugins on (Settings → Integrations → Plugins). Open it from the Home pages list, or from its tab in Settings.

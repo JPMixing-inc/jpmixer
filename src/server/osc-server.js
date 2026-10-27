@@ -598,18 +598,7 @@ function buildConfig(extra) {
 
   const channels = shared.buildChannelList(chCount, serverCfg, i => cache.has(`/Input_Channels/${i}/Channel_Input/name`) ? cache.get(`/Input_Channels/${i}/Channel_Input/name`).args[0] : undefined);
 
-  const cgCount = cache.has('/Console/Control_Groups')
-    ? cache.get('/Console/Control_Groups').args[0]
-    : 8;
-  const controlGroups = [];
-  for (let i = 1; i <= cgCount; i++) {
-    const name = cache.has(`/Control_Groups/${i}/name`)
-      ? cache.get(`/Control_Groups/${i}/name`).args[0]
-      : cache.has(`/Control_Groups/${i}/Channel_Input/name`)
-        ? cache.get(`/Control_Groups/${i}/Channel_Input/name`).args[0]
-        : `CG ${i}`;
-    controlGroups.push({ channel: i, label: name });
-  }
+  const controlGroups = getControlGroups();
 
   return JSON.stringify({
     config: {
@@ -625,6 +614,23 @@ function buildConfig(extra) {
       ...extra
     }
   });
+}
+
+// The console's control groups, by number, with their names (also for plugins)
+function getControlGroups() {
+  const cgCount = cache.has('/Console/Control_Groups')
+    ? cache.get('/Console/Control_Groups').args[0]
+    : 8;
+  const controlGroups = [];
+  for (let i = 1; i <= cgCount; i++) {
+    const name = cache.has(`/Control_Groups/${i}/name`)
+      ? cache.get(`/Control_Groups/${i}/name`).args[0]
+      : cache.has(`/Control_Groups/${i}/Channel_Input/name`)
+        ? cache.get(`/Control_Groups/${i}/Channel_Input/name`).args[0]
+        : `CG ${i}`;
+    controlGroups.push({ channel: i, label: name });
+  }
+  return controlGroups;
 }
 
 // ── Cache ─────────────────────────────────────────────────────────────────
@@ -1009,21 +1015,26 @@ function primeCache() {
     ? cache.get('/Console/Aux_Outputs/modes').args.length
     : (serverCfg.auxes || 16);
 
-  let waiting = false; // something is still in flight — not finished yet
-  for (let aux = 1; aux <= auxCount; aux++) {
-    for (let ch = 1; ch <= chCount; ch++) {
-      for (const prop of ['send_level', 'send_pan']) {
-        const key = `/Input_Channels/${ch}/Aux_Send/${aux}/${prop}`;
-        if (cache.has(key)) continue;
-        const query = `${key}/?`;
-        if (queryInFlight(query)) { waiting = true; continue; }
-        const tries = primeAttempts.get(query) || 0;
-        if (tries >= PRIME_MAX_ATTEMPTS) continue; // the desk doesn't answer this one
-        primeAttempts.set(query, tries + 1);
-        queueDeskQueries([query]);
-        return;
+  // Every send level and pan (what the mixes need), then each channel's
+  // 48V (for the Patch plugin's 48V lights; the desk also pushes changes)
+  function* wanted() {
+    for (let aux = 1; aux <= auxCount; aux++) {
+      for (let ch = 1; ch <= chCount; ch++) {
+        for (const prop of ['send_level', 'send_pan']) yield `/Input_Channels/${ch}/Aux_Send/${aux}/${prop}`;
       }
     }
+    for (let ch = 1; ch <= chCount; ch++) yield `/Input_Channels/${ch}/Channel_Input/phantom`;
+  }
+  let waiting = false; // something is still in flight — not finished yet
+  for (const key of wanted()) {
+    if (cache.has(key)) continue;
+    const query = `${key}/?`;
+    if (queryInFlight(query)) { waiting = true; continue; }
+    const tries = primeAttempts.get(query) || 0;
+    if (tries >= PRIME_MAX_ATTEMPTS) continue; // the desk doesn't answer this one
+    primeAttempts.set(query, tries + 1);
+    queueDeskQueries([query]);
+    return;
   }
   if (waiting) return;
 
@@ -1641,10 +1652,12 @@ function startDemoMode() {
     Object.assign(demoProcessing, { [`EQ/eq_freq_${b}`]: f, [`EQ/eq_gain_${b}`]: 0, [`EQ/eq_Q_${b}`]: 0.71, [`EQ/dynamic_eq_on_${b}`]: 0,
       [`EQ/eq_thresh_${b}`]: -36, [`EQ/eq_ratio_${b}`]: 2, [`EQ/eq_attack_${b}`]: 0.01, [`EQ/eq_release_${b}`]: 0.3 });
   });
+  // 48V on a few channels (condensers, DIs), so it shows on the Patch page
+  const demoPhantom = new Set([3, 4, 7, 8, 12]);
   for (let ch = 1; ch <= chCount; ch++) {
     for (const [p, v] of Object.entries(demoProcessing)) {
       const addr = `/Input_Channels/${ch}/${p}`;
-      cache.set(addr, { address: addr, args: [v] });
+      cache.set(addr, { address: addr, args: [p === 'Channel_Input/phantom' && demoPhantom.has(ch) ? 1 : v] });
     }
   }
 
@@ -2076,6 +2089,20 @@ function getChannelNames() {
   return names;
 }
 
+// Each input channel's 48V as the desk last reported it (from a query, the
+// desk itself, or the iPad relay), for plugins: { "5": true, … }. A channel
+// the desk hasn't reported yet isn't listed.
+function getPhantom() {
+  const out = {};
+  // Each channel's key looked up (the cache holds thousands of send levels)
+  const count = Math.min(256, (cache.has('/Console/Input_Channels') ? cache.get('/Console/Input_Channels').args[0] : 0) || serverCfg.channels || 48);
+  for (let ch = 1; ch <= count; ch++) {
+    const val = cache.get(`/Input_Channels/${ch}/Channel_Input/phantom`);
+    if (val && val.args && val.args.length) out[String(ch)] = Number(val.args[0]) >= 0.5;
+  }
+  return out;
+}
+
 function getAuxNames() {
   const names = {};
   for (const [key, val] of cache.entries()) {
@@ -2123,4 +2150,4 @@ function pushDevicePresets(deviceId) {
 function getOscLog() { return oscLog; }
 function setOscTrafficCallback(cb) { onOscTraffic = cb; }
 
-module.exports = { getConnectedDevicesInfo, start, stop, applyConfigLive, getIpadStatus, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };
+module.exports = { getConnectedDevicesInfo, getControlGroups, getPhantom, start, stop, applyConfigLive, getIpadStatus, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };
