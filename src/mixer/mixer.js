@@ -1215,6 +1215,8 @@ function applyConfig(config) {
   channelConfig      = config.channels || [];
   allScenes          = config.scenes   || {};
   sceneRecallEnabled = !!config.sceneRecallEnabled;
+  // The console's Q range for the aux EQ (LV1: 0.05–6.5), else DiGiCo's 0.1–10
+  eqQRange           = Array.isArray(config.auxEqQ) && config.auxEqQ[0] > 0 && config.auxEqQ[1] > config.auxEqQ[0] ? config.auxEqQ : [0.1, 10];
   earScenesShown     = config.earScenes !== false;
   document.body.classList.toggle('no-ear-scenes', !earScenesShown);
   currentSnapshot    = config.snapshot || '—';
@@ -1741,12 +1743,20 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
   }
 
   // ── Touch ──────────────────────────────────────────────────────────────
-  let tStartX, tStartY, tLastX, tLastY, tDecided, tScrolling, tLastTap = 0, tStartValue = 0;
+  // Follows the one finger that started on this fader (by its identifier):
+  // e.touches[0] is the first finger anywhere on the screen, so a thumb
+  // resting on the iPad, or a second fader being moved, used to drive this one.
+  let tId = null, tStartX, tStartY, tLastX, tLastY, tDecided, tScrolling, tLastTap = 0, tStartValue = 0, tStartAt = 0;
+  const ownTouch = (list) => { for (const t of list) if (t.identifier === tId) return t; return null; };
 
   overlay.addEventListener('touchstart', e => {
-    const t      = e.touches[0];
+    // Another finger on a fader that's already held (if that finger is still down)
+    if (tId !== null && ownTouch(e.touches)) { e.preventDefault(); return; }
+    const t      = e.changedTouches[0];
+    tId = t.identifier;
     tStartX = tLastX = t.clientX;
     tStartY = tLastY = t.clientY;
+    tStartAt = Date.now();
 
     if (locked() && nearThumb(t.clientX, t.clientY)) showLockedHint();
     if (locked() || !nearThumb(t.clientX, t.clientY)) {
@@ -1761,7 +1771,8 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
   }, { passive: false });
 
   overlay.addEventListener('touchmove', e => {
-    const t  = e.touches[0];
+    const t  = ownTouch(e.changedTouches);
+    if (!t) return;
     const dx = Math.abs(t.clientX - tStartX);
     const dy = Math.abs(t.clientY - tStartY);
 
@@ -1782,22 +1793,31 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
     e.preventDefault();
   }, { passive: false });
 
-  overlay.addEventListener('touchend', () => {
+  overlay.addEventListener('touchend', e => {
+    if (!ownTouch(e.changedTouches)) return;
+    tId = null;
     if (!tScrolling) {
       slider.dispatchEvent(new Event('change', { bubbles: true }));
       releaseSlider(slider);
+      // Only a quick touch that never moved is a tap: two drags in a row
+      // (pulling a channel down in two flicks) used to count as a
+      // double-tap and put the fader at 0 dB
       const now = Date.now();
-      if (now - tLastTap < 300) onReset();
-      tLastTap = now;
-    }
+      const tap = !tDecided && now - tStartAt < 300;
+      if (tap && now - tLastTap < 300) { onReset(); tLastTap = 0; }
+      else tLastTap = tap ? now : 0;
+    } else tLastTap = 0;
   });
 
   // A cancelled touch (e.g. a system gesture took over) is not a tap and
   // must not leave the fader held.
-  overlay.addEventListener('touchcancel', () => {
+  overlay.addEventListener('touchcancel', e => {
+    if (!ownTouch(e.changedTouches)) return;
+    tId = null;
     if (!tScrolling) releaseSlider(slider);
     tDecided = true;
     tScrolling = true;
+    tLastTap = 0;
   });
 
   // ── Mouse (desktop) ────────────────────────────────────────────────────
@@ -1818,7 +1838,8 @@ function addFaderOverlay(slider, onReset, isLockable, scrollSelector) {
     document.addEventListener('mouseup',   onUp);
   });
 
-  overlay.addEventListener('dblclick', () => { if (!locked()) onReset(); });
+  // On the thumb only, like a drag: a double tap beside it isn't a reset
+  overlay.addEventListener('dblclick', e => { if (!locked() && nearThumb(e.clientX, e.clientY)) onReset(); });
 }
 
 // Double-tap puts the send at unity (0 dB), not off
@@ -1938,7 +1959,7 @@ const PLOT_H = VB_H - VB_PAD_T - VB_PAD_B;
 const EQ_BAND_COLORS = ['#ff6b6b','#ffa94d','#ffd43b','#69db7c','#4dabf7','#748ffc','#da77f2','#f783ac'];
 
 let eqIn    = true;
-let eqBands = {};        // { bandNum: { gain, freq, q } }
+let eqBands = {};        // { bandNum: { gain, freq, q, on?, shape? } } — on and shape only from LV1
 let eqActive = null;     // currently selected band number
 let eqDragging = null;
 
@@ -1957,13 +1978,26 @@ function bandGainAtFreq(f, fc, gainDb, Q) {
   const octaves = Math.log2(f / fc);
   return gainDb * Math.exp(-(octaves * octaves) / (2 * sigma * sigma));
 }
+// LV1's band shapes (a band with none is a bell). A pass band's gain does nothing.
+const isPassBand = (band) => band.shape === 'Hi-Pass' || band.shape === 'Low-Pass';
+function shapedGainAtFreq(f, band) {
+  if (band.on === false) return 0;
+  const fc = band.freq, ratio = f / fc;
+  switch (band.shape) {
+    case 'Low-Shelf': case 'Low-RShelv': return band.gain / (1 + ratio * ratio);
+    case 'Hi-Shelf': case 'Hi-RShelv': return band.gain / (1 + 1 / (ratio * ratio));
+    case 'Hi-Pass': return 10 * Math.log10(1 / (1 + Math.pow(1 / ratio, 4))); // 12 dB/octave
+    case 'Low-Pass': return 10 * Math.log10(1 / (1 + Math.pow(ratio, 4)));
+    default: return bandGainAtFreq(f, fc, band.gain, band.q);
+  }
+}
 
 function totalGainAtFreq(f) {
   let total = 0;
   for (const band of Object.values(eqBands)) {
-    if (band.gain !== undefined && band.freq) total += bandGainAtFreq(f, band.freq, band.gain, band.q);
+    if (band.gain !== undefined && band.freq) total += shapedGainAtFreq(f, band);
   }
-  return total;
+  return Math.max(EQ_DB_MIN, total);
 }
 
 function getTint(opacity) {
@@ -2042,11 +2076,11 @@ function renderEQCurve() {
   for (const [bStr, band] of Object.entries(eqBands)) {
     if (band.gain === undefined || !band.freq) continue;
     const b = parseInt(bStr);
-    const x = freqToX(band.freq), y = gainToY(band.gain);
+    const x = freqToX(band.freq), y = gainToY(isPassBand(band) ? 0 : band.gain);
     const color = EQ_BAND_COLORS[(b-1) % EQ_BAND_COLORS.length];
     const isActive = eqActive === b;
     const circ = document.createElementNS(ns, 'circle');
-    Object.entries({ cx:x, cy:y, r:isActive?9:7, fill:color, stroke: isActive?'#fff':color, 'stroke-width': isActive?2:1, opacity: eqIn?1:0.4 }).forEach(([k,v]) => circ.setAttribute(k,v));
+    Object.entries({ cx:x, cy:y, r:isActive?9:7, fill:color, stroke: isActive?'#fff':color, 'stroke-width': isActive?2:1, opacity: eqIn && band.on !== false ? 1 : 0.4 }).forEach(([k,v]) => circ.setAttribute(k,v));
     g.appendChild(circ);
     const lbl = document.createElementNS(ns, 'text');
     Object.entries({ x, y:y+3, 'text-anchor':'middle', 'font-size':'7', 'font-weight':'bold', fill:'#000' }).forEach(([k,v]) => lbl.setAttribute(k,v));
@@ -2059,8 +2093,9 @@ function renderEQCurve() {
 // Log-scale helpers for freq and Q sliders (0-1000 range maps to log domain)
 function freqToSlider(f)   { return Math.round(Math.log10(f / EQ_FREQ_MIN) / Math.log10(EQ_FREQ_MAX / EQ_FREQ_MIN) * 1000); }
 function sliderToFreq(v)   { return EQ_FREQ_MIN * Math.pow(EQ_FREQ_MAX / EQ_FREQ_MIN, v / 1000); }
-function qToSlider(q)      { return Math.round(Math.log10(Math.max(0.1, q) / 0.1) / Math.log10(100) * 1000); }
-function sliderToQ(v)      { return Math.max(0.1, 0.1 * Math.pow(100, v / 1000)); }
+let eqQRange = [0.1, 10]; // [min, max]: from the console's config (applyConfig)
+function qToSlider(q)      { const [lo, hi] = eqQRange; return Math.round(Math.log10(Math.min(hi, Math.max(lo, q)) / lo) / Math.log10(hi / lo) * 1000); }
+function sliderToQ(v)      { const [lo, hi] = eqQRange; return lo * Math.pow(hi / lo, v / 1000); }
 function fmtFreq(f)        { return f >= 1000 ? (f / 1000).toFixed(1) + 'k' : Math.round(f) + ''; }
 function fmtGain(db)       { return (db >= 0 ? '+' : '') + db.toFixed(1); }
 function fmtQ(q)           { return q.toFixed(2); }
@@ -2084,7 +2119,10 @@ function updateEQBandInfo() {
 
   document.getElementById('eqCtrlBadge').style.background = color;
   document.getElementById('eqCtrlBadge').textContent = `B${eqActive}`;
-  document.getElementById('eqCtrlTitle').textContent  = `Band ${eqActive}`;
+  // LV1 says each band's shape and whether it's on (changed on LV1)
+  const shape = band.shape && band.shape !== 'Bell' ? ` · ${band.shape.replace('RShelv', 'Res. Shelf')}` : '';
+  document.getElementById('eqCtrlTitle').textContent  = `Band ${eqActive}${shape}${band.on === false ? ' · Off' : ''}`;
+  document.getElementById('eqCtrlGain').disabled = isPassBand(band);
 
   // Set slider positions without triggering input handlers
   document.getElementById('eqCtrlFreq').value = freqToSlider(band.freq ?? 1000);
@@ -2150,7 +2188,7 @@ function findNearestBand(x, y) {
   let nearest = null, minDist = 20;
   for (const [bStr, band] of Object.entries(eqBands)) {
     if (band.gain === undefined || !band.freq) continue;
-    const d = Math.hypot(x - freqToX(band.freq), y - gainToY(band.gain));
+    const d = Math.hypot(x - freqToX(band.freq), y - gainToY(isPassBand(band) ? 0 : band.gain)); // where its handle is drawn
     if (d < minDist) { minDist = d; nearest = parseInt(bStr); }
   }
   return nearest;
@@ -2165,6 +2203,8 @@ function applyEQData(data) {
     const q    = data[`eq_Q_${b}`];
     if (gain !== undefined || freq !== undefined) {
       eqBands[b] = { gain: gain ?? 0, freq: freq ?? 1000, q: q ?? 1.0 };
+      if (data[`eq_on_${b}`] !== undefined) eqBands[b].on = !!data[`eq_on_${b}`];
+      if (typeof data[`eq_shape_${b}`] === 'string') eqBands[b].shape = data[`eq_shape_${b}`];
     }
   }
 }
@@ -2177,6 +2217,10 @@ function applyEQParam(param, value) {
   if (mFreq) { const b = parseInt(mFreq[1]); if (!eqBands[b]) eqBands[b] = { gain:0, freq:1000, q:1 }; eqBands[b].freq = value; }
   if (mQ)    { const b = parseInt(mQ[1]);    if (!eqBands[b]) eqBands[b] = { gain:0, freq:1000, q:1 }; eqBands[b].q    = value; }
   if (param === 'eq_in') { eqIn = !!value; }
+  // LV1 can say a band's on/off or shape before its gain and frequency
+  const mOn = param.match(/^eq_on_(\d+)$/), mShape = param.match(/^eq_shape_(\d+)$/);
+  if (mOn) { const b = parseInt(mOn[1]); if (!eqBands[b]) eqBands[b] = { gain:0, freq:1000, q:1 }; eqBands[b].on = !!value; }
+  if (mShape && typeof value === 'string') { const b = parseInt(mShape[1]); if (!eqBands[b]) eqBands[b] = { gain:0, freq:1000, q:1 }; eqBands[b].shape = value; }
 }
 
 function openEQPanel() {
@@ -2220,7 +2264,7 @@ function closeEQPanel() {
     if (eqDragging === null || !eqBands[eqDragging]) return;
     e.preventDefault();
     const { x, y } = clientToSVG(e.clientX, e.clientY);
-    eqBands[eqDragging].gain = yToGain(y);
+    if (!isPassBand(eqBands[eqDragging])) eqBands[eqDragging].gain = yToGain(y); // a pass band only moves in frequency
     eqBands[eqDragging].freq = xToFreq(x);
     updateEQBandInfo();
     // Gate SVG rebuild to one render per animation frame — avoids redundant
@@ -2236,7 +2280,7 @@ function closeEQPanel() {
       throttleTimer = setTimeout(() => {
         throttleTimer = null;
         if (band !== null && aux !== null && eqBands[band]) {
-          sendOSC(`/Aux_Outputs/${aux}/EQ/eq_gain_${band}`, [eqBands[band].gain]);
+          if (!isPassBand(eqBands[band])) sendOSC(`/Aux_Outputs/${aux}/EQ/eq_gain_${band}`, [eqBands[band].gain]);
           sendOSC(`/Aux_Outputs/${aux}/EQ/eq_freq_${band}`, [eqBands[band].freq]);
         }
       }, 60);
@@ -2248,7 +2292,7 @@ function closeEQPanel() {
     const aux = selectedAux; const b = eqDragging;
     eqDragging = null;
     if (aux !== null && eqBands[b]) {
-      sendOSC(`/Aux_Outputs/${aux}/EQ/eq_gain_${b}`, [eqBands[b].gain]);
+      if (!isPassBand(eqBands[b])) sendOSC(`/Aux_Outputs/${aux}/EQ/eq_gain_${b}`, [eqBands[b].gain]);
       sendOSC(`/Aux_Outputs/${aux}/EQ/eq_freq_${b}`, [eqBands[b].freq]);
     }
   });

@@ -27,7 +27,7 @@ const types = {
   channelGroups:'array', ipadConnections:'array', pcoGreenRoomHidden:'array', smaartHiddenInputs:'array', wirelessReceivers:'array', wirelessKnown:'array', wirelessAux:'object', channelOverrides:'object', auxOverrides:'object', pcoPositionMapping:'object', pcoAlt:'object'
 };
 const booleans = new Set(['pcoEnabled','greenRoomMics','wirelessEnabled','greenRoomSpl','smaartEnabled','greenRoomQr','autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled']);
-const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,64],groups:[0,64],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],smaartPort:[1,65535],autoBackupIntervalDays:[1,365] };
+const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,256],groups:[0,256],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],smaartPort:[1,65535],autoBackupIntervalDays:[1,365] };
 function validateConfig(config) {
   if (!object(config)) throw new Error('Invalid configuration in this backup.');
   for (const key of definitions.flatMap(d => d[3])) {
@@ -72,7 +72,16 @@ function normalize(data, filename) {
     if (object(data) && Object.keys(data).length) { try { validateScenes(data); isScenes = true; } catch {} }
     result = isScenes ? { kind:'Extracted Ear Scenes', scenes:data } : { kind:'Extracted My Mixes', presets:data };
   }
-  if (result.config !== undefined) validateConfig(result.config);
+  // Settings that don't check out (a count the desk reported past what this
+  // allows used to be one) mustn't take the saved mixes in the file with
+  // them: the rest of the file can still be restored, with a note
+  if (result.config !== undefined) {
+    try { validateConfig(result.config); } catch (e) {
+      const others = ['presets','scenes','homeLayouts','deviceStage','consoleNames'].some(key => result[key] !== undefined);
+      if (!others) throw e;
+      result.config = undefined; result.configProblem = e.message;
+    }
+  }
   if (result.presets !== undefined) {
     const validated = mixBackup.validate({ app:'JPMixer',type:'mix-backup',version:1,presets:result.presets,presetAliases:result.presetAliases ?? {} }, { allowEmpty: true });
     result.presets = validated.presets; result.mixCount = validated.mixes; result.deviceCount = validated.devices; result.droppedMixes = validated.dropped;
@@ -124,6 +133,7 @@ function describe(data, filename) {
   if (data.deviceStage !== undefined) { const n = deviceStageModule().count(data.deviceStage); if (n.arrangements) sections.push({ id:'deviceStage',label:'Devices stage arrangement',description:`Where each phone’s card sits on the Devices page (${n.cards} card(s)). Replaces the arrangement for the same number of mixes; any other is kept.` }); }
   if (data.consoleNames !== undefined) { const n = consoleNamesModule().count(data.consoleNames); if (n.channels || n.auxes) sections.push({ id:'consoleNames',label:'Console names',description:`The channel and mix names the console last reported (${n.channels} channel(s), ${n.auxes} mix(es)), shown while it’s off. Replaces them for the same console type; names typed in JPMixer are part of Channel and Aux layout.` }); }
   if (data.scenes !== undefined) sections.push({ id:'scenes',label:'Ear Scenes',description:`${Object.keys(data.scenes).length} snapshot(s). Session data; cleared on app restart. Snapshot recall may use these when snapshots change.` });
+  if (data.configProblem && sections.length) sections[0] = { ...sections[0], description: `${sections[0].description} This backup’s settings can’t be restored (${data.configProblem.replace(/\.$/, '')}); the rest of it can.` };
   if (!sections.length) throw new Error('No supported restore sections were found.');
   return { filename,kind:data.kind,appVersion:typeof data.appVersion === 'string' ? data.appVersion : null,sections };
 }

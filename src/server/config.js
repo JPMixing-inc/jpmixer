@@ -133,8 +133,9 @@ const DEFAULTS = {
   wirelessKnown: [], // [{ id, ip, model }] every receiver seen; saved by shure-wireless.js
   wirelessAux: {},   // { "id/channel": aux }
   smaartEnabled: false,
-  // Plugins (plugins.js): off until turned on in Settings → Plugins. Which
-  // ones are on, and their settings, are in plugins.json.
+  // Plugins (plugins.js): which ones are on, and their settings, are in
+  // plugins.json. This was the Allow plugins switch; since 2.0.15 it only
+  // marks that main.js has done its once-only move over (see save()).
   pluginsEnabled: false,
   smaartHost: '',
   smaartPort: 26000,
@@ -186,6 +187,10 @@ function load() {
 function save(incoming) {
   const previous = _config;
   _config = normalize({ ...DEFAULTS, ...incoming });
+  // Settings doesn't send pluginsEnabled any more, and an older backup has it
+  // off: once true it stays true, or the next launch would turn the plugins
+  // that aren't JPMixer's own off again
+  if (previous && previous.pluginsEnabled === true) _config.pluginsEnabled = true;
   try {
     writeFileAtomic(configPath(), JSON.stringify(_config, null, 2));
     return true;

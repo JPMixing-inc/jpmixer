@@ -75,7 +75,8 @@
       const layout = LAYOUTS[String(d.description || '').trim()];
       const name = String(macNames.get(d.mac) || d.description || 'Stage box').slice(0, 40);
       const box = { id: `lv1-${d.mac.toString(16).padStart(12, '0')}`, model: layout ? layout.model : 'generic', name, location: '', ports: {} };
-      if (!layout) box.generic = { inputs: clamp(d.in_channel_count, 0, 128), outputs: clamp(d.out_channel_count, 0, 128) };
+      // No drawing (a MADI interface, a SoundGrid server): a network device its size
+      if (!layout) { box.model = 'network'; box.options = /madi|mg[bo]\b/i.test(`${d.description} ${name}`) ? { kind: 'madi' } : { kind: 'soundgrid' }; box.generic = { inputs: clamp(d.in_channel_count, 0, 128), outputs: clamp(d.out_channel_count, 0, 128) }; }
       boxes.set(d.io_bank * 8 + d.assign, { box, layout, device: d });
     }
     // 48V on each box's inputs: slot -> set of input indices

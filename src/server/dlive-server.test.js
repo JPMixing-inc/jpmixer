@@ -189,6 +189,29 @@ async function main() {
   assert.ok(containsSubsequence(received.flat(), muteExpected), 'mute should drive the aux send to -inf via the same SysEx mechanism, not a Mute NoteOn');
   console.log('ok - musician mute emulates via zeroing the send level (matches DiGiCo\'s approach)');
 
+  // ── An unmute while the link is down reaches the console when it's back ──
+  // Only the mutes used to be re-sent on reconnect: the console kept the
+  // channel at -inf while the phone showed it on.
+  {
+    const origCC = net.createConnection;
+    net.createConnection = function (opts, cb) { return origCC.call(net, { ...opts, port: mockPort }, cb); };
+    const dropped = mockSocket;
+    dropped.destroy();
+    await new Promise((r) => setTimeout(r, 100));
+    musicianWs.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 3, muted: false }));
+    await new Promise((r) => setTimeout(r, 100));
+    received.length = 0;
+    const deadline = Date.now() + 4000;
+    while (mockSocket === dropped && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    net.createConnection = origCC;
+    assert.notEqual(mockSocket, dropped, 'dlive-server.js should reconnect to the console');
+    const restore = P.buildSendLevelSet(inputCoord.midiCh, inputCoord.ch, auxCoord, P.dbToLv(-10));
+    const until = Date.now() + 1000;
+    while (!containsSubsequence(received.flat(), restore) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(containsSubsequence(received.flat(), restore), 'the level from before the mute goes to the console on reconnect');
+    console.log('ok - an unmute made while the console link was down is sent when it reconnects');
+  }
+
   musicianWs.close();
   devicesWs.close();
   server.stop();

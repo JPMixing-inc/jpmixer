@@ -56,7 +56,10 @@ function cleanBoxes(list) {
       // side: which side of a stereo channel or mix this socket is (two sockets, one source)
       if (p.src && KINDS.has(p.src.kind) && int(p.src.n, 1, 999)) port.src = { kind: p.src.kind, n: p.src.n, ...(p.src.side === 'L' || p.src.side === 'R' ? { side: p.src.side } : {}) };
       if (p.phantom === true) port.phantom = true; // needs 48V
-      if (port.name || port.note || port.src || port.phantom) box.ports[key] = port;
+      // fed: patched on the console to something JPMixer can't choose (a dLive
+      // stereo aux, say), as an import found it
+      if (p.fed === true && !port.src) port.fed = true;
+      if (port.name || port.note || port.src || port.phantom || port.fed) box.ports[key] = port;
     }
     out.push(box);
   }
@@ -92,11 +95,11 @@ function countPatch(boxes, library, consoleNow) {
   const doubles = [...seen].filter(([, v]) => v.length > 1 && !stereoPair(v)).map(([n]) => `Ch ${n}${named(consoleNow && consoleNow.channels, n)}`);
   return {
     ports: all.length,
-    patched: all.filter((x) => x.data.src).length,
+    patched: all.filter((x) => x.data.src || x.data.fed).length,
     boxes: boxes.map((b) => {
       const own = all.filter((x) => x.box === b);
       const model = library && library.BOXES.find((m) => m.id === b.model);
-      return { name: b.name || (model ? model.name : 'Stage box'), ports: own.length, patched: own.filter((x) => x.data.src).length };
+      return { name: b.name || (model ? model.name : 'Stage box'), ports: own.length, patched: own.filter((x) => x.data.src || x.data.fed).length };
     }),
     doubles,
   };

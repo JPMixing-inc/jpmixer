@@ -35,6 +35,7 @@ test('the stage box library: each box’s sockets as on the real panel (an AES p
     'digico-d-rack': [32, 8], 'digico-dq-rack': [48, 24], 'digico-mq-rack': [48, 24], 'digico-d2-rack': [48, 16],
     'digico-a168-stage': [16, 8], 'digico-a168d-stage': [16, 8], 'digico-a164-wall': [16, 4],
     'waves-ionic-16': [16 + 1, 8 + 4 + 1 + 2], 'waves-ionic-24': [24 + 1, 14 + 4 + 2 + 2], 'digigrid-iox': [12, 6 + 4], 'digigrid-ios': [8 + 1, 8 + 1 + 2],
+    'ah-cdm32': [32, 16], 'ah-cdm48': [48, 24], 'ah-cdm64': [64, 32], 'ah-dx168': [16, 8], 'ah-s7000': [8 + 2, 8 + 3],
   };
   for (const [model, [ins, outs]] of Object.entries(expect)) {
     assert.equal(count(L, { model }, 'in'), ins, `${model} inputs`);
@@ -53,6 +54,14 @@ test('the stage box library: each box’s sockets as on the real panel (an AES p
   assert.equal(L.layoutFor(sd).ports.find((p) => p.key === 's2.1').label, 'Input 9', 'rack channels run on along the slots');
   assert.equal(count(L, { model: 'digico-sd-mini-rack', cards: { 1: 'mic', 2: 'line', 3: 'line', 4: '' } }, 'out'), 16, 'SD-MiNi slots take either');
   assert.equal(count(L, { model: 'generic', generic: { inputs: 40, outputs: 999 } }, 'out'), 128, 'generic is capped');
+  // A network device: a tile per channel, 8 to a row, no sockets to plug into
+  const net = L.layoutFor({ model: 'network', name: 'Tracks', generic: { inputs: 20, outputs: 4 }, options: { kind: 'madi' } });
+  assert.deepEqual([net.faces[0].virtual, net.faces[0].label, net.ports.length, new Set(net.ports.map((p) => p.connector)).size, net.ports[0].connector], [true, 'MADI', 24, 1, 'tile']);
+  assert.deepEqual([net.ports[8].key, net.ports[8].x === net.ports[0].x, net.ports[8].y > net.ports[0].y, net.ports[20].key, net.ports[20].label], ['in.9', true, true, 'out.1', 'Channel 1'], 'channel 9 starts the second row; then what it receives');
+  assert.equal(L.layoutFor({ model: 'network', generic: { inputs: 4 } }).faces[0].label, 'Dante', 'Dante unless another kind is chosen');
+  const phone = L.layoutFor({ model: 'network', generic: { inputs: 20, outputs: 4 } }, { cols: 4 });
+  assert.deepEqual(phone.ports.map((p) => p.key), net.ports.map((p) => p.key), 'on a phone: the same channels…');
+  assert.ok(phone.ports[4].y > phone.ports[0].y && phone.faces[0].w < net.faces[0].w, '…4 to a row');
 
   // Every box, with every option: sockets inside the panel, none overlapping, keys unique
   const variants = (m) => {
@@ -95,9 +104,10 @@ test('importing an LV1 session: every stage box, each socket named for what LV1 
   assert.equal(db.rows('snapshot_chainer').length, 434, 'every row, across many small pages');
   const result = JSON.parse(JSON.stringify(PatchLV1.read(db))); // out of the sandbox, as plain objects
   assert.deepEqual(result.boxes.map((b) => [b.name, b.model, b.id]), [
-    ['Classic IO', 'waves-lv1-classic', 'lv1-001cd1000003'], ['STAGE LEFT', 'waves-ionic-24', 'lv1-001cd1000001'], ['DRUM RISER', 'waves-ionic-16', 'lv1-001cd1000002'], ['MADI', 'generic', 'lv1-001cd1000006'],
+    ['Classic IO', 'waves-lv1-classic', 'lv1-001cd1000003'], ['STAGE LEFT', 'waves-ionic-24', 'lv1-001cd1000001'], ['DRUM RISER', 'waves-ionic-16', 'lv1-001cd1000002'], ['MADI', 'network', 'lv1-001cd1000006'],
   ], 'one box per stage box, in LV1\'s order (the LV1 Classic console\'s own I/O too); the computer and the server aren\'t boxes');
-  assert.deepEqual(result.boxes[3].generic, { inputs: 64, outputs: 64 }, 'a device without a drawing is a generic box its size');
+  assert.deepEqual(result.boxes[3].generic, { inputs: 64, outputs: 64 }, 'a device without a drawing is a network device its size');
+  assert.deepEqual(result.boxes[3].options, { kind: 'madi' }, 'a MADI interface: marked MADI');
   const [classic, left, riser, madi] = result.boxes;
   const p = (box, key) => JSON.parse(JSON.stringify(box.ports[key] || null));
   assert.deepEqual(p(classic, 'hp.1'), { name: 'AUX A', src: { kind: 'mix', n: 1 } }, 'the Classic\'s headphones (its outputs 13-14)');
@@ -186,8 +196,9 @@ test('importing a DiGiCo session: the console\'s own I/O, the rack on Dante you 
   const plain = (v) => JSON.parse(JSON.stringify(v));
   const r = plain(G.build(session, {}, L, [{ number: 7, name: 'VOX' }, { number: 3, name: 'DRUMS' }]));
   assert.deepEqual(r.boxes.map((b) => [b.id, b.model, b.name]), [['dg-local', 'digico-q225', 'Quantum 225'], ['dg-dante-1', 'digico-dq-rack', 'Dante rack'],
-    ['dg-play-dante', 'generic', 'Dante playback'], ['dg-play-waves', 'generic', 'Waves SoundGrid']], 'a DQ-Rack on Dante unless another is chosen');
+    ['dg-play-dante', 'network', 'Dante playback'], ['dg-play-waves', 'network', 'Waves SoundGrid']], 'a DQ-Rack on Dante unless another is chosen');
   const [local, rack, play, waves] = r.boxes;
+  assert.deepEqual([play.options, waves.options], [{}, { kind: 'soundgrid' }], 'playback boxes: a Dante device, a SoundGrid one');
   assert.equal(G.consoleFor(session.console), 'digico-q225', 'the console the session is from: its own I/O drawn as it');
   assert.deepEqual(['SD12', 'SD7', 'S21', 'Q3', 'nonsense'].map(G.consoleFor), ['digico-sd12', 'digico-q7', 'digico-s21', 'digico-q338', '']);
   // Every DiGiCo console drawn: its mic/line inputs, line outputs and AES, and
@@ -240,6 +251,59 @@ test('importing a DiGiCo session: the console\'s own I/O, the rack on Dante you 
   assert.throws(() => G.read(Buffer.alloc(1024)), /isn’t a DiGiCo session/);
 });
 
+test('importing a dLive show: the MixRack, the surface, DX168s and the I/O ports, each input and output named and patched', async () => {
+  // A made-up show in a dLive V2 show's own layout (fixtures/dlive-show-sample.js)
+  const sample = require('./fixtures/dlive-show-sample');
+  const sandbox = { window: {}, TextDecoder, TextEncoder, Blob, Response, DecompressionStream };
+  for (const f of ['boxes.js', 'dlive-show.js']) vm.runInNewContext(fs.readFileSync(path.join(SOURCE, 'page', f), 'utf8'), sandbox);
+  const { PatchDLive: D, PATCH_LIBRARY: L } = sandbox.window;
+  const bytes = sample.makeShow();
+  const show = await D.read(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
+  assert.equal(show.version, '14');
+  assert.equal(show.inputs.filter((c) => c.type !== undefined).length, sample.CHANNELS.length);
+  assert.deepEqual([show.inputs[2].name, show.rackPreamps.get(3).phantom, show.rackPreamps.get(7).pad, show.rackPreamps.get(7).gain, show.surfacePreamps.get(1).phantom], ['OH L', true, true, 10, true]);
+  assert.equal(D.rackFor(show), 'ah-cdm48', 'the smallest MixRack with every input the show uses (40)');
+  const plain = (v) => JSON.parse(JSON.stringify(v));
+  const r = plain(D.build(show, {}, L));
+  assert.deepEqual(r.boxes.map((b) => [b.id, b.model, b.name]), [['dl-mixrack', 'ah-cdm48', 'MixRack'], ['dl-surface', 'ah-s7000', 'Surface'], ['dl-dx-1', 'ah-dx168', 'DX168'], ['dl-dx-2', 'ah-dx168', 'DX168 2'],
+    ['dl-card', 'network', 'I/O Port 1'], ['dl-card-2', 'network', 'I/O Port 2']]);
+  const [rack, surface, dx1, dx2, card, card2] = r.boxes;
+  assert.deepEqual(rack.ports['in.3'], { name: 'OH L', src: { kind: 'ch', n: 3 }, phantom: true }, '48V on in the show: marked 48V');
+  assert.deepEqual(rack.ports['in.1'], { name: 'Kick In / Kick Sub', src: { kind: 'ch', n: 1 }, note: 'Also patched to Ch 14 (Kick Sub).' }, 'one socket on two channels');
+  assert.deepEqual(rack.ports['in.40'], { name: 'Pastor', src: { kind: 'ch', n: 12 } });
+  assert.deepEqual(surface.ports['in.1'], { name: 'FOH TB', src: { kind: 'ch', n: 20 }, phantom: true }, 'the surface’s own inputs, with its 48V');
+  assert.deepEqual(surface.ports['aesin.1'], { name: 'Video L / Video R', src: { kind: 'ch', n: 21 }, note: 'Also on this pair: Ch 22 (Video R).' }, 'surface inputs 9 and 10: its first AES in');
+  assert.deepEqual([dx1.ports['in.1'].name, dx1.ports['in.2'].name, dx2.ports['in.1'].name], ['Choir L', 'Choir R', 'Wless 1'], 'DX inputs 17 on: the next DX168');
+  assert.deepEqual(card.generic, { inputs: 3, outputs: 3 });
+  assert.deepEqual([card.options, card2.options], [{}, { kind: 'other' }], 'port 1 a Dante device; what’s in the others isn’t in the show');
+  assert.deepEqual(card.ports['in.3'], { name: 'Click', src: { kind: 'ch', n: 42 }, note: 'On the console as MixRack I/O port 1 input 9.' }, 'the port’s channels in order, with where each is on the console');
+  // Outputs: what feeds each, named from the show
+  assert.deepEqual(rack.ports['out.1'], { name: 'Drum IEM L', fed: true, note: 'Stereo aux 1, left.' }, 'a stereo aux on MixRack outputs 1 and 2: patched on the console, to something JPMixer has no number for');
+  assert.equal(rack.ports['out.2'].name, 'Drum IEM R');
+  assert.deepEqual(rack.ports['out.3'], { name: 'Wedge 2', src: { kind: 'mix', n: 2 }, note: 'Aux 2.' }, 'a mono aux: JPMixer’s aux of that number');
+  assert.equal(rack.ports['out.20'].name, 'Main L');
+  assert.deepEqual([surface.ports['out.1'].name, surface.ports['aesout.1'].name, surface.ports['aesout.1'].note], ['Booth', 'Main L / Main R', 'The main mix, left. Also on this pair: Main R.'], 'the surface’s outputs and AES pairs');
+  assert.deepEqual([dx1.ports['out.1'].name, dx2.ports['out.1'].name, dx2.ports['out.1'].src], ['Wedge 2', 'Snare', { kind: 'ch', n: 2 }], 'DX outputs 17 on: the next DX168; a direct out is patched to its channel');
+  assert.deepEqual(Object.entries(card.ports).filter(([k]) => /^out/.test(k)).map(([k, p]) => [k, p.name, p.note]), [
+    ['out.1', 'Kick In', 'MixRack I/O port 1 output 1. Direct out of Ch 1.'], ['out.2', 'Snare', 'MixRack I/O port 1 output 2. Direct out of Ch 2.'],
+    ['out.3', 'OH L', 'MixRack I/O port 1 output 5. Tie line from MixRack input 3 (Ch 3 OH L).']], 'a tie line is named for the channel on its socket');
+  assert.deepEqual([card2.ports['out.1'].name, card2.ports['out.2'].name], ['Lobby L', 'dLive 1c/1'], 'a source not known yet: named by its number');
+  assert.equal(r.outputs, 13);
+  assert.deepEqual(r.left, ['Reverb L (from St Aux 2 L)', 'Main L (USB recording 1)'], 'an input from a mix, and the surface’s USB recording: listed, not drawn');
+  assert.equal(r.phantom, 3, 'MixRack 3 and 4, surface 1');
+  for (const box of r.boxes) {
+    const keys = new Set(L.layoutFor(box).ports.map((x) => x.key));
+    for (const k of Object.keys(box.ports)) assert.ok(keys.has(k), `${box.name} ${k} is on the drawing`);
+  }
+  // The preview's choices
+  const small = plain(D.build(show, { rack: 'ah-cdm32', surface: 'none', dx: 'none', card: false }, L));
+  assert.deepEqual(small.boxes.map((b) => b.model), ['ah-cdm32']);
+  for (const gone of ['Pastor (MixRack input 40)', 'FOH TB (surface input 1)', 'Choir L (DX input 1)', 'Tracks L (MixRack I/O port 1 input 1)', 'Main L (MixRack output 20)', 'Booth (surface output 1)', 'Wedge 2 (DX output 1)', 'Lobby L (MixRack I/O port 2 output 1)']) assert.ok(small.left.includes(gone), `${gone}: listed when its box isn't drawn`);
+  assert.equal(plain(D.build(show, { dx: 'generic' }, L)).boxes[2].model, 'generic', 'a DX as a generic box, if chosen');
+  // Not a dLive show
+  await assert.rejects(() => D.read(new Uint8Array(sample.tgz([['notes.txt', Buffer.from('hi')]])).buffer), /isn’t a dLive show/);
+});
+
 test('the plugin keeps one patch for every screen: each change on its own, two screens at once, junk, and the lock', async () => {
   plugins._reset();
   fs.cpSync(SOURCE, path.join(userData, 'plugins', 'patch'), { recursive: true });
@@ -277,6 +341,11 @@ test('the plugin keeps one patch for every screen: each change on its own, two s
     // A socket only marked for 48V (no name or channel yet) is kept
     await plugins.callPage('patch', 'change', { ops: [{ op: 'setPort', box: 'b1', key: 'in.9', port: { phantom: true } }] });
     assert.deepEqual((await plugins.callPage('patch', 'load', {})).boxes[0].ports['in.9'], { name: '', note: '', phantom: true });
+    // Patched on the console to something JPMixer has no number for (an import's fed): kept, but never alongside a channel or mix
+    await plugins.callPage('patch', 'change', { ops: [{ op: 'setPort', box: 'b1', key: 'out.5', port: { name: 'Drum IEM L', fed: true } }, { op: 'setPort', box: 'b1', key: 'out.6', port: { fed: true, src: { kind: 'mix', n: 2 } } }, { op: 'setPort', box: 'b1', key: 'out.7', port: { fed: 'yes' } }] });
+    const fed = (await plugins.callPage('patch', 'load', {})).boxes[0].ports;
+    assert.deepEqual([fed['out.5'], fed['out.6'], fed['out.7']], [{ name: 'Drum IEM L', note: '', fed: true }, { name: '', note: '', src: { kind: 'mix', n: 2 } }, undefined]);
+    await plugins.callPage('patch', 'change', { ops: [{ op: 'setPort', box: 'b1', key: 'out.5', port: null }, { op: 'setPort', box: 'b1', key: 'out.6', port: null }] });
     assert.deepEqual(both.boxes[0].ports['out.1'].src, { kind: 'mix', n: 1, side: 'L' }, 'a stereo mix\'s side is kept');
     assert.ok(both.boxes[0].ports['in.2'], 'and the socket set before is still there');
     // Clearing a socket, and a change to a box that's gone
@@ -299,7 +368,7 @@ test('the plugin keeps one patch for every screen: each change on its own, two s
     await plugins.restart('patch');
     await until(() => plugins.list().find((p) => p.id === 'patch')?.state === 'running');
     const again = await plugins.callPage('patch', 'load', {});
-    assert.equal(again.rev, 8);
+    assert.equal(again.rev, 10);
     assert.equal(again.boxes[0].ports['in.1'].name, 'Kick');
 
     // Locked: it can be looked at, not changed

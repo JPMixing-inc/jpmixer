@@ -28,14 +28,15 @@
   // USB and Waves are inputs only here: what goes out to them is recording
   const IN = { local: 0x1c, madi1: 0x1d, madi2: 0x1e, dante: 0x1f, usb: 0x21, waves: 0x22 };
   const OUT = { local: 0x4e, madi1: 0x4f, madi2: 0x50, dante: 0x51 };
-  // short: how one of its channels is named ("Dante 35"); play: its playback box
+  // short: how one of its channels is named ("Dante 35"); play: its playback
+  // box (a network device of `kind`, as in PATCH_LIBRARY.NETWORK_KINDS)
   const PORTS = [
     { id: 'local', label: 'the console’s own I/O', short: 'Local' },
-    { id: 'dante', label: 'Dante', short: 'Dante', play: 'Dante playback', what: 'other Dante devices' },
-    { id: 'madi1', label: 'MADI port 1', short: 'MADI 1 ch', play: 'MADI 1 playback', what: 'MADI port 1' },
-    { id: 'madi2', label: 'MADI port 2', short: 'MADI 2 ch', play: 'MADI 2 playback', what: 'MADI port 2' },
-    { id: 'usb', label: 'USB', short: 'USB', play: 'USB playback', what: 'a computer on USB', noRack: true },
-    { id: 'waves', label: 'Waves SoundGrid', short: 'Waves', play: 'Waves SoundGrid', what: 'a SoundGrid server or computer', noRack: true },
+    { id: 'dante', label: 'Dante', short: 'Dante', play: 'Dante playback', what: 'other Dante devices', kind: '' },
+    { id: 'madi1', label: 'MADI port 1', short: 'MADI 1 ch', play: 'MADI 1 playback', what: 'MADI port 1', kind: 'madi' },
+    { id: 'madi2', label: 'MADI port 2', short: 'MADI 2 ch', play: 'MADI 2 playback', what: 'MADI port 2', kind: 'madi' },
+    { id: 'usb', label: 'USB', short: 'USB', play: 'USB playback', what: 'a computer on USB', noRack: true, kind: 'usb' },
+    { id: 'waves', label: 'Waves SoundGrid', short: 'Waves', play: 'Waves SoundGrid', what: 'a SoundGrid server or computer', noRack: true, kind: 'soundgrid' },
   ];
   const portOf = (gid) => Object.keys(IN).find((k) => IN[k] === gid || OUT[k] === gid);
   // A Dante channel with a preamp (DiGiCo names it DntMic): from the rack.
@@ -279,7 +280,7 @@
       const channels = [...new Set(items.map((x) => x.idx))];
       playback.push({ id: port.id, name: port.play, what: choices[port.id] === 'playback' ? `everything on ${port.label}` : port.what, inputs: items.length });
       if (choices[`${port.id}Play`] === false || boxes.length >= 40) { others += items.length; continue; }
-      const box = { id: `dg-play-${port.id}`, model: 'generic', name: port.play, location: '', ports: {}, generic: { inputs: Math.min(128, channels.length), outputs: 0 } };
+      const box = { id: `dg-play-${port.id}`, model: 'network', name: port.play, location: '', ports: {}, options: port.kind ? { kind: port.kind } : {}, generic: { inputs: Math.min(128, channels.length), outputs: 0 } };
       boxes.push(box);
       for (const x of items) {
         const n = channels.indexOf(x.idx);

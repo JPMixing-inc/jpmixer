@@ -1,0 +1,62 @@
+{
+  "about": "Earlier versions of the official plugins, as their catalog listed them: a copy installed from the approved list before JPMixer recorded its files (Patch, on 2.0.13) is official if it matches one. Add a version here when raising an official plugin's version.",
+  "plugins": {
+    "patch": [
+      {
+        "version": "1.0.0",
+        "files": [
+          {
+            "path": "index.js",
+            "size": 11285,
+            "sha256": "36e4b135d0eae535996d84ebda7e93106450d48c7cbb30f6b53ec5910894f690"
+          },
+          {
+            "path": "page/app.js",
+            "size": 69710,
+            "sha256": "6a7342f1088bc9358c98bc9ae6003e1370032208e5f873bc9d94bc6ccca0251a"
+          },
+          {
+            "path": "page/boxes.js",
+            "size": 81375,
+            "sha256": "240bc6436a6da95c0ef50c1109c40775b7e04e9e42c10cc16ffb30c4ffc46413"
+          },
+          {
+            "path": "page/digico-session.js",
+            "size": 20778,
+            "sha256": "d45d10a15987e389b49e4f308318ea58fe934a276226880066351536cc708f62"
+          },
+          {
+            "path": "page/index.html",
+            "size": 2915,
+            "sha256": "1a3a9a7a92abd74c11296f8e39d39678e1add4c4e5221c1013cab0b92cbe38fd"
+          },
+          {
+            "path": "page/lv1-session.js",
+            "size": 9789,
+            "sha256": "7bd52d9b939d400336c010154cc3a8705f52076ffd0d68e0017177cfcf3c3887"
+          },
+          {
+            "path": "page/sqlite.js",
+            "size": 6863,
+            "sha256": "4d69b0a282d04775cb4946b13e5c8cf8dc1c385477f996a0f3b3b5293dd308b4"
+          },
+          {
+            "path": "page/style.css",
+            "size": 10981,
+            "sha256": "e6b0f14334cee5bfb0c354bc963b7e5223d64fd86377c9ab8631300d6ac6c84d"
+          },
+          {
+            "path": "plugin.json",
+            "size": 808,
+            "sha256": "b7c57ee2863685d306e5688c37a412814ac5ee1f374ad887103b73a365e014d3"
+          },
+          {
+            "path": "README.md",
+            "size": 3484,
+            "sha256": "7d0f3bff783014b5ff03a23b3738a54b43c719cafc0bbc13a39501b45d8a7ec8"
+          }
+        ]
+      }
+    ]
+  }
+}

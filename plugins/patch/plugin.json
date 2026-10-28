@@ -1,8 +1,8 @@
 {
   "id": "patch",
   "name": "Patch",
-  "version": "1.0.0",
-  "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to.",
+  "version": "1.1.2",
+  "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to. Imports DiGiCo sessions, LV1 sessions and dLive shows.",
   "author": "JPMixer",
   "minJPMixer": "2.0.13",
   "main": "index.js",

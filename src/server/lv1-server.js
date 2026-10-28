@@ -21,8 +21,11 @@
 //     Ear Scenes, Devices View, live names
 //   ✓ Console Controller: input, aux and DCA (control group) faders and
 //     mutes, input and DCA solo (LV1's own cue solo)
-//   ✓ Scene ‹ › from the Console Controller / Monitor Engineer (/Scene/Recall)
-//   ✗ Built-in aux EQ, the channel processing panel, traffic log
+//   ✓ Scene ‹ › from the Console Controller / Monitor Engineer (/Set/CurSceneIndex)
+//   ✓ Aux EQ: each mix's own 4-band EQ on LV1 (monitor mixes; LV1 reports
+//     aux buses such as FX returns as having none), read and changed live
+//   ✓ The channel processing panel: each input's preamp, read-only
+//   ✗ Traffic log
 //
 // Mute/solo switch sends off with LV1's per-send on/off rather than pulling
 // the level down, so a level is never lost. A send the engineer had already
@@ -129,6 +132,18 @@ const recentWrites = new Map();
 // Console Controller's channel panel; 48V also goes to plugins.
 const preamps = new Map();
 
+// Each mix's EQ as LV1 reports it: "type:n" -> { avail, in, bands: { 1..4:
+// { on, freq, gain, q, shape } } }, q as the real Q. Asked for with /GetEQ
+// when the mixes arrive; changes made on LV1 arrive by themselves. avail
+// false = LV1 says the track has no EQ (an FX return or the master, in some
+// shows): then its mix offers none. in = EQ in/out, known once it changes.
+const eqs = new Map();
+function eqOf(type, n) {
+  const key = `${type}:${n}`;
+  if (!eqs.has(key)) eqs.set(key, { avail: undefined, in: undefined, bands: {} });
+  return eqs.get(key);
+}
+
 const levelKey = (ch, aux) => `${ch}:${aux}`;
 // LV1 reports its own counts once connected; Settings' are the fallback
 const chCount  = () => inputCount || serverCfg.channels || 16;
@@ -173,7 +188,7 @@ function buildConfig(extra = {}) {
       stereo:    mixStereo(i), // a mono mix's sends have no pan
       colour:    ov.colour || '#e8a020',
       icon:      '',
-      eqEnabled: false, // aux EQ isn't implemented for LV1
+      eqEnabled: auxEqAllowed(i), // the mix's EQ on LV1, when Settings allows it
       linkOnly:  ov.linkOnly === true,
       groups:    shared.auxGroupNames(ov, serverCfg),
     });
@@ -183,7 +198,8 @@ function buildConfig(extra = {}) {
       channels: shared.buildChannelList(chCount(), serverCfg, i => inputNames.get(i)),
       aux: auxilaries,
       controlGroups: getControlGroups(),
-      channelProcessing: 'preamp', // the Console Controller's channel panel shows LV1's preamps, read-only
+      channelProcessing: 'preamp-eq', // the Console Controller's channel panel: LV1's preamp (read-only) and EQ
+      auxEqQ: [P.EQ_Q_MIN, P.EQ_Q_MAX], // the phone EQ panel's Q slider covers LV1's range
       snapshot: currentScene || '—',
       sceneRecallEnabled: !!serverCfg.sceneRecallEnabled,
       earScenes: serverCfg.performerEarScenes !== false,
@@ -340,9 +356,9 @@ function noteWrite(key, value) {
 }
 // LV1 confirming one of JPMixer's own recent writes. LV1 reports levels to
 // 0.1 dB, so a write of -20.04 comes back as -20.0.
-function isEcho(key, value) {
+function isEcho(key, value, tolerance = 0.06) {
   const now = Date.now();
-  return (recentWrites.get(key) || []).some(w => now - w.at < ECHO_MS && Math.abs(w.value - value) < 0.06);
+  return (recentWrites.get(key) || []).some(w => now - w.at < ECHO_MS && Math.abs(w.value - value) < tolerance);
 }
 function sendLevelToPhones(ch, aux, db) { broadcastToClients({ address: `/Input_Channels/${ch}/Aux_Send/${aux}/send_level`, args: [db] }); }
 function sendPanToPhones(ch, aux, slider) { broadcastToClients({ address: `/Input_Channels/${ch}/Aux_Send/${aux}/send_pan`, args: [slider] }); }
@@ -366,6 +382,190 @@ function requestAllSends() {
     pacer.write(`get:${a}`, () => lv1 && lv1.getSends(a));
   }
 }
+// Every mix's EQ, so each mix knows whether it has one and phones open to it at once
+function requestAllEq() {
+  for (const mix of mixes) {
+    const { kind, index } = mix;
+    pacer.write(`eq:${kind}:${index}`, () => lv1 && lv1.getEq(kind, index + 1));
+  }
+}
+
+// ── Aux EQ (each mix's EQ on LV1) ────────────────────────────────────────
+// A mix offers its EQ when Settings allows it (Aux mixes → EQ) and LV1
+// hasn't said the track has none
+function auxEqAllowed(aux) {
+  const mix = mixes[aux - 1];
+  if (!mix || serverCfg.auxOverrides?.[String(aux)]?.eqEnabled !== true) return false;
+  return eqs.get(`${mix.kind}:${mix.index + 1}`)?.avail !== false;
+}
+// The phone EQ panel's parameter names, as DiGiCo's: eq_gain_N, eq_freq_N,
+// eq_Q_N, eq_in, plus eq_on_N and eq_shape_N (LV1's band on/off and shape)
+function eqForPhones(eq) {
+  const out = {};
+  if (!eq || eq.avail === false) return out;
+  if (eq.in !== undefined) out.eq_in = eq.in ? 1 : 0;
+  for (const [band, b] of Object.entries(eq.bands)) {
+    if (b.gain !== undefined) out[`eq_gain_${band}`] = b.gain;
+    if (b.freq !== undefined) out[`eq_freq_${band}`] = b.freq;
+    if (b.q !== undefined) out[`eq_Q_${band}`] = b.q;
+    if (b.on !== undefined) out[`eq_on_${band}`] = b.on ? 1 : 0;
+    if (b.shape !== undefined) out[`eq_shape_${band}`] = b.shape;
+  }
+  return out;
+}
+// LV1's band settings: the last word of its /Notify/EQ/Band/* message ->
+// JPMixer's name for it, the pages' name, how close LV1's confirmation of a
+// write is (Q: 3%, it's reported on a knob scale), and the range it's kept to
+const EQ_PARAMS = {
+  Gain: { param: 'gain', name: 'eq_gain', tolerance: () => 0.06, clamp: P.clampEqGain },
+  Freq: { param: 'freq', name: 'eq_freq', tolerance: () => 1.5, clamp: P.clampEqFreq },
+  Q: { param: 'q', name: 'eq_Q', tolerance: (v) => Math.max(0.01, v * 0.03), clamp: P.clampEqQ },
+  On: { param: 'on', name: 'eq_on' },
+  Shape: { param: 'shape', name: 'eq_shape' },
+};
+const EQ_BY_PARAM = Object.fromEntries(Object.values(EQ_PARAMS).map(d => [d.param, d]));
+// One band setting from LV1, kept in `eq`: { band, def, v, availChanged } in
+// JPMixer's terms (on as true/false, Q as the real Q), or null if it isn't
+// one or LV1 says the track has no EQ (`availChanged` is still reported then)
+function readEqBand(address, a, eq) {
+  const def = EQ_PARAMS[address.slice('/Notify/EQ/Band/'.length)];
+  const band = a[2];
+  if (!def || !Number.isInteger(band) || band < 1 || band > P.EQ_BANDS) return null;
+  let availChanged = false;
+  if (a[4] !== undefined && eq.avail !== flag(a[4])) { eq.avail = flag(a[4]); availChanged = true; }
+  if (eq.avail === false) return { availChanged };
+  let v = a[3];
+  if (def.param === 'on') v = flag(v);
+  else if (def.param === 'shape') { if (typeof v !== 'string') return { availChanged }; }
+  else if (!Number.isFinite(v)) return { availChanged };
+  if (def.param === 'q') v = P.eqQFromKnob(v);
+  (eq.bands[band] || (eq.bands[band] = {}))[def.param] = v;
+  return { band, def, v, availChanged };
+}
+// A write's echo: LV1 confirming JPMixer's own change, not sent back to whoever made it
+const isEqEcho = (key, def, v) => !!def.clamp && isEcho(key, v, def.tolerance(v));
+// What LV1 says about a mix's EQ, kept and passed on to phones (not the
+// confirmations of a phone's own changes: see isEcho)
+function onEqMessage(address, a) {
+  const [type, index] = a;
+  if (!Number.isInteger(type) || !Number.isInteger(index)) return;
+  const n = index + 1;
+  if (type === P.TRACK.INPUT) { if (n <= chCount()) onChannelEqMessage(address, a, n); return; }
+  const aux = auxForTrack(type, n);
+  if (!aux) return; // only mixes and inputs have an EQ panel
+  const eq = eqOf(type, n);
+  if (address === '/Notify/EQState') {
+    eq.in = flag(a[2]);
+    if (eq.avail !== false) broadcastToClients({ address: `/Aux_Outputs/${aux}/EQ/eq_in`, args: [eq.in ? 1 : 0] });
+    return;
+  }
+  const got = readEqBand(address, a, eq);
+  if (got && got.availChanged) pushLayoutSoon(); // its mix's EQ menu comes or goes
+  if (!got || !got.def) return;
+  const { band, def, v } = got;
+  if (isEqEcho(`eq:${aux}:${def.param}:${band}`, def, v)) return;
+  broadcastToClients({ address: `/Aux_Outputs/${aux}/EQ/${def.name}_${band}`, args: [def.param === 'on' ? (v ? 1 : 0) : v] });
+}
+// A phone changing a band's gain, freq or Q, or the EQ in/out
+function writeEq(ws, aux, param, band, raw) {
+  if (!auxEqAllowed(aux) || typeof raw !== 'number' || !Number.isFinite(raw)) return;
+  const mix = mixes[aux - 1];
+  const type = mix.kind, n = mix.index + 1;
+  const eq = eqOf(type, n);
+  if (param === 'in') {
+    eq.in = raw >= 0.5;
+    lv1 && lv1.setEqIn(type, n, eq.in);
+    broadcastToClients({ address: `/Aux_Outputs/${aux}/EQ/eq_in`, args: [eq.in ? 1 : 0] }, ws);
+    return;
+  }
+  const def = EQ_BY_PARAM[param];
+  if (!def || !def.clamp || !Number.isInteger(band) || band < 1 || band > P.EQ_BANDS) return;
+  const v = def.clamp(raw);
+  (eq.bands[band] || (eq.bands[band] = {}))[param] = v;
+  noteWrite(`eq:${aux}:${param}:${band}`, v);
+  lv1 && lv1.setEqBand(type, n, band, param, v);
+  const address = `/Aux_Outputs/${aux}/EQ/${def.name}_${band}`;
+  broadcastToClients({ address, args: [v] }, ws);
+  if (v !== raw) { try { ws.send(JSON.stringify({ address, args: [v] })); } catch (_) {} } // past LV1's range: where it stopped
+  ws._lastActivityAt = Date.now();
+}
+
+// ── Channel EQ (the Console Controller's channel panel) ─────────────────
+// An input's EQ on LV1, in the panel's own terms: its band 1 is the top
+// band (as on a DiGiCo), LV1's band 1 the bottom one, so panel band p is
+// LV1 band 5 - p. Gain, frequency, Q and band on/off can be changed; the
+// shape is shown (set on LV1). EQ in/out shows once LV1 has said it
+// (asking for the EQ doesn't), and can then be switched.
+const lv1Band = (p) => P.EQ_BANDS + 1 - p;
+function channelEqParams(ch) {
+  const eq = eqs.get(`${P.TRACK.INPUT}:${ch}`);
+  const params = {};
+  if (!eq || eq.avail === false) return params;
+  if (eq.in !== undefined) params['EQ/eq_in'] = { kind: 'bool', label: 'EQ', section: 'eq' };
+  for (let p = 1; p <= P.EQ_BANDS; p++) {
+    params[`EQ/eq_gain_${p}`] = { kind: 'num', min: -P.EQ_GAIN_MAX, max: P.EQ_GAIN_MAX, unit: 'dB', label: 'Gain', section: 'eq', band: p };
+    params[`EQ/eq_freq_${p}`] = { kind: 'num', min: P.EQ_FREQ_MIN, max: P.EQ_FREQ_MAX, unit: 'Hz', scale: 'log', label: 'Frequency', section: 'eq', band: p };
+    params[`EQ/eq_Q_${p}`] = { kind: 'num', min: P.EQ_Q_MIN, max: P.EQ_Q_MAX, unit: 'Q', scale: 'log', label: 'Q', section: 'eq', band: p };
+    params[`EQ/eq_on_${p}`] = { kind: 'bool', label: 'Band on', section: 'eq', band: p };
+    params[`EQ/eq_shape_${p}`] = { kind: 'text', label: 'Shape', section: 'eq', band: p, readOnly: true };
+  }
+  return params;
+}
+function channelEqValues(ch) {
+  const eq = eqs.get(`${P.TRACK.INPUT}:${ch}`);
+  const values = {};
+  if (!eq || eq.avail === false) return values;
+  if (eq.in !== undefined) values['EQ/eq_in'] = eq.in ? 1 : 0;
+  for (let p = 1; p <= P.EQ_BANDS; p++) {
+    const b = eq.bands[lv1Band(p)] || {};
+    for (const def of Object.values(EQ_PARAMS)) {
+      if (b[def.param] !== undefined) values[`EQ/${def.name}_${p}`] = def.param === 'on' ? (b.on ? 1 : 0) : b[def.param];
+    }
+  }
+  return values;
+}
+const panelsFor = (ch) => connections.filter(c => c._detailCh === ch && c.readyState === WebSocket.OPEN);
+function onChannelEqMessage(address, a, ch) {
+  const eq = eqOf(P.TRACK.INPUT, ch);
+  let path, v;
+  if (address === '/Notify/EQState') {
+    const known = eq.in !== undefined;
+    eq.in = flag(a[2]);
+    if (!known) { channelChanged(ch); return; } // the panel gains its EQ in/out switch
+    path = 'EQ/eq_in'; v = eq.in ? 1 : 0;
+  } else {
+    const got = readEqBand(address, a, eq);
+    if (got && got.availChanged) channelChanged(ch); // the panel gains or loses its EQ
+    if (!got || !got.def) return;
+    const p = lv1Band(got.band);
+    if (isEqEcho(`eqch:${ch}:${got.def.param}:${p}`, got.def, got.v)) return;
+    path = `EQ/${got.def.name}_${p}`;
+    v = got.def.param === 'on' ? (got.v ? 1 : 0) : got.v;
+  }
+  for (const conn of panelsFor(ch)) conn.send(JSON.stringify({ address: `/Input_Channels/${ch}/${path}`, args: [v] }));
+}
+// The panel changing one: only the EQ (the preamp is LV1's to change)
+function writeChannelEq(ws, ch, path, raw) {
+  const eq = eqs.get(`${P.TRACK.INPUT}:${ch}`);
+  if (!eq || eq.avail === false || typeof raw !== 'number' || !Number.isFinite(raw)) return;
+  if (path === 'EQ/eq_in') {
+    if (eq.in === undefined) return;
+    eq.in = raw >= 0.5;
+    lv1 && lv1.setEqIn(P.TRACK.INPUT, ch, eq.in);
+    for (const conn of panelsFor(ch)) if (conn !== ws) conn.send(JSON.stringify({ address: `/Input_Channels/${ch}/${path}`, args: [eq.in ? 1 : 0] }));
+    return;
+  }
+  const m = /^EQ\/eq_(gain|freq|Q|on)_(\d)$/.exec(path);
+  const p = m ? parseInt(m[2], 10) : 0;
+  if (!m || p < 1 || p > P.EQ_BANDS) return;
+  const def = EQ_BY_PARAM[m[1].toLowerCase()];
+  const v = def.clamp ? def.clamp(raw) : raw >= 0.5;
+  (eq.bands[lv1Band(p)] || (eq.bands[lv1Band(p)] = {}))[def.param] = v;
+  if (def.clamp) noteWrite(`eqch:${ch}:${def.param}:${p}`, v);
+  lv1 && lv1.setEqBand(P.TRACK.INPUT, ch, lv1Band(p), def.param, v);
+  const sent = def.clamp ? v : (v ? 1 : 0);
+  for (const conn of panelsFor(ch)) if (conn !== ws || sent !== raw) conn.send(JSON.stringify({ address: `/Input_Channels/${ch}/${path}`, args: [sent] }));
+}
 
 function onLv1Message(m) {
   const a = m.args;
@@ -377,6 +577,8 @@ function onLv1Message(m) {
       for (const t of inputs) inputNames.set(t.index + 1, t.name);
       inputCount = inputs.length;
       preamps.clear(); // the new show's preamps follow
+      eqs.clear(); // and its EQs: the mixes' asked for again (an input's when its panel opens)
+      requestAllEq();
       tracks.clear();
       for (const t of all) tracks.set(`${t.type}:${t.index + 1}`, { gain: t.gain, mute: t.mute, solo: false, stereo: t.stereo });
       dcas = [];
@@ -391,6 +593,7 @@ function onLv1Message(m) {
       for (const mix of list) mixes.push({ name: mix.name, kind: mix.kind, index: mix.index });
       pushLayoutSoon();
       requestAllSends();
+      requestAllEq();
       return;
     }
     case '/Notify/Track/Name': {
@@ -515,6 +718,10 @@ function onLv1Message(m) {
     case '/Notify/TrackInGain': case '/Notify/TrackTrim': case '/Notify/RangePRGain':
       onPreampMessage(m.address, a);
       return;
+    case '/Notify/EQ/Band/Gain': case '/Notify/EQ/Band/Freq': case '/Notify/EQ/Band/Q':
+    case '/Notify/EQ/Band/On': case '/Notify/EQ/Band/Shape': case '/Notify/EQState':
+      onEqMessage(m.address, a);
+      return;
     default:
   }
 }
@@ -544,12 +751,13 @@ function onPreampMessage(address, a) {
     case '/Notify/RangePRGain':    if (Number.isFinite(v) && Number.isFinite(a[4])) { s.min = v; s.max = a[4]; } break;
     default: return;
   }
-  preampChanged(x.ch);
+  channelChanged(x.ch);
 }
 
-// What the channel panel shows for an input: the controls LV1 says it has,
-// read-only, in the Console Controller's own paths (see console-channel.js)
-function preampDetail(ch) {
+// What the channel panel shows for an input: the preamp controls LV1 says it
+// has, read-only, and its EQ, in the Console Controller's own paths (see
+// console-channel.js)
+function channelDetail(ch) {
   const p = preamps.get(ch) || {};
   const s = p[0] || {};
   const params = {}, values = {};
@@ -574,24 +782,28 @@ function preampDetail(ch) {
     params['Channel_Input/trim'] = { kind: 'num', min: -24, max: 24, unit: 'dB', label: 'Trim', section: 'input', readOnly: true };
     values['Channel_Input/trim'] = s.trim;
   }
+  const hasEq = Object.keys(channelEqParams(ch)).length > 0;
   const note = !Object.keys(params).length
-    ? 'LV1 hasn’t reported a preamp for this channel. Its input may not be a stage box mic input.'
-    : `From LV1${p[1] ? ' (left side of this stereo channel)' : ''}. Change these on LV1 itself.`;
-  return { type: 'channel-detail', ch, params, values, note, readOnly: true };
+    ? (hasEq ? 'LV1 hasn’t reported a preamp for this channel. Its EQ is LV1’s own: changes here go straight to LV1.' : 'LV1 hasn’t reported a preamp for this channel. Its input may not be a stage box mic input.')
+    : `Preamp from LV1${p[1] ? ' (left side of this stereo channel)' : ''}: change it on LV1 itself.${hasEq ? ' The EQ is LV1’s own: changes here go straight to LV1.' : ''}`;
+  // LV1's values win over the page's (readOnly), as they're the truth for both
+  return { type: 'channel-detail', ch, params: { ...params, ...channelEqParams(ch) }, values: { ...values, ...channelEqValues(ch) }, note, readOnly: true };
 }
 // Pages with this channel's panel open get its preamp as it changes: the
-// whole panel when what it has changed (a repatch), else the new values
-const preampTimers = new Map();
-function preampChanged(ch) {
-  if (preampTimers.has(ch)) return;
-  preampTimers.set(ch, setTimeout(() => {
-    preampTimers.delete(ch);
-    const detail = preampDetail(ch);
+// whole panel when what it has changed (a repatch, or its EQ coming or
+// going), else the new values
+const channelTimers = new Map();
+function channelChanged(ch) {
+  if (channelTimers.has(ch)) return;
+  channelTimers.set(ch, setTimeout(() => {
+    channelTimers.delete(ch);
+    const detail = channelDetail(ch);
     const shape = JSON.stringify(detail.params) + detail.note;
     for (const conn of connections) {
       if (conn._detailCh !== ch || conn.readyState !== WebSocket.OPEN) continue;
-      if (conn._detailShape !== shape) { conn._detailShape = shape; conn.send(JSON.stringify(detail)); }
-      for (const [path, v] of Object.entries(detail.values)) conn.send(JSON.stringify({ address: `/Input_Channels/${ch}/${path}`, args: [v] }));
+      // A new panel carries every value; otherwise the preamp's (EQ changes are sent one by one as LV1 reports them)
+      if (conn._detailShape !== shape) { conn._detailShape = shape; conn.send(JSON.stringify(detail)); continue; }
+      for (const [path, v] of Object.entries(detail.values)) if (!path.startsWith('EQ/')) conn.send(JSON.stringify({ address: `/Input_Channels/${ch}/${path}`, args: [v] }));
     }
   }, 60));
 }
@@ -702,8 +914,8 @@ function resetState() {
   sceneList = []; sceneIndex = null;
   inputNames.clear(); mixes.length = 0; inputCount = 0;
   tracks.clear(); dcas = []; preamps.clear();
-  for (const t of preampTimers.values()) clearTimeout(t);
-  preampTimers.clear();
+  for (const t of channelTimers.values()) clearTimeout(t);
+  channelTimers.clear();
   levelCache.clear(); panCache.clear(); onCache.clear();
   silencedSends.clear(); pendingReleases.clear(); recentWrites.clear();
   pacer.clear();
@@ -849,7 +1061,11 @@ function start(cfg) {
       }
 
       if (msg.type === 'request-aux-eq') {
-        try { ws.send(JSON.stringify({ type: 'aux-eq', aux: msg.aux, eq: {} })); } catch (_) {}
+        // What's known now, then LV1's current EQ (its answers reach every phone on that mix)
+        const aux = parseInt(msg.aux, 10);
+        const mix = auxEqAllowed(aux) ? mixes[aux - 1] : null;
+        try { ws.send(JSON.stringify({ type: 'aux-eq', aux: msg.aux, eq: mix ? eqForPhones(eqs.get(`${mix.kind}:${mix.index + 1}`)) : {} })); } catch (_) {}
+        if (mix) pacer.write(`eq:${mix.kind}:${mix.index}`, () => lv1 && lv1.getEq(mix.kind, mix.index + 1), true);
         return;
       }
       if (msg.type === 'set-mute') { sendMute(msg.aux, msg.ch, !!msg.muted); return; }
@@ -873,7 +1089,8 @@ function start(cfg) {
           try { ws.send(JSON.stringify({ type: 'channel-detail', ch: msg.ch, params: {}, values: {}, readOnly: true, note: 'LV1 hasn’t reported this channel.' })); } catch (_) {}
           return;
         }
-        const detail = preampDetail(ch);
+        const detail = channelDetail(ch);
+        pacer.write(`eq:${P.TRACK.INPUT}:${ch - 1}`, () => lv1 && lv1.getEq(P.TRACK.INPUT, ch), true); // its EQ now (its answers reach the panel)
         ws._detailCh = ch;
         ws._detailShape = JSON.stringify(detail.params) + detail.note;
         try { ws.send(JSON.stringify(detail)); } catch (_) {}
@@ -881,12 +1098,21 @@ function start(cfg) {
       }
       // The panel was closed: no more of that channel's preamp changes to this screen
       if (msg.type === 'close-channel-detail') { ws._detailCh = null; return; }
-      // Its preamp is LV1's to change: nothing from the panel goes to LV1
-      if (msg.type === 'console-param') return;
+      // The panel: its EQ goes to LV1; its preamp is LV1's to change, so nothing else does
+      if (msg.type === 'console-param') {
+        const ch = parseInt(msg.ch, 10);
+        if (ch >= 1 && ch <= chCount() && typeof msg.path === 'string') writeChannelEq(ws, ch, msg.path, msg.value);
+        return;
+      }
 
       // Raw OSC-address-shaped messages from mixer.js (send_level / send_pan,
       // and the same addresses ending /? when a phone picks a mix)
       if (!msg.address) return;
+      const eqm = msg.address.match(/^\/Aux_Outputs\/(\d+)\/EQ\/(?:eq_(gain|freq|Q)_(\d+)|eq_in)$/);
+      if (eqm) {
+        writeEq(ws, parseInt(eqm[1], 10), eqm[2] ? eqm[2].toLowerCase() : 'in', eqm[3] ? parseInt(eqm[3], 10) : null, Array.isArray(msg.args) ? msg.args[0] : undefined);
+        return;
+      }
       const m = msg.address.match(/^\/Input_Channels\/(\d+)\/Aux_Send\/(\d+)\/send_(level|pan)(\/\?)?$/);
       if (!m) return;
       const ch = parseInt(m[1], 10), aux = parseInt(m[2], 10), kind = m[3];
@@ -991,7 +1217,7 @@ function stop() {
   if (httpServer) { httpServer.close(); httpServer = null; }
   consoleConnected = false;
   if (onConsoleStatusChange) onConsoleStatusChange(false);
-  levelCache.clear(); panCache.clear(); pacer.clear();
+  levelCache.clear(); panCache.clear(); pacer.clear(); eqs.clear();
   connections = [];
   console.log('[JPMixer/LV1] Server stopped');
   return Promise.resolve();

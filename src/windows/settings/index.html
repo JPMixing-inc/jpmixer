@@ -593,13 +593,6 @@
 
     <!-- ── Plugins: add-ons in JPMixer's plugins folder (src/server/plugins.js) ── -->
     <div class="tab-panel" id="tab-plugins">
-      <section class="card companion-card" id="pluginsAllowCard">
-        <div class="card-row space-between">
-          <div class="settings-heading"><h2>Allow plugins</h2><p class="sub">Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Each one runs on its own, so if one stops working, JPMixer and the console carry on. A plugin is someone else’s code: only add plugins from someone you trust. While this is off, only JPMixer’s own plugins run (marked JPMixer Original).</p></div>
-          <input type="checkbox" id="pluginsEnabled" class="toggle" aria-label="Allow plugins" />
-        </div>
-        <p class="sub plugin-message" id="pluginsAllowNote" role="status"></p>
-      </section>
       <section class="card companion-card" id="pluginsFind">
         <div class="card-row space-between">
           <div class="settings-heading"><h2>Find plugins</h2><p class="sub">Plugins that have been reviewed and approved for JPMixer. JPMixer checks each file it downloads against the approved copy.</p></div>
@@ -610,7 +603,7 @@
         <p class="sub">Made a plugin others could use? <button type="button" class="btn btn-sm" id="pluginSubmitBtn">Submit it for review</button></p>
       </section>
       <section class="card companion-card" id="pluginsIntro">
-        <div class="settings-heading"><h2>Your plugins</h2><p class="sub">Each plugin’s settings are listed under Plugins in the sidebar. To install one that isn’t on the approved list, import its .jpmplugin or .zip file, or drop the file anywhere on this page.</p></div>
+        <div class="settings-heading"><h2>Your plugins</h2><p class="sub">Plugins add things JPMixer doesn’t do itself. Each one runs on its own, so if one stops working, JPMixer and the console carry on, and each is off until you turn it on. Its settings are listed under Plugins in the sidebar.</p><p class="sub">To install one that isn’t on the approved list, import its .jpmplugin or .zip file, or drop the file anywhere on this page. A plugin someone else made is their code: only add ones from someone you trust.</p></div>
         <div class="card-row plugin-toolbar">
           <button type="button" class="btn" id="pluginImportBtn">Import plugin…</button>
           <button type="button" class="btn" id="pluginImportFolderBtn" title="For people making plugins: a plugin’s folder, as it is">Import folder…</button>

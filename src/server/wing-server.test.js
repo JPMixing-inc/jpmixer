@@ -22,7 +22,9 @@ async function main() {
   const mock = dgram.createSocket('udp4');
   const received = [];
   let mockRemote = null;
+  let unplugged = false; // the console gone: nothing arrives, nothing answers
   mock.on('message', (buf, rinfo) => {
+    if (unplugged) return;
     mockRemote = rinfo;
     const msg = osc.readMessage(buf);
     received.push(msg);
@@ -142,6 +144,24 @@ async function main() {
   assert.equal(crashed.length, 0, `bad input should never crash the server; got: ${crashed.map(e => e.message).join('; ')}`);
   assert.equal(ws.readyState, WebSocket.OPEN);
   console.log('ok - out-of-range/non-finite input is ignored, never crashes the server');
+
+  // ── An unmute while the console is unreachable is sent when it's back ──
+  // Only the mutes used to be re-sent: the send stayed off.
+  {
+    unplugged = true;
+    let deadline = Date.now() + 9000;
+    while (server.isConsoleConnected() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    assert.equal(server.isConsoleConnected(), false, 'the console should show offline');
+    ws.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 2, muted: false }));
+    await new Promise((r) => setTimeout(r, 150));
+    unplugged = false;
+    received.length = 0;
+    deadline = Date.now() + 9000;
+    while (!server.isConsoleConnected() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 200));
+    assert.ok(received.some(m => m.address === '/ch/2/send/1/on' && m.args === 1), 'the send should be switched back on when the console is back');
+    console.log('ok - an unmute made while the console was unreachable is sent when it is back');
+  }
 
   ws.close();
   server.stop();

@@ -41,6 +41,15 @@ function fakeLv1() {
   // Each track's own fader/mute/solo: "type:index" (0-based)
   state.track = { '0:0': { gain: -5, mute: false, solo: false }, '0:3': { gain: -2, mute: true, solo: false },
     '2:0': { gain: 0, mute: false, solo: false }, '25:0': { gain: -1, mute: false, solo: false, mono: true }, '12:0': { gain: -3, mute: false, solo: false }, '12:1': { gain: 0, mute: false, solo: false } };
+  // Each track's EQ as a real LV1 17.6 reported it (2026-10-27): VOX IEM (a
+  // monitor mix) has one, BAND IEM (an aux bus, like an FX return) has none.
+  // Q is reported as the knob's position 0..1000 but set as the real Q.
+  const knob = q => Math.round(1000 * Math.log(q / 0.05) / Math.log(130) * 10) / 10;
+  state.eq = {
+    '25:0': { avail: true, in: 1, bands: { 1: { on: true, freq: 38, gain: -3.6, q: 203, shape: 'Bell' }, 2: { on: true, freq: 332, gain: -2.3, q: 1000, shape: 'Bell' }, 3: { on: true, freq: 2276, gain: -8.6, q: 569.6, shape: 'Bell' }, 4: { on: true, freq: 8036, gain: -2, q: 569.6, shape: 'Hi-Shelf' } } },
+    '0:1': { avail: true, in: 1, bands: { 1: { on: true, freq: 80, gain: 2, q: 569.6, shape: 'Low-Shelf' }, 2: { on: true, freq: 400, gain: -3, q: 569.6, shape: 'Bell' }, 3: { on: true, freq: 2500, gain: 0, q: 569.6, shape: 'Bell' }, 4: { on: true, freq: 10000, gain: 1, q: 569.6, shape: 'Hi-Pass' } } }, // BASS
+    '2:0': { avail: false, in: 0, bands: { 1: { on: false, freq: 0, gain: 0, q: 0, shape: '' }, 2: { on: false, freq: 0, gain: 0, q: 0, shape: '' }, 3: { on: false, freq: 0, gain: 0, q: 0, shape: '' }, 4: { on: false, freq: 0, gain: 0, q: 0, shape: '' } } },
+  };
   const fake = { received: [], sockets: new Set(), state, scene: 'SONG 1', echoDelay: 0 };
   // LV1's confirmations, optionally late (as over a busy network)
   const later = (fn) => fake.echoDelay ? setTimeout(fn, fake.echoDelay) : fn();
@@ -103,10 +112,26 @@ function fakeLv1() {
         } else if (m.address === '/Set/Solo') {
           const [type, index, on] = m.args; const t = state.track[`${type}:${index}`] ||= { gain: -144, mute: false, solo: false };
           t.solo = on === 1; notifyAll('/Notify/Solo', [type, index, on, 1]);
-        } else if (m.address === '/Scene/Recall') {
+        } else if (m.address === '/Set/CurSceneIndex') {
           fake.scene = ['SONG 1', 'SONG 2', 'SONG 3'][m.args[0]];
           notifyAll('/Notify/CurSceneIndex', [m.args[0]]);
           notifyAll('/Notify/Scene/Name', [fake.scene]);
+        } else if (m.address === '/GetEQ') {
+          const [type, index] = m.args; const eq = state.eq[`${type}:${index}`];
+          if (eq) for (const [b, band] of Object.entries(eq.bands)) for (const [k, addr] of [['on', 'On'], ['freq', 'Freq'], ['gain', 'Gain'], ['q', 'Q'], ['shape', 'Shape']]) send(sock, `/Notify/EQ/Band/${addr}`, [type, index, Number(b), band[k], eq.avail].map(tagged));
+        } else if (/^\/Set\/EQ\/Band\/(Gain|Freq|Q|On)$/.test(m.address)) {
+          const [type, index, b, v] = m.args; const eq = state.eq[`${type}:${index}`];
+          if (!eq || !eq.avail) continue;
+          const kind = m.address.split('/').pop(), band = eq.bands[b];
+          if (kind === 'Gain') band.gain = Math.round(v * 10) / 10;
+          if (kind === 'Freq') band.freq = Math.round(v);
+          if (kind === 'Q') band.q = knob(v);
+          if (kind === 'On') band.on = v;
+          const reported = { Gain: band.gain, Freq: band.freq, Q: band.q, On: band.on }[kind];
+          later(() => notifyAll(`/Notify/EQ/Band/${kind}`, [type, index, b, reported, true]));
+        } else if (m.address === '/SetEQState') {
+          const [type, index, v] = m.args; const eq = state.eq[`${type}:${index}`];
+          if (eq && eq.avail) { eq.in = v; notifyAll('/Notify/EQState', [type, index, v, 1]); }
         } else if (m.address === '/Set/Aux/Send/On' && srcType === 0) {
           state.on[key] = value;
           notifyAll('/Notify/Aux/Send/On', [0, src, mix, value, true]);
@@ -309,7 +334,7 @@ test('LV1 backend end to end', async (t) => {
   await t.test('the Console Controller gets LV1\'s DCAs as control groups, and a preamp-only channel panel', () => {
     const config = showConfig;
     assert.deepEqual(config.controlGroups, [{ channel: 1, label: 'DRUM DCA' }, { channel: 2, label: 'VOX DCA' }]);
-    assert.equal(config.channelProcessing, 'preamp');
+    assert.equal(config.channelProcessing, 'preamp-eq');
   });
 
   await t.test('the Console Controller opens showing LV1\'s faders and mutes', async () => {
@@ -374,20 +399,127 @@ test('LV1 backend end to end', async (t) => {
     a.got.length = 0;
     a.send(JSON.stringify({ type: 'fire-snapshot', action: 'next' }));
     assert.ok(await until(() => a.got.some(j => j.address === '/SnapshotName' && j.args[0] === 'SONG 3')));
-    assert.deepEqual(fake.received.filter(m => m.address === '/Scene/Recall').at(-1).args, [2]);
-    const recalls = fake.received.filter(m => m.address === '/Scene/Recall').length;
+    assert.deepEqual(fake.received.filter(m => m.address === '/Set/CurSceneIndex').at(-1).args, [2]);
+    const recalls = fake.received.filter(m => m.address === '/Set/CurSceneIndex').length;
     a.send(JSON.stringify({ type: 'fire-snapshot', action: 'next' })); // already the last scene
     await wait(150);
-    assert.equal(fake.received.filter(m => m.address === '/Scene/Recall').length, recalls, 'nothing past the last scene');
+    assert.equal(fake.received.filter(m => m.address === '/Set/CurSceneIndex').length, recalls, 'nothing past the last scene');
     a.send(JSON.stringify({ type: 'fire-snapshot', action: 'prev' }));
     assert.ok(await until(() => a.got.some(j => j.address === '/SnapshotName' && j.args[0] === 'SONG 2')));
+  });
+
+  await t.test('aux EQ: a mix\'s EQ on LV1, read, changed from a phone and followed live', async () => {
+    const eqSets = () => fake.received.filter(m => /^\/Set\/EQ|^\/SetEQState/.test(m.address));
+    assert.ok(fake.received.some(m => m.address === '/GetEQ' && m.args[0] === 25 && m.args[1] === 0), 'asks LV1 for each mix\'s EQ');
+    assert.deepEqual((a.last(j => j.config) || { config: showConfig }).config.aux.map(x => x.eqEnabled), [false, false], 'off until Settings allows it');
+    server.applyConfigLive({ serverPort, deskIp: '127.0.0.1', lv1Port, channels: 16, auxes: 8, sceneRecallEnabled: true, auxOverrides: { 1: { eqEnabled: true }, 2: { eqEnabled: true } } });
+    assert.ok(await until(() => a.last(j => j.config)?.config.aux[1].eqEnabled === true));
+    assert.equal(a.last(j => j.config).config.aux[0].eqEnabled, false, 'BAND IEM has no EQ on LV1, so it offers none');
+    assert.deepEqual(a.last(j => j.config).config.auxEqQ, [0.05, 6.5], 'the phone\'s Q slider covers LV1\'s range');
+
+    // Opening the EQ panel: LV1's bands, Q as the real Q LV1 shows
+    a.got.length = 0;
+    a.send(JSON.stringify({ type: 'request-aux-eq', aux: 2 }));
+    assert.ok(await until(() => a.got.some(j => j.type === 'aux-eq')));
+    const eq = a.got.find(j => j.type === 'aux-eq').eq;
+    assert.deepEqual([eq.eq_gain_1, eq.eq_freq_1, eq.eq_gain_3, eq.eq_freq_4, eq.eq_shape_4, eq.eq_on_2], [-3.6, 38, -8.6, 8036, 'Hi-Shelf', 1]);
+    assert.deepEqual([eq.eq_Q_1, eq.eq_Q_2, eq.eq_Q_3].map(q => Math.round(q * 100) / 100), [0.13, 6.5, 0.8]);
+    a.send(JSON.stringify({ type: 'request-aux-eq', aux: 1 }));
+    assert.ok(await until(() => a.got.some(j => j.type === 'aux-eq' && j.aux === 1)));
+    assert.deepEqual(a.got.find(j => j.type === 'aux-eq' && j.aux === 1).eq, {}, 'a mix with no EQ sends none');
+
+    // A phone moving band 2: to LV1, to the other phone, and LV1's confirmation not back to it
+    a.got.length = 0; b.got.length = 0;
+    a.send(JSON.stringify({ address: '/Aux_Outputs/2/EQ/eq_gain_2', args: [3] }));
+    a.send(JSON.stringify({ address: '/Aux_Outputs/2/EQ/eq_Q_2', args: [1.2] }));
+    a.send(JSON.stringify({ address: '/Aux_Outputs/2/EQ/eq_freq_2', args: [500.4] }));
+    assert.ok(await until(() => fake.state.eq['25:0'].bands[2].freq === 500));
+    assert.deepEqual([fake.state.eq['25:0'].bands[2].gain, fake.state.eq['25:0'].bands[2].q], [3, 652.9], 'Q 1.2 lands where LV1 puts it');
+    assert.ok(await until(() => b.got.some(j => j.address === '/Aux_Outputs/2/EQ/eq_Q_2' && j.args[0] === 1.2)), 'the other phone follows');
+    await wait(150);
+    assert.ok(!a.got.some(j => /eq_(gain|Q|freq)_2$/.test(j.address || '')), 'LV1\'s confirmations aren\'t sent back to the phone that moved it');
+    // Past LV1's range: clamped, and the phone told where it stopped
+    a.send(JSON.stringify({ address: '/Aux_Outputs/2/EQ/eq_Q_2', args: [10] }));
+    assert.ok(await until(() => a.got.some(j => j.address === '/Aux_Outputs/2/EQ/eq_Q_2' && j.args[0] === 6.5)));
+    assert.equal(eqSets().at(-1).args[3], 6.5);
+    // EQ in/out
+    a.send(JSON.stringify({ address: '/Aux_Outputs/2/EQ/eq_in', args: [0] }));
+    assert.ok(await until(() => fake.state.eq['25:0'].in === 0));
+    assert.ok(await until(() => b.got.some(j => j.address === '/Aux_Outputs/2/EQ/eq_in' && j.args[0] === 0)));
+
+    // Changed on LV1: every phone on the mix follows, shape and band on/off too
+    b.got.length = 0;
+    fake.notifyAll('/Notify/EQ/Band/Freq', [25, 0, 3, 2500, true]);
+    fake.notifyAll('/Notify/EQ/Band/Q', [25, 0, 3, 0, true]);
+    fake.notifyAll('/Notify/EQ/Band/Shape', [25, 0, 1, 'Hi-Pass', true]);
+    fake.notifyAll('/Notify/EQ/Band/On', [25, 0, 4, false, true]);
+    assert.ok(await until(() => b.got.filter(j => /^\/Aux_Outputs\/2\/EQ\//.test(j.address || '')).length === 4));
+    const seen = Object.fromEntries(b.got.filter(j => j.address).map(j => [j.address.split('/').pop(), j.args[0]]));
+    assert.deepEqual([seen.eq_freq_3, Math.round(seen.eq_Q_3 * 100) / 100, seen.eq_shape_1, seen.eq_on_4], [2500, 0.05, 'Hi-Pass', 0]);
+
+    // Not allowed: no EQ mix, or Settings switched off for it
+    const before = eqSets().length;
+    a.send(JSON.stringify({ address: '/Aux_Outputs/1/EQ/eq_gain_1', args: [6] }));
+    server.applyConfigLive({ serverPort, deskIp: '127.0.0.1', lv1Port, channels: 16, auxes: 8, sceneRecallEnabled: true });
+    a.send(JSON.stringify({ address: '/Aux_Outputs/2/EQ/eq_gain_1', args: [6] }));
+    a.send(JSON.stringify({ address: '/Aux_Outputs/2/EQ/eq_gain_9', args: [6] }));
+    await wait(150);
+    assert.equal(eqSets().length, before, 'nothing reached LV1');
+    fake.state.eq['25:0'].in = 1;
+  });
+
+  await t.test('channel EQ: the Console Controller\'s panel shows an input\'s EQ on LV1 and changes it', async () => {
+    const eqSets = () => fake.received.filter(m => /^\/Set\/EQ|^\/SetEQState/.test(m.address));
+    a.got.length = 0; b.got.length = 0;
+    a.send(JSON.stringify({ type: 'request-channel-detail', ch: 2, section: 'eq' }));
+    b.send(JSON.stringify({ type: 'request-channel-detail', ch: 2, section: 'eq' }));
+    // LV1's answer to /GetEQ adds the EQ to the panel; its band 1 (the bottom) is the panel's band 4
+    assert.ok(await until(() => a.got.some(j => j.type === 'channel-detail' && j.params['EQ/eq_gain_1'])));
+    const d = a.last(j => j.type === 'channel-detail');
+    assert.ok(d.params['Channel_Input/analog_gain'].readOnly, 'the preamp stays read-only');
+    assert.equal(d.params['EQ/eq_gain_1'].readOnly, undefined, 'the EQ can be changed');
+    assert.equal(d.params['EQ/eq_in'], undefined, 'EQ in/out only once LV1 has said it');
+    assert.deepEqual([d.values['EQ/eq_freq_4'], d.values['EQ/eq_gain_4'], d.values['EQ/eq_shape_4'], d.values['EQ/eq_freq_1'], d.values['EQ/eq_shape_1']], [80, 2, 'Low-Shelf', 10000, 'Hi-Pass']);
+    assert.equal(Math.round(d.values['EQ/eq_Q_2'] * 100) / 100, 0.8);
+    assert.match(d.note, /The EQ is LV1’s own/);
+
+    // From the panel to LV1, in LV1's band numbers, and to the other panel
+    await wait(150); // the panel sent again once LV1 said it has an EQ
+    a.got.length = 0; b.got.length = 0;
+    a.send(JSON.stringify({ type: 'console-param', ch: 2, path: 'EQ/eq_gain_4', value: 4 }));
+    a.send(JSON.stringify({ type: 'console-param', ch: 2, path: 'EQ/eq_Q_3', value: 1.2 }));
+    a.send(JSON.stringify({ type: 'console-param', ch: 2, path: 'EQ/eq_on_2', value: 0 }));
+    assert.ok(await until(() => fake.state.eq['0:1'].bands[3].on === false));
+    assert.deepEqual([fake.state.eq['0:1'].bands[1].gain, fake.state.eq['0:1'].bands[2].q], [4, 652.9]);
+    assert.ok(await until(() => b.got.some(j => j.address === '/Input_Channels/2/EQ/eq_gain_4' && j.args[0] === 4)), 'the other panel follows');
+    await wait(150);
+    assert.ok(!a.got.some(j => /^\/Input_Channels\/2\/EQ\/eq_(gain_4|Q_3)$/.test(j.address || '')), 'LV1\'s confirmations of a move aren\'t sent back to the panel that moved it (a switch\'s, the same value, may be)');
+    // Not the preamp, and not past LV1's range
+    const n = eqSets().length;
+    a.send(JSON.stringify({ type: 'console-param', ch: 2, path: 'Channel_Input/phantom', value: 1 }));
+    a.send(JSON.stringify({ type: 'console-param', ch: 2, path: 'EQ/eq_gain_9', value: 1 }));
+    a.send(JSON.stringify({ type: 'console-param', ch: 2, path: 'EQ/eq_gain_4', value: 40 }));
+    assert.ok(await until(() => eqSets().length === n + 1));
+    assert.equal(eqSets().at(-1).args[3], 18, 'clamped to LV1\'s ±18 dB');
+
+    // Changed on LV1: the open panels follow; EQ in/out appears once LV1 says it
+    a.got.length = 0;
+    fake.notifyAll('/Notify/EQ/Band/Freq', [0, 1, 4, 9000, true]);
+    assert.ok(await until(() => a.got.some(j => j.address === '/Input_Channels/2/EQ/eq_freq_1' && j.args[0] === 9000)));
+    fake.notifyAll('/Notify/EQState', [0, 1, 1, 1]);
+    assert.ok(await until(() => a.got.some(j => j.type === 'channel-detail' && j.params['EQ/eq_in'] && j.values['EQ/eq_in'] === 1)));
+    a.send(JSON.stringify({ type: 'console-param', ch: 2, path: 'EQ/eq_in', value: 0 }));
+    assert.ok(await until(() => fake.state.eq['0:1'].in === 0));
+    a.send(JSON.stringify({ type: 'close-channel-detail' })); b.send(JSON.stringify({ type: 'close-channel-detail' }));
   });
 
   await t.test('after a dropped connection it reconnects and re-asserts mutes', async () => {
     for (const s of fake.sockets) s.destroy();
     assert.ok(await until(() => connected === false));
     fake.state.on['2:0'] = true; // an LV1 that came back with every send on
+    const asked = fake.received.filter(m => m.address === '/GetEQ').length;
     assert.ok(await until(() => connected === true, 6000), 'reconnects by itself');
+    assert.ok(await until(() => fake.received.filter(m => m.address === '/GetEQ').length >= asked + 2), 'the mixes\' EQ asked for again');
     assert.ok(await until(() => fake.state.on['2:0'] === false));
   });
 

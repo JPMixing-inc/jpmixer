@@ -359,13 +359,18 @@ function applyMuteSolo(aux, { paced = false } = {}) {
   if (!premuteState[aux]) premuteState[aux] = {};
 
   const restoredLevels = {}; // ch -> dB — sent to clients for fader snap-back
+  const unknown = []; // silenced sends whose level isn't read yet
 
   for (let ch = 1; ch <= chCount; ch++) {
     const key = `/Input_Channels/${ch}/Aux_Send/${aux}/send_level`;
-    if (!cache.has(key)) continue; // skip channels not in this mix
     const muted    = !!(muteState[aux]?.[ch]);
     const soloed   = !!(soloState[aux]?.[ch]);
     const silenced = muted || (anySolo && !soloed);
+    // Not read from the desk yet (just after starting, or a mix nobody has
+    // open): ask for it, and processDeskSendLevel() silences it when the
+    // answer comes, keeping the real level for the unmute. Skipping it left
+    // the channel audible while every phone showed it muted.
+    if (!cache.has(key)) { if (silenced) unknown.push(`${key}/?`); continue; }
 
     // Silenced channels are (re-)sent -150 on every mute/solo change, so a
     // -150 lost on a busy network is corrected by the next change rather than
@@ -383,6 +388,8 @@ function applyMuteSolo(aux, { paced = false } = {}) {
       delete premuteState[aux][ch];
     }
   }
+
+  if (unknown.length) queueDeskQueries(unknown, true);
 
   // Single broadcast — includes restored levels so faders snap back in one message
   broadcastToClients({

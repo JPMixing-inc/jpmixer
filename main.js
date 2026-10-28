@@ -381,8 +381,16 @@ app.whenReady().then(async () => {
   // Shure, Smaart and Companion are official plugins now: each gets its own
   // settings from the config, and its Settings tab's switch (integrations.js)
   require('./src/server/integrations').applyConfig(config.getAll());
+  // Allow plugins is gone (2.0.15): each plugin has its own switch. Where it
+  // was off, the plugins that aren't JPMixer's own are turned off once, so
+  // none starts by itself; pluginsEnabled is kept true from then on.
+  if (config.get('pluginsEnabled') !== true) {
+    const off = require('./src/server/plugins').turnOffOthers();
+    if (off.length) console.log(`[JPMixer] Allow plugins was off: turned off ${off.join(', ')} (each can be turned on in Settings → Plugins)`);
+    config.save({ ...config.getAll(), pluginsEnabled: true });
+  }
   // Plugins that are on (Settings → Plugins), each in its own process
-  require('./src/server/plugins').start({ ...pluginProviders, allowed: config.get('pluginsEnabled') === true });
+  require('./src/server/plugins').start({ ...pluginProviders });
   // Moving over from a version where they were built in: each one that's on
   // gets its plugin from the copy that comes with JPMixer (no internet needed)
   require('./src/server/integrations').moveOver(config.getAll(), undefined, { fromCatalog: installIntegrationFromCatalog })
@@ -1080,7 +1088,7 @@ ipcMain.handle('save-config', async (_, incoming) => {
   require('./src/server/shure-wireless').applyConfig(config.getAll());
   require('./src/server/integrations').applyConfig(config.getAll());
   ensureIntegrationPlugins(); // one just turned on, whose plugin isn't installed yet
-  require('./src/server/plugins').setAllowed(config.get('pluginsEnabled') === true);
+  require('./src/server/plugins').apply();
   rebuildTrayMenu();
   updateKeepAwake();
   if (prev.brandLogo !== config.get('brandLogo')) require('./src/server/branding').pruneLogos();
@@ -1221,11 +1229,6 @@ function ensureIntegrationPlugins() {
   })();
 }
 async function importPluginPath(file) {
-  // Plugins have to be allowed first (Settings → Plugins)
-  if (config.get('pluginsEnabled') !== true) {
-    await showPrompt({ type: 'info', title: 'Plugins are off', message: 'Allow plugins first.', detail: 'Turn on Allow plugins in Settings → Plugins, select Save & Apply, then open the plugin again.' });
-    return { ok: false, canceled: true };
-  }
   const opened = await require('./src/server/plugin-store').open(String(file || ''));
   if (!opened.ok) {
     await showPrompt({ type: 'error', title: 'Can’t install this plugin', message: 'This plugin can’t be installed.', detail: opened.error });
@@ -1248,8 +1251,6 @@ function checkPluginUpdates() {
   require('./src/server/plugin-store').catalog(app.getVersion()).then(notifyPluginUpdates, () => {});
 }
 ipcMain.handle('plugins-install-catalog', async (_e, id) => {
-  // JPMixer's own plugins install without Allow plugins (they run without it too)
-  if (config.get('pluginsEnabled') !== true && !Object.hasOwn(plugins().OFFICIAL, String(id || ''))) return { ok: false, error: 'Turn on Allow plugins, then Save & Apply, first.' };
   const opened = await require('./src/server/plugin-store').openFromCatalog(String(id || ''));
   if (!opened.ok) return opened;
   return confirmAndInstall(opened, opened.bundled ? 'bundled' : 'catalog');
@@ -1323,7 +1324,7 @@ function performanceReport() {
   const companion = require('./src/server/companion-satellite').getStatus();
   const smaart = require('./src/server/smaart').getStatus();
   const shure = require('./src/server/shure-wireless').getStatus();
-  const pluginList = config.get('pluginsEnabled') === true ? plugins().list().filter((p) => p.manifest && p.enabled) : [];
+  const pluginList = plugins().list().filter((p) => p.manifest && p.enabled);
   s.extra = {
     server: { running, port: config.get('serverPort'), address: getLocalIP(), keepAwake: awakeBlocker !== null && powerSaveBlocker.isStarted(awakeBlocker) },
     connections: running ? server.getConnectionCount() : 0,
@@ -1333,7 +1334,6 @@ function performanceReport() {
     smaart: { enabled: !!smaart.enabled, state: smaart.state, message: smaart.message },
     shure: { enabled: !!shure.enabled, receivers: shure.receivers.length, connected: shure.receivers.filter((r) => r.status === 'connected').length },
     controlApi: !!config.get('apiEnabled'),
-    pluginsAllowed: config.get('pluginsEnabled') === true,
     plugins: pluginList.map((p) => ({ name: p.manifest.name, state: p.state })),
   };
   s.health = stats.health(s);
@@ -1677,7 +1677,7 @@ ipcMain.handle('restore-backup', async (event, request) => {
       require('./src/server/shure-wireless').applyConfig(config.getAll());
       require('./src/server/integrations').applyConfig(config.getAll());
       ensureIntegrationPlugins();
-      require('./src/server/plugins').setAllowed(config.get('pluginsEnabled') === true);
+      require('./src/server/plugins').apply();
       rebuildTrayMenu();
     } else if (result.scenesChanged && serverRunning && server.applyConfigLive) server.applyConfigLive(config.getAll());
     if (result.mixes && serverRunning && server.pushDevicePresets) for (const id of result.mixes.deviceIds) server.pushDevicePresets(id);

@@ -139,6 +139,13 @@ class Lv1Client extends EventEmitter {
   setTrackGain(type, n, db) { return this.connected && this._write(() => P.msg.setTrackGain(type, n - 1, db)); }
   setTrackMute(type, n, on) { return this.connected && this._write(() => P.msg.setTrackMute(type, n - 1, on)); }
   setSolo(type, n, on) { return this.connected && this._write(() => P.msg.setSolo(type, n - 1, on)); }
+  // A track's EQ (n from 1): ask for all of it, or set one band's gain, freq, Q or on, or the EQ in/out
+  getEq(type, n) { return this.connected && this._write(() => P.msg.getEq(type, n - 1)); }
+  setEqBand(type, n, band, param, value) {
+    const build = { gain: P.msg.setEqGain, freq: P.msg.setEqFreq, q: P.msg.setEqQ, on: P.msg.setEqBandOn }[param];
+    return !!build && this.connected && this._write(() => build(type, n - 1, band, value));
+  }
+  setEqIn(type, n, on) { return this.connected && this._write(() => P.msg.setEqIn(type, n - 1, on)); }
   // LV1's scene at this index in its scene list (from 0, as LV1 numbers them)
   recallScene(index) { return this.connected && this._write(() => P.msg.recallScene(index)); }
 }

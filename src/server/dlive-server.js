@@ -292,7 +292,26 @@ function requestSendLevel(ch, aux, inputCoord, sendCoord) {
 // paced-writer.js. A musician's own fader move stays direct.
 const pacer = createPacedWriter();
 function pacedSendLevel(ch, aux, inputCoord, sendCoord, db, urgent) {
-  pacer.write(`lvl:${ch}:${aux}`, () => client && client.setSendLevel(inputCoord, sendCoord, db), urgent);
+  pacer.write(`lvl:${ch}:${aux}`, () => sendLevelNow(ch, aux, inputCoord, sendCoord, db), urgent);
+}
+
+// Sends a write couldn't get to the desk (the link was down): sent again from
+// levelCache on reconnect. An unmute during a drop used to leave the desk at
+// -∞ while the phone showed the channel on (only mutes were re-sent).
+const unsentLevels = new Set(); // levelKey
+function sendLevelNow(ch, aux, inputCoord, sendCoord, db) {
+  const key = levelKey(ch, aux);
+  if (client && client.setSendLevel(inputCoord, sendCoord, db)) unsentLevels.delete(key);
+  else unsentLevels.add(key);
+}
+function resendUnsentLevels(baseN) {
+  for (const key of [...unsentLevels]) {
+    unsentLevels.delete(key);
+    const [ch, aux] = key.split(':').map(Number);
+    if (isSilenced(aux, ch) || !levelCache.has(key)) continue; // reassertSilencing() sends the silenced ones
+    const input = channelCoord(baseN, ch), snd = auxCoord(baseN, aux);
+    if (input && snd) pacedSendLevel(ch, aux, input, snd, levelCache.get(key), true);
+  }
 }
 
 function startSendLevelPolling(baseN) {
@@ -651,6 +670,7 @@ function start(cfg) {
   connections = [];
   currentSceneNumber = null;
   levelCache.clear();
+  unsentLevels.clear();
   requestedSendLevels.clear();
   pacer.clear();
   nameCache.clear();
@@ -865,7 +885,7 @@ function start(cfg) {
         premuteState[aux][ch] = db;
       }
       pacer.cancel(`lvl:${ch}:${aux}`); // this move supersedes a queued recall write
-      client.setSendLevel(inputCoord, sendCoord, silenced ? -Infinity : db);
+      sendLevelNow(ch, aux, inputCoord, sendCoord, silenced ? -Infinity : db);
       broadcastToClients(oscMsg, ws);
 
       ws._lastActivityAt = Date.now();
@@ -913,6 +933,7 @@ function start(cfg) {
     // solo; phones would show M lit on an audible channel. Re-send them
     // first (nothing to do on the first connect — start() cleared the state).
     reassertSilencing(baseN);
+    resendUnsentLevels(baseN);
     // Prime channel/aux names + colours so the mixer shows real labels —
     // paced one request per tick, never bursted (see startPriming above).
     // Settings' Channels/Auxes counts can be configured higher than dLive's
@@ -1093,6 +1114,7 @@ function stop() {
   consoleConnected = false;
   if (onConsoleStatusChange) onConsoleStatusChange(false);
   levelCache.clear();
+  unsentLevels.clear();
   requestedSendLevels.clear();
   pacer.clear();
   connections = [];

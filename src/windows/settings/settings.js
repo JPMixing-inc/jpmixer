@@ -875,31 +875,8 @@ $('smaartEnabled').addEventListener('change', refreshSmaartStatus);
 // rest of Settings, on/off and settings take effect with Save & Apply. Add,
 // Remove and Reload act straight away.
 let pluginList = [];
-let pluginsAllowed = false;
-// Plugins has a section of its own: Allow plugins, and adding
-// and removing them. Each plugin's own tab, listed under it, shows once
-// plugins are allowed and saved.
-function showPluginsTab(on) {
-  pluginsAllowed = !!on;
-  const tabs = [...document.querySelectorAll('.tab[data-plugin-tab]')].filter((tab) => !tab.dataset.official);
-  for (const tab of tabs) tab.hidden = !on;
-  if (!on && tabs.some((tab) => tab.classList.contains('active'))) document.querySelector('.tab[data-tab="plugins"]').click();
-  showPluginsAllowed();
-}
-// The switch's note, and the rest of the menu greyed out while plugins aren't allowed
-function showPluginsAllowed() {
-  const want = $('pluginsEnabled').checked;
-  const note = want === pluginsAllowed ? (pluginsAllowed ? '' : 'Turn this on, then Save & Apply, to add plugins.')
-    : `Save & Apply to ${want ? 'allow plugins' : 'turn every plugin off'}.`;
-  $('pluginsAllowNote').textContent = note;
-  // JPMixer's own plugins work either way: Find plugins stays usable for
-  // them, and their rows aren't greyed out; adding anyone else's needs it
-  $('pluginsIntro').classList.toggle('is-off', !pluginsAllowed);
-  for (const row of document.querySelectorAll('#pluginList .plugin-row')) row.classList.toggle('is-off', !pluginsAllowed && row.dataset.official !== '1');
-  if (pluginsAllowed !== lastCatalogAllowed && catalogLoaded) loadCatalog(true); // its Install buttons follow
-}
-let lastCatalogAllowed = null;
-$('pluginsEnabled').addEventListener('change', showPluginsAllowed);
+// Plugins has a section of its own: finding, adding and removing them, each
+// with its own switch. Each plugin's own tab is listed under it.
 const pluginTabId = (id) => `plugin-${id}`;
 function openPluginTab(id) { document.querySelector(`.tab[data-plugin-tab="${CSS.escape(id)}"]`)?.click(); }
 function pluginMessage(text, isError = false) {
@@ -971,7 +948,7 @@ function statusBox() {
 }
 // Where it came from: the approved list, or imported (not reviewed)
 const PLUGIN_SOURCE = { catalog: ['Approved', 'is-approved', 'Installed from JPMixer’s list of approved plugins'], file: ['Not reviewed', 'is-unreviewed', 'Imported from a file or folder: not on JPMixer’s list of approved plugins'],
-  official: ['JPMixer Original', 'is-original', 'One of JPMixer’s own plugins: it runs without Allow plugins'] };
+  official: ['JPMixer Original', 'is-original', 'One of JPMixer’s own plugins'] };
 // Shure, Smaart and Companion are set up in their own tabs, as before (their
 // settings are JPMixer's): each tab is under Plugins once its plugin is
 // installed, and its row here opens it
@@ -1056,7 +1033,6 @@ function renderPluginList() {
     row.className = 'card companion-card plugin-row';
     row.dataset.pluginRow = p.folder; // by folder: a broken copy can share a working plugin's id
     row.dataset.official = p.official ? '1' : '';
-    row.classList.toggle('is-off', !pluginsAllowed && !p.official);
     const head = document.createElement('div');
     head.className = 'card-row space-between';
     const heading = document.createElement('div');
@@ -1129,7 +1105,6 @@ function renderPluginTabs() {
     tab.dataset.title = m.name;
     tab.dataset.description = m.description || 'A plugin’s settings.';
     tab.dataset.official = p.official ? '1' : '';
-    tab.hidden = !pluginsAllowed && !p.official; // official ones run without Allow plugins
     const symbol = document.createElement('span');
     symbol.className = 'nav-symbol';
     symbol.setAttribute('aria-hidden', 'true');
@@ -1385,7 +1360,7 @@ function pluginUpdateButton(p) {
 // without redrawing what's being edited
 async function refreshPluginStatus() {
   const showing = $('tab-plugins').classList.contains('active') || !!document.querySelector('.tab-panel.active[data-plugin-panel]');
-  if (!pluginsAllowed || !showing) return;
+  if (!showing) return;
   let result;
   try { result = await window.jpm.pluginsList(); } catch (_) { return; }
   const fresh = result.plugins || [];
@@ -1450,7 +1425,7 @@ $('pluginImportFolderBtn').addEventListener('click', async () => afterInstall(aw
   const files = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
   // The panel is display: contents, so the drop is caught on main while it's showing
   const main = document.querySelector('main');
-  const showing = () => page.classList.contains('active') && pluginsAllowed;
+  const showing = () => page.classList.contains('active');
   main.addEventListener('dragover', (e) => { if (!showing() || !files(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; page.classList.add('is-dropping'); });
   main.addEventListener('dragleave', (e) => { if (!main.contains(e.relatedTarget)) page.classList.remove('is-dropping'); });
   main.addEventListener('drop', async (e) => {
@@ -1472,6 +1447,27 @@ window.jpm.onPluginsChanged(() => { loadPlugins(); loadCatalog(false); });
 window.jpm.onPluginsResult?.((result) => afterInstall(result));
 window.jpm.onPluginsShow(() => document.querySelector('.tab[data-tab="plugins"]').click());
 
+// Each plugin's icon in Find plugins: JPMixer's own are drawn here (so their
+// files, and the hashes the approved list checks, stay as they are), any
+// other is a plug. 24×24 line drawings, in the plugin's own colour.
+const PLUGIN_ICONS = {
+  patch: ['#4dabf7', '<rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="7.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="16.5" cy="12" r="1.6"/>'],
+  shure: ['#69db7c', '<circle cx="10" cy="6.5" r="3.5"/><path d="M8.2 9.6 9 20.5h2l.8-10.9"/><path d="M16 3.5a4 4 0 0 1 0 6"/><path d="M18.5 1.8a7 7 0 0 1 0 9.4"/>'],
+  smaart: ['#ffa94d', '<path d="M3.5 17a8.5 8.5 0 0 1 17 0"/><path d="M12 17l4.5-5.5"/><circle cx="12" cy="17" r="1.3"/><path d="M6.5 12.5l1.2 1M17.5 12.5l-1.2 1M12 9v1.6"/>'],
+  companion: ['#b197fc', '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>'],
+  'console-check': ['#38d9a9', '<path d="M6 4v16M12 4v16M18 4v16"/><rect x="4" y="13" width="4" height="3" rx="1"/><rect x="10" y="7" width="4" height="3" rx="1"/><rect x="16" y="10" width="4" height="3" rx="1"/>'],
+};
+const PLUGIN_ICON_OTHER = ['#adb5bd', '<path d="M9 3v5M15 3v5"/><path d="M6.5 8h11v3.5a5.5 5.5 0 0 1-11 0z"/><path d="M12 17v4"/>'];
+function pluginIcon(id) {
+  const [color, shapes] = PLUGIN_ICONS[id] || PLUGIN_ICON_OTHER;
+  const tile = document.createElement('span');
+  tile.className = 'plugin-icon';
+  tile.style.setProperty('--plugin-color', color);
+  tile.setAttribute('aria-hidden', 'true');
+  tile.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${shapes}</svg>`; // only the drawings above
+  return tile;
+}
+
 // ── Find plugins: the approved list on GitHub (plugin-store.js) ──
 // Shown when the Plugins page is opened (once per window) or Refresh is
 // pressed. (main.js also looks now and then, for the update dot.)
@@ -1479,7 +1475,6 @@ let catalogLoaded = false;
 async function loadCatalog(force) {
   if (!force && !catalogLoaded) return;
   catalogLoaded = true;
-  lastCatalogAllowed = pluginsAllowed;
   const status = $('pluginCatalogStatus');
   if (force) status.textContent = 'Getting the list…';
   status.classList.remove('is-error');
@@ -1489,20 +1484,26 @@ async function loadCatalog(force) {
   if (!result.ok) { box.textContent = ''; status.textContent = result.error; status.classList.add('is-error'); return; }
   status.textContent = result.notice || (result.plugins.length ? '' : 'No approved plugins yet.');
   box.replaceChildren(...result.plugins.map((p) => {
+    // A card each: icon, then the name line, the description, who made it,
+    // and what it can do, with the install button on the right
     const item = document.createElement('div');
     item.className = 'plugin-catalog-item';
     const info = document.createElement('div');
+    info.className = 'plugin-catalog-main';
     const h3 = document.createElement('h3');
-    h3.textContent = p.name;
-    const v = document.createElement('span'); v.className = 'plugin-version'; v.textContent = p.version; h3.append(v);
+    const name = document.createElement('span'); name.className = 'plugin-catalog-name'; name.textContent = p.name;
+    const v = document.createElement('span'); v.className = 'plugin-version'; v.textContent = p.version;
+    h3.append(name, v);
     if (p.official) { const [label, cls, title] = PLUGIN_SOURCE.official; const b = document.createElement('span'); b.className = 'plugin-badge ' + cls; b.textContent = label; b.title = title; h3.append(b); }
     info.append(h3);
-    if (p.description) { const d = document.createElement('p'); d.className = 'sub'; d.textContent = p.description; info.append(d); }
-    if (p.author) { const a = document.createElement('p'); a.className = 'sub'; a.textContent = `By ${p.author}`; info.append(a); }
-    if (p.bundled) { const a = document.createElement('p'); a.className = 'sub'; a.textContent = 'Comes with JPMixer, so it installs without the internet.'; info.append(a); }
+    if (p.description) { const d = document.createElement('p'); d.className = 'plugin-catalog-desc'; d.textContent = p.description; info.append(d); }
+    const meta = [p.author ? `By ${p.author}` : '', p.bundled ? 'Comes with JPMixer, so it installs without the internet' : ''].filter(Boolean);
+    if (meta.length) { const m = document.createElement('p'); m.className = 'plugin-catalog-meta'; m.textContent = meta.join(' · '); info.append(m); }
     const perms = document.createElement('p');
     perms.className = 'plugin-catalog-perms';
-    perms.textContent = p.permissions.length ? `It can: ${p.permissions.map((x) => x.text.charAt(0).toLowerCase() + x.text.slice(1)).join('; ')}.` : 'It doesn’t ask for anything from JPMixer.';
+    const can = document.createElement('b');
+    can.textContent = 'It can: ';
+    perms.append(can, p.permissions.length ? `${p.permissions.map((x) => x.text.charAt(0).toLowerCase() + x.text.slice(1)).join('; ')}.` : 'nothing from JPMixer; it doesn’t ask for anything.');
     info.append(perms);
     const actions = document.createElement('div');
     actions.className = 'plugin-catalog-actions';
@@ -1510,7 +1511,6 @@ async function loadCatalog(force) {
     button.type = 'button';
     button.className = 'btn btn-sm';
     if (p.tooNew) { button.textContent = 'Install'; button.disabled = true; const n = document.createElement('span'); n.className = 'sub'; n.textContent = `Needs JPMixer ${p.minJPMixer}`; actions.append(button, n); }
-    else if (!pluginsAllowed && !p.official && !(p.installedVersion && !p.update)) { button.textContent = 'Install'; button.disabled = true; const n = document.createElement('span'); n.className = 'sub'; n.textContent = 'Allow plugins first'; actions.append(button, n); }
     else if (p.installedVersion && !p.update) {
       const done = document.createElement('span'); done.className = 'plugin-catalog-installed'; done.textContent = `Installed (${p.installedVersion})`; actions.append(done);
       const have = pluginList.find((x) => x.manifest && x.id === p.id);
@@ -1530,7 +1530,7 @@ async function loadCatalog(force) {
       actions.append(button);
       if (p.update) { const n = document.createElement('span'); n.className = 'sub'; n.textContent = `You have ${p.installedVersion}`; actions.append(n); }
     }
-    item.append(info, actions);
+    item.append(pluginIcon(p.id), info, actions);
     return item;
   }));
 }
@@ -1620,7 +1620,7 @@ function renderPerformance(s) {
   live(x.smaart, 'Smaart SPL');
   rows.push(perfRow('Shure wireless', x.shure.enabled ? `${x.shure.connected} of ${x.shure.receivers} receiver${x.shure.receivers === 1 ? '' : 's'} connected` : 'Off', !x.shure.enabled ? '' : x.shure.receivers && x.shure.connected === x.shure.receivers ? 'on' : 'warn'));
   rows.push(perfRow('Control API', x.controlApi ? 'On' : 'Off', x.controlApi ? 'on' : ''));
-  if (x.pluginsAllowed) {
+  {
     const running = x.plugins.filter((pl) => pl.state === 'running').length;
     const bad = x.plugins.filter((pl) => pl.state === 'crashed' || pl.state === 'restarting');
     rows.push(perfRow('Plugins', x.plugins.length ? `${running} of ${x.plugins.length} running${bad.length ? `. Stopped: ${bad.map((pl) => pl.name).join(', ')}` : ''}` : 'None turned on', bad.length ? 'warn' : x.plugins.length ? 'on' : ''));
@@ -1667,7 +1667,7 @@ function performanceText(s) {
     `Server ${x.server.running ? 'running on port ' + x.server.port : 'stopped'}, ${x.connections} connected`,
     `Console: ${PERF_CONSOLE[x.console.type] || x.console.type}, ${x.console.demo ? 'demo mode' : x.console.connected ? 'connected' : 'not connected'}${t.seen ? `, ${t.inPerSec} in / ${t.outPerSec} out a second` : ''}`,
     `Planning Center: ${x.pco.configured ? `${x.pco.last20s} requests in 20 s, ${x.pco.lastMinute} in a minute${x.pco.lastFailure ? `, last problem ${x.pco.lastFailure.message} at ${new Date(x.pco.lastFailure.at).toLocaleTimeString()}` : ''}` : 'not set up'}`,
-    `Companion: ${x.companion.enabled ? x.companion.state : 'off'} · Smaart: ${x.smaart.enabled ? x.smaart.state : 'off'} · Shure: ${x.shure.enabled ? `${x.shure.connected}/${x.shure.receivers} receivers` : 'off'} · Control API: ${x.controlApi ? 'on' : 'off'}${x.pluginsAllowed ? ` · Plugins: ${x.plugins.map((p) => `${p.name} (${p.state})`).join(', ') || 'none on'}` : ''}`,
+    `Companion: ${x.companion.enabled ? x.companion.state : 'off'} · Smaart: ${x.smaart.enabled ? x.smaart.state : 'off'} · Shure: ${x.shure.enabled ? `${x.shure.connected}/${x.shure.receivers} receivers` : 'off'} · Control API: ${x.controlApi ? 'on' : 'off'} · Plugins: ${x.plugins.map((p) => `${p.name} (${p.state})`).join(', ') || 'none on'}`,
     '',
     `Computer: ${c.os} (${c.arch}), ${c.cpuModel}, ${c.cores} cores, on for ${perfDuration(c.uptimeSec)}`,
     `  Load ${c.load === null ? '—' : c.load + '%'}, memory available ${perfBytes(c.memoryAvailableBytes)} of ${perfBytes(c.memoryTotalBytes)}, disk free ${perfBytes(c.disk.freeBytes)}, temperature ${PERF_THERMAL[c.thermal] || c.thermal}, ${c.onBattery ? 'on battery' : 'plugged in'}`,
@@ -1873,23 +1873,19 @@ function renderAuxes() {
   const list    = $('auxesList');
   list.innerHTML = '';
   const auxCount = parseInt($('auxes').value) || 16;
-  // Neither dLive nor KLANG implement per-send EQ (both backends' buildConfig
-  // report eqEnabled: false for every aux regardless of this per-aux
-  // setting) — disable the toggle so it doesn't look like a live control
-  // that silently does nothing.
+  // dLive, KLANG and WING don't implement per-send EQ (their backends'
+  // buildConfig report eqEnabled: false for every aux regardless of this
+  // per-aux setting) — disable the toggle so it doesn't look like a live
+  // control that silently does nothing. LV1 has it: each mix's own EQ on LV1
+  // (a mix LV1 says has no EQ, such as an FX return, offers none).
   const consoleType = $('consoleType').value;
-  const eqDisabled = ['dlive', 'klang', 'wing', 'lv1'].includes(consoleType);
-  // LV1 leaves the EQ column out entirely for now (its remote doesn't reach
-  // the EQ plug-ins most shows use); the others show it switched off
-  const eqHidden = consoleType === 'lv1';
-  list.classList.toggle('no-eq', eqHidden);
-  $('auxKeyEq').hidden = eqHidden;
+  const eqDisabled = ['dlive', 'klang', 'wing'].includes(consoleType);
 
   // Column headings once, at the top of the list
   const head = document.createElement('div');
   head.className = 'aux-row aux-row-head';
   head.setAttribute('role', 'row');
-  head.innerHTML = '<span role="columnheader">#</span><span role="columnheader">Color</span><span role="columnheader">Mix</span><span role="columnheader">Show</span>' + (eqHidden ? '' : '<span role="columnheader">EQ</span>') + '<span role="columnheader">Link only</span>';
+  head.innerHTML = '<span role="columnheader">#</span><span role="columnheader">Color</span><span role="columnheader">Mix</span><span role="columnheader">Show</span><span role="columnheader">EQ</span><span role="columnheader">Link only</span>';
   list.appendChild(head);
   $('auxKeyGroups').hidden = !channelGroups.length;
 
@@ -1901,7 +1897,7 @@ function renderAuxes() {
 
     const eqEnabled = ov.eqEnabled === true;
     const linkOnly  = ov.linkOnly === true;
-    const eqTitle = eqDisabled ? "Per-send EQ isn't available for this console yet" : 'Performers can adjust this mix’s EQ';
+    const eqTitle = eqDisabled ? "Per-send EQ isn't available for this console yet" : consoleType === 'lv1' ? 'Performers can adjust this mix’s EQ on LV1 (monitor mixes; FX returns have none)' : 'Performers can adjust this mix’s EQ';
 
     const row = document.createElement('div');
     row.className = 'aux-row' + (enabled ? '' : ' is-off') + (linkOnly ? ' is-link' : '');
@@ -1915,7 +1911,7 @@ function renderAuxes() {
         <span class="aux-name-label"><input type="text" class="aux-label-input" data-aux="${i}" value="${escHtml(ov.label || '')}" placeholder="${escHtml(name)}" maxlength="40" aria-label="Aux ${i} name" title="Leave empty to use the console’s name" /><span class="aux-badges">${linkOnly ? '<span class="aux-badge">Link only</span>' : ''}${enabled ? '' : '<span class="aux-badge muted">Hidden</span>'}</span></span>
       </span>
       <span role="cell"><input type="checkbox" class="toggle aux-enabled" data-aux="${i}" ${enabled ? 'checked' : ''} title="Listed in the performer mix picker" aria-label="Show aux ${i}" /></span>
-      ${eqHidden ? '' : `<span role="cell"><input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} ${eqDisabled ? 'disabled' : ''} title="${eqTitle}" aria-label="Allow EQ for aux ${i}" /></span>`}
+      <span role="cell"><input type="checkbox" class="toggle aux-eq-enabled" data-aux="${i}" ${eqEnabled ? 'checked' : ''} ${eqDisabled ? 'disabled' : ''} title="${eqTitle}" aria-label="Allow EQ for aux ${i}" /></span>
       <span role="cell"><input type="checkbox" class="toggle aux-link-only" data-aux="${i}" ${linkOnly ? 'checked' : ''} title="Hidden from the picker; open it with its direct link" aria-label="Direct link only for aux ${i}" /></span>
     `;
     // Which channel groups this mix's phones open to (Channels tab groups).
@@ -2500,9 +2496,7 @@ function applyConfig(cfg) {
   $('autoStart').checked          = !!cfg.autoStart;
   $('openAtLogin').checked        = !!cfg.openAtLogin;
   $('keepAwake').checked          = cfg.keepAwake !== false;
-  $('pluginsEnabled').checked     = cfg.pluginsEnabled === true;
-  showPluginsTab(cfg.pluginsEnabled === true);
-  loadPlugins(); // the Plugins list, and each plugin's tab (shown once allowed)
+  loadPlugins(); // the Plugins list, and each plugin's tab
   $('sceneRecallEnabled').checked = !!cfg.sceneRecallEnabled;
   $('performerEarScenes').checked = cfg.performerEarScenes !== false;
   loadBranding(cfg);
@@ -2629,7 +2623,6 @@ function collectConfig() {
   out.autoStart           = $('autoStart').checked;
   out.openAtLogin         = $('openAtLogin').checked;
   out.keepAwake           = $('keepAwake').checked;
-  out.pluginsEnabled      = $('pluginsEnabled').checked;
   out.sceneRecallEnabled  = $('sceneRecallEnabled').checked;
   out.performerEarScenes  = $('performerEarScenes').checked;
   out.brandLogo           = brandLogoFile;
@@ -3297,15 +3290,13 @@ $('saveBtn').addEventListener('click', async () => {
     return;
   }
   // Plugins keep their own on/off and settings (plugins.json)
-  showPluginsTab(out.pluginsEnabled);
-  if (out.pluginsEnabled) {
+  {
     let pluginsSaved = true;
     if (document.querySelector('[data-plugin-panel] [data-plugin]')) {
       const pluginResult = await window.jpm.pluginsSave(collectPluginChanges()).catch((e) => ({ ok: false, error: e.message }));
       if (!pluginResult.ok) { pluginsSaved = false; alert(pluginResult.error || 'Couldn’t save the plugin settings.'); }
     }
-    // Saved: drawn again from what's saved (and the plugins' tabs added when
-    // plugins were just allowed). Not saved: the changes stay to try again.
+    // Saved: drawn again from what's saved. Not saved: the changes stay to try again.
     if (pluginsSaved) {
       for (const card of document.querySelectorAll('[data-plugin-panel] [data-plugin]')) delete card.dataset.edited;
       for (const t of document.querySelectorAll('[data-plugin-panel] .card-row > .toggle')) t.dataset.saved = String(t.checked);

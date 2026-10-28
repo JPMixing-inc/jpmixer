@@ -95,17 +95,18 @@ test('only JPMixer’s own integrations can ask for "integration"', () => {
   assert.equal(plugins.readManifest(folder).ok, true, 'the id is allowed to ask…');
 });
 
-test('Patch, official too: runs without Allow plugins as the approved copy, not as an imported one', async () => {
+test('Patch, official too: the approved copy is JPMixer’s own, an imported one isn’t (both run when they’re on)', async () => {
   plugins._reset();
   await plugins.start({ allowed: false });
   try {
-    // Imported from a folder: needs Allow plugins
+    // Imported from a folder: runs once it's on, but isn't JPMixer's own
     const imported = await plugins.install(path.join(__dirname, '..', '..', 'plugins', 'patch'), { origin: 'file' });
     assert.equal(imported.ok, true);
+    assert.equal(plugins.isRunning('patch'), false, 'off until it’s turned on');
     plugins.save({ patch: { enabled: true } });
     await plugins.apply();
-    assert.equal(plugins.isRunning('patch'), false, 'imported: off while plugins aren’t allowed');
-    assert.deepEqual(plugins.pages(), []);
+    await until(() => plugins.isRunning('patch'));
+    assert.equal(plugins.list().find((p) => p.id === 'patch').official, false, 'imported: not JPMixer’s own');
     // The copy that comes with JPMixer (as from the approved list): runs, and its page is listed
     assert.equal((await plugins.installBundled('patch')).ok, true);
     await plugins.apply();
@@ -123,6 +124,59 @@ test('Patch, official too: runs without Allow plugins as the approved copy, not 
     assert.ok(JSON.parse(fs.readFileSync(path.join(userData, 'plugins.json'), 'utf8')).patch.files, 'and its files recorded from then on');
   } finally {
     await plugins.stopAll();
+  }
+});
+
+test('Patch from 2.0.13 straight to a newer JPMixer whose Patch is a later version: still official, by the earlier version’s files', async () => {
+  plugins._reset();
+  const electron = require('electron');
+  const repoPlugins = path.join(__dirname, '..', '..', 'plugins');
+  const { build } = require('../../scripts/build-plugin-catalog');
+  const current = JSON.parse(build()).plugins.find((p) => p.id === 'patch');
+  // A packaged JPMixer listing a later Patch (other files), with the installed copy as its history
+  const resources = fs.mkdtempSync(path.join(os.tmpdir(), 'jpmixer-resources-'));
+  fs.mkdirSync(path.join(resources, 'plugins'));
+  const later = { ...current, version: '9.0.0', files: current.files.map((f) => ({ ...f, sha256: '0'.repeat(64) })) };
+  fs.writeFileSync(path.join(resources, 'plugins', 'catalog.json'), JSON.stringify({ version: 1, plugins: [later] }));
+  const asOn2013 = async () => {
+    plugins._reset();
+    const saved = JSON.parse(fs.readFileSync(path.join(userData, 'plugins.json'), 'utf8'));
+    saved.patch = { ...saved.patch, source: 'catalog' };
+    delete saved.patch.files;
+    fs.writeFileSync(path.join(userData, 'plugins.json'), JSON.stringify(saved));
+    await plugins.apply();
+    return plugins.list().find((p) => p.id === 'patch').official;
+  };
+  await plugins.start({ allowed: false });
+  try {
+    assert.equal((await plugins.install(path.join(repoPlugins, 'patch'), { origin: 'catalog' })).ok, true);
+    plugins.save({ patch: { enabled: true } });
+    electron.app.isPackaged = true;
+    process.resourcesPath = resources;
+    assert.equal(await asOn2013(), false, 'matching neither the catalog nor any earlier version: not official');
+    fs.writeFileSync(path.join(resources, 'plugins', 'official-history.json'), JSON.stringify({ plugins: { patch: [{ version: current.version, files: current.files }] } }));
+    assert.equal(await asOn2013(), true, 'the earlier version’s files: official');
+    assert.ok(JSON.parse(fs.readFileSync(path.join(userData, 'plugins.json'), 'utf8')).patch.files, 'and recorded from then on');
+  } finally {
+    delete electron.app.isPackaged;
+    delete process.resourcesPath;
+    await plugins.stopAll();
+  }
+});
+
+test('official-history.json: each earlier version is older than the one in the catalog, and listed the way the catalog lists files', () => {
+  const repoPlugins = path.join(__dirname, '..', '..', 'plugins');
+  const history = JSON.parse(fs.readFileSync(path.join(repoPlugins, 'official-history.json'), 'utf8'));
+  const catalog = JSON.parse(fs.readFileSync(path.join(repoPlugins, 'catalog.json'), 'utf8'));
+  const num = (v) => v.split('.').map(Number);
+  const older = (a, b) => { const [x, y] = [num(a), num(b)]; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i]; return false; };
+  for (const [id, versions] of Object.entries(history.plugins)) {
+    const now = catalog.plugins.find((p) => p.id === id);
+    assert.ok(now, `${id} is in the catalog`);
+    for (const v of versions) {
+      assert.ok(older(v.version, now.version), `${id} ${v.version} is older than ${now.version}`);
+      assert.ok(v.files.length && v.files.every((f) => typeof f.path === 'string' && /^[0-9a-f]{64}$/.test(f.sha256)), `${id} ${v.version}'s files`);
+    }
   }
 });
 

@@ -84,6 +84,10 @@ const soloState  = {};        // soloState[aux][ch]
 // null while asking the console, true if JPMixer switched it off, false if
 // it was already off (so a release must leave it off).
 const silencedSends = new Map();
+// Releases (send back on) not yet followed by a good liveness check: key ->
+// when. UDP to a console that's gone just vanishes, so these are sent again
+// when it's back; an unmute during a drop used to leave the send off.
+const recentReleases = new Map();
 
 function levelKey(ch, aux) { return `${ch}:${aux}`; }
 function sliderToAzimuth(v) { return (v - 0.5) * 180; } // matches klang-server.js's own convention
@@ -237,12 +241,16 @@ function applySilencing(aux) {
         pending.wasOn = on !== false; // no answer: assume on, so it's still silenced
         if (pending.wasOn) pacer.write(`on:${key}`, () => client.setSendOn(ch, aux, false), true);
       }), true);
+      recentReleases.delete(key);
     } else if (silenced && entry.wasOn) {
       pacer.write(`on:${key}`, () => wing && wing.setSendOn(ch, aux, false), true); // re-assert
     } else if (!silenced && entry) {
       silencedSends.delete(key);
       pacer.cancel(`geton:${key}`); // not asked yet: nothing was switched off
-      if (entry.wasOn) pacer.write(`on:${key}`, () => wing && wing.setSendOn(ch, aux, true), true);
+      if (entry.wasOn) {
+        pacer.write(`on:${key}`, () => wing && wing.setSendOn(ch, aux, true), true);
+        recentReleases.set(key, Date.now());
+      }
     }
   }
 }
@@ -282,6 +290,7 @@ function start(cfg) {
   panCache.clear();
   nameCache.clear();
   silencedSends.clear();
+  recentReleases.clear();
   Object.keys(muteState).forEach(k => delete muteState[k]);
   Object.keys(soloState).forEach(k => delete soloState[k]);
 
@@ -509,9 +518,12 @@ let livenessChecking = false;
 async function checkLiveness(client, first) {
   if (!client || livenessChecking) return;
   livenessChecking = true;
+  const askedAt = Date.now();
   let alive;
   try { alive = await client.checkConnected(); } finally { livenessChecking = false; }
   if (wing !== client) return; // stopped meanwhile
+  // A reply while connected: the releases sent before the question got there
+  if (alive && consoleConnected) for (const [key, at] of recentReleases) if (at < askedAt) recentReleases.delete(key);
   if (!first && alive === consoleConnected) return;
   consoleConnected = alive;
   if (onConsoleStatusChange) onConsoleStatusChange(alive);
@@ -525,6 +537,13 @@ async function checkLiveness(client, first) {
       const [ch, bus] = key.split(':').map(Number);
       pacer.write(`on:${key}`, () => wing && wing.setSendOn(ch, bus, false), true);
     }
+    // And the ones released while it was gone, back on
+    for (const key of recentReleases.keys()) {
+      if (silencedSends.has(key)) continue;
+      const [ch, bus] = key.split(':').map(Number);
+      pacer.write(`on:${key}`, () => wing && wing.setSendOn(ch, bus, true), true);
+    }
+    recentReleases.clear();
   }
   for (let i = 1; i <= (serverCfg.channels || 40); i++) {
     const ch = i;

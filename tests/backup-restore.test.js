@@ -34,7 +34,20 @@ test('detects raw and renamed configs, mixes and scenes; rejects malformed or un
   assert.equal(restore.normalize(sample.scenes,'ear-saves.json').kind,'Extracted Ear Scenes');
   assert.equal(restore.normalize(sample.config,'renamed-settings.json').kind,'Extracted configuration');
   assert.equal(restore.normalize({app:'JPMixer',type:'mix-backup',version:1,presets:sample.presets},'mixes.json').mixCount,1);
-  for(const data of [[],{}, {...sample,version:99},{...sample,config:{channels:-1}},{...sample,scenes:{Bad:{1:{1:500}}}}])assert.throws(()=>restore.normalize(data,'file.json'));
+  for(const data of [[],{}, {...sample,version:99},{app:'JPMixer',type:'backup',version:2,config:{channels:-1}},{...sample,scenes:{Bad:{1:{1:500}}}}])assert.throws(()=>restore.normalize(data,'file.json'));
+});
+
+test('a setting that does not check out leaves the rest of the backup restorable',()=>{
+  // More auxes than JPMixer allowed in a backup used to refuse the whole file, My Mixes included
+  assert.equal(restore.normalize({...sample,config:{...sample.config,auxes:96}},'backup.json').config.auxes,96);
+  const data=restore.normalize({...sample,config:{...sample.config,channels:-1}},'backup.json');
+  assert.equal(data.config,undefined);
+  const sections=restore.describe(data,'backup.json').sections;
+  assert(!sections.some(s=>s.id==='console'));
+  const mixes=sections.find(s=>s.id==='mixes');assert(mixes);assert.match(sections[0].description,/settings can’t be restored \(Invalid channels in this backup\)/);
+  assert.equal(restore.plan(data,['mixes'],'merge',{serverPort:8080}).mixes,true);
+  // A file with nothing but the bad settings is still refused
+  assert.throws(()=>restore.normalize({consoleType:'digico',channels:-1},'config.json'),/Invalid channels/);
 });
 
 test('mix-only restore preserves all settings, credentials and scenes and merges without removing old mixes',async t=>{
@@ -124,7 +137,8 @@ test('keep-awake restores with startup behavior; open-at-login stays as this Mac
   const plan=restore.plan(data,['behavior'],'merge',{autoStart:true,keepAwake:true,openAtLogin:false});
   assert.equal(plan.config.keepAwake,false);assert.equal(plan.config.autoStart,false);
   assert.equal(plan.config.openAtLogin,false,'a login item belongs to this Mac, not the backup');
-  assert.throws(()=>restore.normalize({...sample,config:{keepAwake:'yes'}},'backup.json'),/keepAwake/);
+  assert.throws(()=>restore.normalize({app:'JPMixer',type:'backup',version:2,config:{keepAwake:'yes'}},'backup.json'),/keepAwake/);
+  assert.equal(restore.normalize({...sample,config:{keepAwake:'yes'}},'backup.json').configProblem,'Invalid keepAwake in this backup.');
 });
 
 test('a backup with one bad saved mix restores the rest instead of being refused',async t=>{

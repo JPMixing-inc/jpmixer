@@ -1,9 +1,9 @@
 'use strict';
 
 // Console Controller → channel panel: one input channel's gain, filters, EQ
-// and dynamics (DiGiCo), or its preamp, read-only (LV1). The controls and
-// their ranges come from the server (src/server/digico-channel.js, and
-// lv1-server.js's preampDetail), so the page can only send what the server
+// and dynamics (DiGiCo), or its preamp, read-only, and EQ (LV1). The controls
+// and their ranges come from the server (src/server/digico-channel.js, and
+// lv1-server.js's channelDetail), so the page can only send what the server
 // allows. Values from the desk, the iPad app or another page update it live.
 (() => {
   const SECTION_NAMES = { input: 'Input', eq: 'EQ', dynamics: 'Dynamics' };
@@ -16,6 +16,7 @@
   let values = {};             // path → value for the open channel
   let channel = null;          // open channel number
   let section = 'eq';
+  let wanted = 'eq';           // the tab last picked: shown once the console has it (LV1's EQ arrives a moment after the panel)
   let note = '';               // the server's word on this channel (LV1: where it's changed)
   let band = 2;
   const controls = new Map();  // path → { update(value) }
@@ -47,7 +48,7 @@
     b.dataset.section = id;
     b.setAttribute('role', 'tab');
     b.textContent = name;
-    b.addEventListener('click', () => { section = id; render(); });
+    b.addEventListener('click', () => { section = wanted = id; render(); });
     $('chpTabs').appendChild(b);
   }
   $('chpClose').addEventListener('click', close);
@@ -185,10 +186,20 @@
   const gy = (g) => PT + (DBR - g) / (2 * DBR) * (H - PT - PB);
   const xf = (x) => 20 * Math.pow(1000, Math.min(1, Math.max(0, (x - PL) / (W - PL - PR))));
   const yg = (y) => Math.max(-DBR, Math.min(DBR, DBR - (y - PT) / (H - PT - PB) * 2 * DBR));
-  // A bell per band, close enough to show the shape (the desk does the real filtering)
+  // A bell per band, close enough to show the shape (the desk does the real
+  // filtering). LV1 also says each band's shape and whether it's on.
+  const isPass = (b) => values[`EQ/eq_shape_${b}`] === 'Hi-Pass' || values[`EQ/eq_shape_${b}`] === 'Low-Pass';
   const bandAt = (f, b) => {
+    if (values[`EQ/eq_on_${b}`] === 0) return 0;
     const g = values[`EQ/eq_gain_${b}`] || 0, fc = values[`EQ/eq_freq_${b}`] || 1000, q = values[`EQ/eq_Q_${b}`] || 0.7;
-    const oct = Math.log2(f / fc), s = 1 / (2 * q);
+    const r = f / fc;
+    switch (values[`EQ/eq_shape_${b}`]) {
+      case 'Low-Shelf': case 'Low-RShelv': return g / (1 + r * r);
+      case 'Hi-Shelf': case 'Hi-RShelv': return g / (1 + 1 / (r * r));
+      case 'Hi-Pass': return -10 * Math.log10(1 + Math.pow(1 / r, 4));
+      case 'Low-Pass': return -10 * Math.log10(1 + Math.pow(r, 4));
+    }
+    const oct = Math.log2(r), s = 1 / (2 * q);
     return g * Math.exp(-(oct * oct) / (2 * s * s));
   };
   // The filters' slopes for the picture: a 12 dB/octave shape at the set
@@ -233,7 +244,7 @@
       const r = svg.getBoundingClientRect();
       const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
       setValue(`EQ/eq_freq_${dragging}`, Math.min(params[`EQ/eq_freq_${dragging}`].max, Math.max(params[`EQ/eq_freq_${dragging}`].min, xf(x))), false);
-      setValue(`EQ/eq_gain_${dragging}`, yg(y), false);
+      if (!isPass(dragging)) setValue(`EQ/eq_gain_${dragging}`, yg(y), false); // a pass band only moves in frequency
       controls.get(`EQ/eq_freq_${dragging}`)?.update(values[`EQ/eq_freq_${dragging}`]);
       controls.get(`EQ/eq_gain_${dragging}`)?.update(values[`EQ/eq_gain_${dragging}`]);
     });
@@ -241,7 +252,7 @@
       if (draggingFilter) { setValue(FILTERS[draggingFilter], values[FILTERS[draggingFilter]], true); draggingFilter = null; return; }
       if (dragging === null) return;
       setValue(`EQ/eq_freq_${dragging}`, values[`EQ/eq_freq_${dragging}`], true);
-      setValue(`EQ/eq_gain_${dragging}`, values[`EQ/eq_gain_${dragging}`], true);
+      if (!isPass(dragging)) setValue(`EQ/eq_gain_${dragging}`, values[`EQ/eq_gain_${dragging}`], true);
       dragging = null;
     };
     svg.addEventListener('pointerup', end);
@@ -252,7 +263,7 @@
   function drawEq() {
     if (!svg || !svg.isConnected) return;
     const ns = 'http://www.w3.org/2000/svg';
-    const on = values['EQ/eq_in'] >= 0.5;
+    const on = has('EQ/eq_in') ? values['EQ/eq_in'] >= 0.5 : true; // LV1 says EQ in/out only once it changes: until then, in
     const filtersOn = values['Filters/lo_filter_in'] >= 0.5 || values['Filters/hi_filter_in'] >= 0.5;
     let html = '';
     for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) html += `<line class="g" x1="${fx(f)}" y1="${PT}" x2="${fx(f)}" y2="${H - PB}"/><text x="${fx(f)}" y="${H - 5}">${f >= 1000 ? f / 1000 + 'k' : f}</text>`;
@@ -274,7 +285,7 @@
     for (const b of [4, 3, 2, 1]) {
       const f = values[`EQ/eq_freq_${b}`], g = values[`EQ/eq_gain_${b}`];
       if (f === undefined || g === undefined) continue;
-      html += `<circle data-band="${b}" class="dot${b === band ? ' sel' : ''}" cx="${fx(f)}" cy="${gy(g)}" r="${b === band ? 9 : 7}" fill="${BAND_COLORS[b]}"/>`;
+      html += `<circle data-band="${b}" class="dot${b === band ? ' sel' : ''}${values[`EQ/eq_on_${b}`] === 0 ? ' off' : ''}" cx="${fx(f)}" cy="${gy(isPass(b) ? 0 : g)}" r="${b === band ? 9 : 7}" fill="${BAND_COLORS[b]}"/>`;
     }
     svg.innerHTML = html;
     void ns;
@@ -297,7 +308,13 @@
       picker.appendChild(btn);
     }
     bandBox.appendChild(picker);
-    bandBox.append(slider(`EQ/eq_gain_${band}`), slider(`EQ/eq_freq_${band}`), slider(`EQ/eq_Q_${band}`));
+    // LV1: the band's on/off, and its shape (set on LV1)
+    const shape = values[`EQ/eq_shape_${band}`];
+    if (has(`EQ/eq_on_${band}`)) {
+      bandBox.appendChild(row(toggle(`EQ/eq_on_${band}`, { label: 'Band on' })));
+    }
+    if (shape && shape !== 'Bell') { const n = document.createElement('p'); n.className = 'chp-note'; n.textContent = `${shape.replace('RShelv', 'resonant shelf')} (set on the console)`; bandBox.appendChild(n); }
+    bandBox.append(...[isPass(band) ? null : slider(`EQ/eq_gain_${band}`), slider(`EQ/eq_freq_${band}`), isPass(band) ? null : slider(`EQ/eq_Q_${band}`)].filter(Boolean)); // a pass band's gain and Q do nothing
     if (has(`EQ/dynamic_eq_on_${band}`)) {
       const dyn = values[`EQ/dynamic_eq_on_${band}`] >= 0.5;
       const t = toggle(`EQ/dynamic_eq_on_${band}`, { label: 'Dynamic EQ' });
@@ -321,7 +338,7 @@
       $('chpStatus').textContent = note || 'The console doesn’t report any settings for this channel.';
       return;
     }
-    if (!sections.includes(section)) section = sections[0];
+    section = sections.includes(wanted) ? wanted : sections.includes(section) ? section : sections[0];
     for (const b of $('chpTabs').children) { b.setAttribute('aria-selected', String(b.dataset.section === section)); b.hidden = !sections.includes(b.dataset.section); }
     $('chpTabs').hidden = sections.length < 2;
     const body = $('chpBody');
@@ -392,8 +409,10 @@
       params = json.params;
       note = json.note || '';
       // Read-only (LV1): the console's values are the truth. Otherwise keep a
-      // value being moved here over the desk's older one.
-      values = json.readOnly ? { ...values, ...json.values } : { ...json.values, ...values };
+      // value being moved here over the desk's older one. Either way, one
+      // still being moved here (LV1's EQ) keeps its value.
+      const moving = Object.fromEntries([...held].filter(([p, until]) => until > Date.now() && Object.hasOwn(values, p)).map(([p]) => [p, values[p]]));
+      values = json.readOnly ? { ...values, ...json.values, ...moving } : { ...json.values, ...values };
       render();
     },
     // A value from the desk / iPad / another page for any channel's control
@@ -401,7 +420,7 @@
       if (ch !== channel || !params || !Object.hasOwn(params, path)) return;
       if ((held.get(path) || 0) > Date.now()) return; // still being moved here
       values[path] = value;
-      if (path.startsWith('EQ/dynamic_eq_on_') && section === 'eq') renderBandControls();
+      if ((path.startsWith('EQ/dynamic_eq_on_') || path.startsWith('EQ/eq_shape_')) && section === 'eq') renderBandControls();
       else controls.get(path)?.update(value);
       if (path.startsWith('EQ/') || path.startsWith('Filters/')) drawEq();
       updateStatus();

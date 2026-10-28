@@ -472,7 +472,8 @@ function buildChStrip(ch) {
   openBtn.type = 'button';
   openBtn.className = 'ch-open-btn';
   openBtn.textContent = channelProcessing === 'preamp' ? 'GAIN' : 'EQ';
-  openBtn.setAttribute('aria-label', channelProcessing === 'preamp' ? `Show ${ch.label || 'channel ' + ch.channel}’s preamp: gain, 48V, phase and trim` : `Open ${ch.label || 'channel ' + ch.channel} processing: gain, EQ and dynamics`);
+  openBtn.setAttribute('aria-label', channelProcessing === 'preamp' ? `Show ${ch.label || 'channel ' + ch.channel}’s preamp: gain, 48V, phase and trim`
+    : channelProcessing === 'preamp-eq' ? `Open ${ch.label || 'channel ' + ch.channel}’s preamp and EQ` : `Open ${ch.label || 'channel ' + ch.channel} processing: gain, EQ and dynamics`);
   const openPanel = () => window.channelPanel?.open(ch.channel, ch.label || `Ch ${ch.channel}`);
   if (channelProcessing) {
     openBtn.addEventListener('click', openPanel);

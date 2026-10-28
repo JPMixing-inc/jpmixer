@@ -86,4 +86,14 @@ t('Planning Center turned off: JPMixer sees no credentials, but they stay saved 
   assert.equal(config.save({ ...config.getAll(), pcoAppId: '', pcoSecret: '' }), true);
 });
 
+t('once plugins have moved over, a save without pluginsEnabled (Settings, an old backup) keeps it on', () => {
+  // Off again would make the next launch turn off every plugin that isn't JPMixer's own
+  assert.equal(config.save({ ...config.getAll(), pluginsEnabled: true }), true);
+  const { pluginsEnabled, ...fromSettings } = config.getAll();
+  assert.equal(config.save(fromSettings), true);
+  assert.equal(config.get('pluginsEnabled'), true);
+  assert.equal(config.save({ ...config.getAll(), pluginsEnabled: false }), true);
+  assert.equal(config.get('pluginsEnabled'), true);
+});
+
 console.log(`\n${n} tests passed`);

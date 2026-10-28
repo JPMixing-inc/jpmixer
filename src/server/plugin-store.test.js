@@ -168,6 +168,30 @@ test('JPMixer’s own plugins that aren’t on the list yet install from the cop
   served.delete('/plugins/catalog.json');
 });
 
+test('a JPMixer with a newer copy of its own plugin than the list on GitHub: the newer one is listed, and offered as an update', async () => {
+  const repo = path.join(__dirname, '..', '..', 'plugins');
+  const here = JSON.parse(fs.readFileSync(path.join(repo, 'catalog.json'), 'utf8')).plugins.find((p) => p.id === 'patch');
+  served.set('/plugins/catalog.json', JSON.stringify({ version: 1, plugins: [{ ...here, version: '0.9.0' }] }));
+  // An older Patch installed
+  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'jpmixer-old-patch-'));
+  fs.cpSync(path.join(repo, 'patch'), old, { recursive: true });
+  const m = JSON.parse(fs.readFileSync(path.join(old, 'plugin.json'), 'utf8'));
+  fs.writeFileSync(path.join(old, 'plugin.json'), JSON.stringify({ ...m, version: '0.9.0' }));
+  assert.equal((await plugins.install(old, { origin: 'file' })).ok, true);
+  try {
+    const patch = (await store().catalog('2.0.15')).plugins.find((p) => p.id === 'patch');
+    assert.deepEqual([patch.bundled, patch.version, patch.update], [true, here.version, true], 'the copy here, not the list’s older one');
+    assert.deepEqual(store().updates('2.0.15').filter((u) => u.id === 'patch').map((u) => [u.version, u.installedVersion]), [[here.version, '0.9.0']]);
+    // The list caught up: its own copy again
+    served.set('/plugins/catalog.json', JSON.stringify({ version: 1, plugins: [here] }));
+    assert.equal((await store().catalog('2.0.15')).plugins.find((p) => p.id === 'patch').bundled, false);
+  } finally {
+    plugins.forget('patch');
+    fs.rmSync(path.join(plugins.pluginsDir(), 'patch'), { recursive: true, force: true });
+    served.delete('/plugins/catalog.json');
+  }
+});
+
 test('the repo’s plugins/catalog.json matches the plugins/ folder', () => {
   const { build, OUT } = require('../../scripts/build-plugin-catalog');
   assert.equal(fs.readFileSync(OUT, 'utf8'), build(), 'run node scripts/build-plugin-catalog.js');

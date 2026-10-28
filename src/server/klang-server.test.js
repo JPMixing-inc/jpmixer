@@ -15,13 +15,22 @@ const dgram = require('dgram');
 const assert = require('node:assert/strict');
 const WebSocket = require('ws');
 const osc = require('osc');
+// klang-server.js pings the processor to tell if it's there: answered here,
+// so a test can unplug it (pingDown) without a real network
+const childProcess = require('child_process');
+const realExecFile = childProcess.execFile;
+let pingDown = false;
+childProcess.execFile = function (file, args, opts, cb) {
+  if (file === 'ping') { setImmediate(() => cb(pingDown ? new Error('no reply') : null)); return; }
+  return realExecFile.apply(this, arguments);
+};
 const server = require('./klang-server.js');
 
 async function main() {
   // ── Mock "KLANG processor" UDP receiver ────────────────────────────────
   const mock = dgram.createSocket('udp4');
   const received = [];
-  mock.on('message', (buf) => received.push(osc.readMessage(buf)));
+  mock.on('message', (buf) => { if (!pingDown) received.push(osc.readMessage(buf)); }); // unplugged: lost
   await new Promise((resolve) => mock.bind(0, '127.0.0.1', resolve));
   const mockPort = mock.address().port;
 
@@ -110,6 +119,24 @@ async function main() {
   assert.equal(crashed.length, 0, `bad input should never crash the server; got: ${crashed.map(e => e.message).join('; ')}`);
   assert.equal(ws.readyState, WebSocket.OPEN);
   console.log('ok - out-of-range/non-finite input is ignored, never crashes the server');
+
+  // ── An unmute while the processor is unreachable is sent when it's back ──
+  // Only the mutes on used to be re-sent: the channel stayed muted.
+  {
+    pingDown = true;
+    let deadline = Date.now() + 8000;
+    while (server.isConsoleConnected() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    assert.equal(server.isConsoleConnected(), false, 'the processor should show offline');
+    ws.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 2, muted: false }));
+    await new Promise((r) => setTimeout(r, 150));
+    pingDown = false;
+    received.length = 0;
+    deadline = Date.now() + 8000;
+    while (!server.isConsoleConnected() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 200));
+    assert.ok(received.some(m => m.address === '/Kf/ui/1/ch/2/mute' && m.args === false), 'the unmute should reach the processor when it is back');
+    console.log('ok - an unmute made while the processor was unreachable is sent when it is back');
+  }
 
   ws.close();
   server.stop();

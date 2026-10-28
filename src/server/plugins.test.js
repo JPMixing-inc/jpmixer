@@ -177,19 +177,28 @@ test('a plugin can only use what plugin.json asks for', async () => {
   await plugins.stopAll();
 });
 
-test('with Allow plugins off, none runs and FOH Home has no plugin cards', async () => {
+test('each plugin’s own switch is the only one; moving from Allow plugins off turns off the ones that aren’t JPMixer’s own, once', async () => {
   plugins._reset();
   makePlugin('gate', { id: 'gate', name: 'Gate', permissions: ['card'], settings: [{ key: 'note', label: 'Note', type: 'text' }] }, `module.exports = (jp) => jp.card.show({ value: 'on' });`);
+  makePlugin('shut', { id: 'shut', name: 'Shut', permissions: ['card'], settings: [] }, `module.exports = (jp) => jp.card.show({ value: 'on' });`);
   plugins.save({ gate: { enabled: true } });
-  await plugins.start({ allowed: false });
-  assert.equal(plugins._running.has('gate'), false, 'turned on itself, but plugins are off');
-  assert.deepEqual(plugins.cards(), []);
-  await plugins.setAllowed(true);
+  await plugins.start({});
   await until(() => plugins.cards().find((c) => c.id === 'gate')?.card?.value === 'on');
-  await plugins.setAllowed(false);
-  assert.equal(plugins._running.size, 0, 'turning plugins off stops every one');
-  assert.deepEqual(plugins.cards(), []);
+  assert.equal(plugins._running.has('shut'), false, 'one that’s off stays off');
+  // JPMixer's own Patch, on: left as it is
+  assert.equal((await plugins.installBundled('patch')).ok, true);
+  plugins.save({ patch: { enabled: true } });
+  const off = plugins.turnOffOthers();
+  assert.ok(off.includes('gate') && !off.includes('patch') && !off.includes('shut'), 'the ones on that aren’t JPMixer’s own');
+  await plugins.apply();
+  assert.equal(plugins._running.has('gate'), false, 'turned off, so it stops');
+  assert.equal(plugins.cards().some((c) => c.id === 'gate'), false);
+  const on = Object.fromEntries(plugins.list().filter((p) => p.manifest).map((p) => [p.id, p.enabled]));
+  assert.deepEqual([on.gate, on.patch, !!on.shut], [false, true, false]);
+  assert.deepEqual(plugins.turnOffOthers(), [], 'nothing more to turn off');
   await plugins.stopAll();
+  plugins.forget('patch');
+  fs.rmSync(path.join(plugins.pluginsDir(), 'patch'), { recursive: true, force: true });
 });
 
 test('Restart when its files change: saving a file starts it again with the change', async () => {

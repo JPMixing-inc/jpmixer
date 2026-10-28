@@ -62,8 +62,8 @@
     {
       "id": "patch",
       "name": "Patch",
-      "version": "1.0.0",
-      "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to.",
+      "version": "1.1.2",
+      "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to. Imports DiGiCo sessions, LV1 sessions and dLive shows.",
       "author": "JPMixer",
       "permissions": [
         "page",
@@ -75,33 +75,38 @@
       "files": [
         {
           "path": "index.js",
-          "size": 11285,
-          "sha256": "36e4b135d0eae535996d84ebda7e93106450d48c7cbb30f6b53ec5910894f690"
+          "size": 11510,
+          "sha256": "92f62f89028f31cbaeb1814a9581e0257e9e4d733a5a186b87d4e4375171df4e"
         },
         {
           "path": "page/app.js",
-          "size": 69710,
-          "sha256": "6a7342f1088bc9358c98bc9ae6003e1370032208e5f873bc9d94bc6ccca0251a"
+          "size": 76218,
+          "sha256": "cc39687b4a93da02427eb29699551c5bab7c59103671bba8c075776043338416"
         },
         {
           "path": "page/boxes.js",
-          "size": 81375,
-          "sha256": "240bc6436a6da95c0ef50c1109c40775b7e04e9e42c10cc16ffb30c4ffc46413"
+          "size": 94485,
+          "sha256": "f1b1913c662283fb7b26e3f639d23f0e0907ac950064f132e3d0a8dcf5f61c1f"
         },
         {
           "path": "page/digico-session.js",
-          "size": 20778,
-          "sha256": "d45d10a15987e389b49e4f308318ea58fe934a276226880066351536cc708f62"
+          "size": 20964,
+          "sha256": "296feea5bb946ca324b07ce2234e9cb75579cafc20c4c3cfc179d736764898fb"
+        },
+        {
+          "path": "page/dlive-show.js",
+          "size": 18767,
+          "sha256": "5754179b16bf22b807c80b3c3836674d63476eab736eadaf74fc0fbfc0e0bb9e"
         },
         {
           "path": "page/index.html",
-          "size": 2915,
-          "sha256": "1a3a9a7a92abd74c11296f8e39d39678e1add4c4e5221c1013cab0b92cbe38fd"
+          "size": 2982,
+          "sha256": "dbbad5ce41ff80f8bb40707f8659f704ec1c0a4c630ef7b9545870d54d7f8540"
         },
         {
           "path": "page/lv1-session.js",
-          "size": 9789,
-          "sha256": "7bd52d9b939d400336c010154cc3a8705f52076ffd0d68e0017177cfcf3c3887"
+          "size": 10010,
+          "sha256": "60a0e15e944ca9896abff9ecf785c5ccba9b78d7507072511a7b0ecd57e350d1"
         },
         {
           "path": "page/sqlite.js",
@@ -115,13 +120,13 @@
         },
         {
           "path": "plugin.json",
-          "size": 808,
-          "sha256": "b7c57ee2863685d306e5688c37a412814ac5ee1f374ad887103b73a365e014d3"
+          "size": 863,
+          "sha256": "c8bf436da1a1470573ec8630f68abf3e8cbe5639363c33c3baf1370e44c7c522"
         },
         {
           "path": "README.md",
-          "size": 3484,
-          "sha256": "7d0f3bff783014b5ff03a23b3738a54b43c719cafc0bbc13a39501b45d8a7ec8"
+          "size": 4628,
+          "sha256": "051788ef10eca68f733b1899717ad817a06b76163b7294ecef3963936aa81601"
         }
       ]
     },

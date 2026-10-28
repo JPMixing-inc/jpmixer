@@ -87,6 +87,10 @@ const panCache    = new Map(); // "ch:aux" -> 0..1 slider value, same caveat
 const nameCache   = new Map(); // "input:N" -> name, from the dLive side only
 const muteState   = {};        // muteState[aux][ch]
 const soloState   = {};        // soloState[aux][ch]
+// Mutes/solos switched off and not yet followed by a good reachability check:
+// "mute|solo:ch:aux" -> when. Sent again when the processor is back; one made
+// during a drop used to be lost, leaving the channel muted.
+const recentReleases = new Map();
 
 function levelKey(ch, aux) { return `${ch}:${aux}`; }
 
@@ -188,6 +192,7 @@ function sendMute(auxRaw, chRaw, on) {
   if (!muteState[aux]) muteState[aux] = {};
   muteState[aux][ch] = !!on;
   pacer.write(`mute:${ch}:${aux}`, () => klang && klang.setMute(aux, ch, on), true);
+  if (on) recentReleases.delete(`mute:${ch}:${aux}`); else recentReleases.set(`mute:${ch}:${aux}`, Date.now());
   applyMuteSolo(aux);
   return true;
 }
@@ -199,6 +204,7 @@ function sendSolo(auxRaw, chRaw, on) {
   if (!soloState[aux]) soloState[aux] = {};
   soloState[aux][ch] = !!on;
   pacer.write(`solo:${ch}:${aux}`, () => klang && klang.setSolo(aux, ch, on), true);
+  if (on) recentReleases.delete(`solo:${ch}:${aux}`); else recentReleases.set(`solo:${ch}:${aux}`, Date.now());
   applyMuteSolo(aux);
   return true;
 }
@@ -281,6 +287,7 @@ function start(cfg) {
   nameCache.clear();
   Object.keys(muteState).forEach(k => delete muteState[k]);
   Object.keys(soloState).forEach(k => delete soloState[k]);
+  recentReleases.clear();
 
   const appExpress = express();
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
@@ -542,9 +549,12 @@ function pingHost(host) {
 async function checkReachable(first) {
   if (!klang || reachChecking) return;
   reachChecking = true;
+  const askedAt = Date.now();
   let alive;
   try { alive = await pingHost(serverCfg.klangIp); } finally { reachChecking = false; }
   if (!klang) return; // stopped meanwhile
+  // A reply while reachable: the releases sent before the ping got there
+  if (alive && consoleConnected) for (const [key, at] of recentReleases) if (at < askedAt) recentReleases.delete(key);
   if (!first && alive === consoleConnected) return;
   const wasDown = !consoleConnected && !first;
   consoleConnected = alive;
@@ -555,6 +565,14 @@ async function checkReachable(first) {
   if (alive && wasDown) {
     for (const [aux, chans] of Object.entries(muteState)) for (const [ch, on] of Object.entries(chans)) if (on) pacer.write(`mute:${ch}:${aux}`, () => klang && klang.setMute(Number(aux), Number(ch), true), true);
     for (const [aux, chans] of Object.entries(soloState)) for (const [ch, on] of Object.entries(chans)) if (on) pacer.write(`solo:${ch}:${aux}`, () => klang && klang.setSolo(Number(aux), Number(ch), true), true);
+    // And the ones switched off while it was gone
+    for (const key of recentReleases.keys()) {
+      const [kind, ch, aux] = key.split(':');
+      const state = kind === 'mute' ? muteState : soloState;
+      if (state[aux]?.[ch]) continue;
+      pacer.write(key, () => klang && (kind === 'mute' ? klang.setMute(Number(aux), Number(ch), false) : klang.setSolo(Number(aux), Number(ch), false)), true);
+    }
+    recentReleases.clear();
   }
 }
 

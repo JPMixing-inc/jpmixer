@@ -78,6 +78,8 @@
     return desk === false ? 'off' : 'marked';
   }
   const PHANTOM_TEXT = { on: 'On at the desk', marked: 'Needs 48V', off: 'Needs 48V · off at the desk' };
+  // A socket an import found patched to something JPMixer has no number for (fed)
+  const FED_TEXT = 'Patched on the console';
   // Marks every mic input as the desk has it ("48V from the desk")
   function phantomFromDesk(boxes) {
     let changed = 0;
@@ -103,11 +105,14 @@
   // once for each setup and kept (every redraw used to build every box's,
   // once for each box)
   const layouts = new Map();
+  // A network device's tiles: 4 to a row on a phone, so their names can be read
+  const narrow = window.matchMedia('(max-width: 700px)');
   function layoutOf(box) {
-    const key = JSON.stringify([box.model, box.cards || null, box.options || null, box.generic || null]);
+    const opts = box.model === 'network' && narrow.matches ? { cols: 4 } : {};
+    const key = JSON.stringify([box.model, box.cards || null, box.options || null, box.generic || null, opts.cols || 0]);
     if (!layouts.has(key)) {
       if (layouts.size > 200) layouts.clear();
-      layouts.set(key, L.layoutFor(box));
+      layouts.set(key, L.layoutFor(box, opts));
     }
     return layouts.get(key);
   }
@@ -261,7 +266,7 @@
       }
       case 'line': add('path', { d: `M${fmt(p.x1)} ${fmt(p.y - 1.4)}V${fmt(p.y)}H${fmt(p.x2)}V${fmt(p.y - 1.4)}`, fill: 'none', stroke: '#8b9098', 'stroke-width': 0.35 }); return;
       case 'panelline': add('line', { x1: EAR, x2: L.RACK_W - EAR, y1: fmt(p.y), y2: fmt(p.y), stroke: '#0c0d0f', 'stroke-width': 0.8 }); return;
-      case 'box': add('rect', { x: fmt(p.x), y: fmt(p.y), width: fmt(p.w), height: fmt(p.h), rx: 1.5, fill: p.fill || '#202328', stroke: '#33373d', 'stroke-width': 0.5 }); return;
+      case 'box': add('rect', { x: fmt(p.x), y: fmt(p.y), width: fmt(p.w), height: fmt(p.h), rx: p.rx || 1.5, fill: p.fill || '#202328', stroke: '#33373d', 'stroke-width': 0.5 }); return;
       case 'plate': {
         add('rect', { x: fmt(p.x), y: fmt(p.y), width: fmt(p.w), height: fmt(p.h), rx: 1, fill: '#1e2125', stroke: '#363a41', 'stroke-width': 0.5 });
         const screw = (x, y) => { add('circle', { cx: fmt(x), cy: fmt(y), r: 2.3, fill: '#8d939b' }); add('line', { x1: fmt(x - 1.4), x2: fmt(x + 1.4), y1: fmt(y), y2: fmt(y), stroke: '#4b5058', 'stroke-width': 0.5 }); };
@@ -321,6 +326,12 @@
       }
       case 'chevrons': for (let xx = p.x; xx < p.x + p.w; xx += 3.2) add('path', { d: `M${fmt(xx)} ${fmt(p.y - 1)}l1.2 1l-1.2 1`, fill: 'none', stroke: '#6b7079', 'stroke-width': 0.5 }); return;
       case 'wavesmark': add('rect', { x: fmt(p.x), y: fmt(p.y), width: 16, height: 16, rx: 1.5, fill: '#141518', stroke: '#4a4e55', 'stroke-width': 0.5 }); label(p.x + 8, p.y + 9.6, 'W', 7, 'middle', '#e3e5e9').setAttribute('font-weight', 800); label(p.x + 8, p.y + 14, 'WAVES', 2, 'middle', '#c3c7cf'); return;
+      case 'badge': {
+        const w = String(p.text).length * 4.1 + 8;
+        add('rect', { x: fmt(p.x - w), y: fmt(p.y - 6.5), width: fmt(w), height: 13, rx: 6.5, fill: p.color });
+        label(p.x - w / 2, p.y + 2.3, p.text, 6, 'middle', '#fff').setAttribute('font-weight', 700);
+        return;
+      }
       case 'xlr4': connector(root, 'xlr-m', p.x, p.y, 20, '#3a3e45', false); if (p.label) label(p.x, p.y - 13, p.label, 2.4); return;
       case 'db25': add('path', { d: `M${fmt(p.x - 20)} ${fmt(p.y - 5)}h40l-3 10h-34z`, fill: '#c9ccd2', stroke: '#7b8088', 'stroke-width': 0.4 }); for (let k = 0; k < 13; k++) add('circle', { cx: fmt(p.x - 15 + k * 2.5), cy: fmt(p.y - 2), r: 0.5, fill: '#333' }); if (p.label) label(p.x, p.y - 7, p.label, 2.2); return;
       case 'din': add('circle', { cx: fmt(p.x), cy: fmt(p.y), r: 6, fill: '#c4c8ce' }); add('circle', { cx: fmt(p.x), cy: fmt(p.y), r: 4.4, fill: '#1c1e22' }); for (let k = 0; k < 5; k++) { const a = Math.PI + (k / 4) * Math.PI; add('circle', { cx: fmt(p.x + Math.cos(a) * 2.8), cy: fmt(p.y + Math.sin(a) * 2.8), r: 0.5, fill: '#aaa' }); } return;
@@ -342,6 +353,9 @@
       for (let u = 0; u < face.rack; u++) for (const x of [EAR / 2, face.w - EAR / 2]) for (const dy of [6.35, L.U - 6.35]) {
         root.append(svg('rect', { x: fmt(x - 3.3), y: fmt(u * L.U + dy - 2.4), width: 6.6, height: 4.8, rx: 2.4, fill: '#0b0c0e' }));
       }
+    } else if (face.virtual) {
+      // Nothing to plug into: a flat panel, not a box
+      root.append(svg('rect', { x: 0.4, y: 0.4, width: fmt(face.w - 0.8), height: fmt(face.h - 0.8), rx: 6, fill: '#15171b', stroke: '#3a3d43', 'stroke-width': 0.6 }));
     } else {
       root.append(svg('rect', { x: 0.4, y: 0.4, width: fmt(face.w - 0.8), height: fmt(face.h - 0.8), rx: face.wall ? 4 : 10, fill: '#25282d', stroke: '#3a3d43', 'stroke-width': 0.6 }));
     }
@@ -355,13 +369,39 @@
   function drawPort(box, p, dbl, tight) {
     const data = portOf(box, p.key);
     const isDouble = p.kind === 'in' && data.src && data.src.kind === 'ch' && dbl.has(data.src.n);
-    const ring = isDouble ? COLOR.double : data.src ? COLOR[p.kind] : COLOR.empty;
+    const on = !!(data.src || data.fed);
+    const ring = isDouble ? COLOR.double : on ? COLOR[p.kind] : COLOR.empty;
     const g = svg('g', { class: `port${selected && selected.box === box.id && selected.key === p.key ? ' is-selected' : ''}`, tabindex: 0, role: 'button', 'data-box': box.id, 'data-key': p.key });
-    g.setAttribute('aria-label', `${p.label}${data.name ? `: ${data.name}` : ''}${data.src ? `, patched to ${sourceName(data.src)}` : ', not patched'}${phantomState(p, data) ? `, 48V: ${PHANTOM_TEXT[phantomState(p, data)]}` : ''}`);
+    g.setAttribute('aria-label', `${p.label}${data.name ? `: ${data.name}` : ''}${data.src ? `, patched to ${sourceName(data.src)}` : data.fed ? `, ${FED_TEXT}` : ', not patched'}${phantomState(p, data) ? `, 48V: ${PHANTOM_TEXT[phantomState(p, data)]}` : ''}`);
     const s = p.size;
+    // What goes there: its name, or the console's name for what it's patched to
+    const what = data.name || (data.src ? consoleItemName(data.src) || sourceName(data.src).split(' · ')[0] : '');
+    if (p.connector === 'tile') {
+      // A network device's channel: a tile with its number and its name on it
+      g.append(svg('rect', { class: 'halo', x: fmt(p.x - p.w / 2 - 1.6), y: fmt(p.y - p.h / 2 - 1.6), width: fmt(p.w + 3.2), height: fmt(p.h + 3.2), rx: 4.5, fill: 'transparent' }));
+      g.append(svg('rect', { x: fmt(p.x - p.w / 2), y: fmt(p.y - p.h / 2), width: fmt(p.w), height: fmt(p.h), rx: 3.5, fill: !on ? '#1f2227' : p.kind === 'in' ? '#15263b' : '#34260f', stroke: ring, 'stroke-width': on ? 1.1 : 0.5 }));
+      const num = svg('text', { x: fmt(p.x - p.w / 2 + 3.5), y: fmt(p.y - p.h / 2 + 8), 'font-size': 6, fill: on ? COLOR[p.kind] : '#8b9098', 'font-family': 'Helvetica, Arial, sans-serif', 'font-weight': 700 });
+      num.textContent = p.printed;
+      g.append(num);
+      // Its name, and below it where it goes on the console ("Ch 42")
+      const where = data.src ? sourceName(data.src).split(' · ')[0] : '';
+      const fit = (text, fs, room) => { const max = Math.floor(room / (fs * 0.55)); return text.length > max ? text.slice(0, max - 1) + '…' : text; };
+      if (what) {
+        const t = svg('text', { x: fmt(p.x), y: fmt(p.y + (where && where !== what ? 3.5 : 6)), 'text-anchor': 'middle', 'font-size': 8.5, 'font-weight': 600, fill: '#f3f4f6', 'font-family': 'Helvetica, Arial, sans-serif' });
+        t.textContent = fit(what, 8.5, p.w - 4);
+        g.append(t);
+      }
+      if (where && where !== what) {
+        const t = svg('text', { x: fmt(p.x), y: fmt(p.y + 12.5), 'text-anchor': 'middle', 'font-size': 5.5, fill: '#aeb2b9', 'font-family': 'Helvetica, Arial, sans-serif' });
+        t.textContent = fit(`→ ${where}`, 5.5, p.w - 4);
+        g.append(t);
+      }
+      wire(g, box, p);
+      return g;
+    }
     // The selection halo, and a hit area the size of the flange
     g.append(svg('rect', { class: 'halo', x: fmt(p.x - s * 0.62), y: fmt(p.y - s * 0.7), width: fmt(s * 1.24), height: fmt(s * 1.4), rx: fmt(s * 0.2), fill: 'transparent' }));
-    connector(g, p.connector, p.x, p.y, s, ring, !!data.src);
+    connector(g, p.connector, p.x, p.y, s, ring, on);
     // The number printed beside it, as on the panel
     const num = svg('text', { x: fmt(p.x + s * 0.5), y: fmt(p.y - s * 0.46), 'font-size': fmt(Math.max(2.6, s * 0.15)), fill: '#e8eaee', 'font-family': 'Helvetica, Arial, sans-serif', 'font-weight': 600 });
     num.textContent = p.printed;
@@ -379,8 +419,6 @@
       t48.textContent = '48V';
       g.append(t48);
     }
-    // What goes there: its name, or the console's name for what it's patched to
-    const what = data.name || (data.src ? consoleItemName(data.src) || sourceName(data.src).split(' · ')[0] : '');
     if (what) {
       const fs = Math.max(2.4, Math.min(3.4, s * 0.16));
       const maxChars = Math.max(4, Math.floor((s * 1.3) / (fs * 0.56)));
@@ -392,13 +430,16 @@
       t.textContent = text;
       g.append(t);
     }
-    // Mouse: details on hover. Touch and keyboard: select.
+    wire(g, box, p);
+    return g;
+  }
+  // Mouse: details on hover. Touch and keyboard: select.
+  function wire(g, box, p) {
     g.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') showTip(e, box, p); });
     g.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') moveTip(e); });
     g.addEventListener('pointerleave', hideTip);
     g.addEventListener('click', () => select(box.id, p.key));
     g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(box.id, p.key); } });
-    return g;
   }
 
   // ── Zooming and moving around a face ──
@@ -474,7 +515,7 @@
       el('button', { type: 'button', class: 'btn small', 'aria-label': 'Zoom in', text: '+', onclick: () => zoomAt(1.6) }),
       el('button', { type: 'button', class: 'btn small', text: 'Fit', onclick: () => { st.z = 1; apply(); } }),
       el('button', { type: 'button', class: 'btn small', text: expanded && expanded.key === key ? 'Close' : 'Expand', onclick: () => { expanded = expanded && expanded.key === key ? null : { box: box.id, face: face.id, key }; render(); } }));
-    const size = face.rack ? `19-inch rack, ${face.rack}U (${Math.round(face.h)} mm tall)` : `${Math.round(face.w)} × ${Math.round(face.h)} mm`;
+    const size = face.sizeText ? face.sizeText : face.rack ? `19-inch rack, ${face.rack}U (${Math.round(face.h)} mm tall)` : `${Math.round(face.w)} × ${Math.round(face.h)} mm`;
     const wrapEl = el('div', { class: 'face' },
       el('div', { class: 'face-head' }, el('span', { class: 'face-label', text: face.label }), el('span', { class: 'face-size', text: `${size}${face.note ? ` · ${face.note}` : ''}` }), tools),
       area);
@@ -489,7 +530,7 @@
     const tip = $('tip');
     tip.replaceChildren(...[
       el('b', { text: `${p.label}${data.name ? ` · ${data.name}` : ''}` }),
-      el('span', { class: 'src', text: data.src ? sourceName(data.src) : 'Not patched' }),
+      el('span', { class: 'src', text: data.src ? sourceName(data.src) : data.fed ? FED_TEXT : 'Not patched' }),
       phantomState(p, data) ? el('div', { class: `ph-${phantomState(p, data)}`, text: `48V · ${PHANTOM_TEXT[phantomState(p, data)]}` }) : null,
       data.note ? el('div', { text: data.note }) : null,
     ].filter(Boolean));
@@ -546,7 +587,9 @@
       for (const it of items.sort((a, b) => a.number - b.number)) og.append(new Option(sourceName({ kind, n: it.number }), `${kind}:${it.number}`));
       source.append(og);
     }
-    source.value = data.src ? `${data.src.kind}:${data.src.n}` : '';
+    // Patched on the console to something not in these lists (an import found it)
+    if (data.fed && !data.src) source.options[0].after(new Option(FED_TEXT, 'fed'));
+    source.value = data.src ? `${data.src.kind}:${data.src.n}` : data.fed ? 'fed' : '';
     const note = el('input', { value: data.note || '', maxlength: 120, placeholder: p.kind === 'in' ? 'SM91, phantom on' : 'Bass player’s wedge', autocomplete: 'off', disabled: state.locked });
 
     const update = (patch, wait) => {
@@ -555,7 +598,8 @@
       const next = { ...portOf(box, p.key), ...patch };
       if (!next.src) delete next.src;
       if (!next.phantom) delete next.phantom;
-      const keep = !!(next.name || next.note || next.src || next.phantom);
+      if (!next.fed || next.src) delete next.fed;
+      const keep = !!(next.name || next.note || next.src || next.phantom || next.fed);
       if (keep) box.ports[p.key] = next; else delete box.ports[p.key];
       queueOp({ op: 'setPort', box: box.id, key: p.key, port: keep ? next : null }, wait);
       redrawBoxes();
@@ -563,6 +607,7 @@
     name.addEventListener('input', () => update({ name: name.value }, 400));
     note.addEventListener('input', () => update({ note: note.value }, 400));
     source.addEventListener('change', () => {
+      if (source.value === 'fed') return;
       const [kind, n] = source.value ? source.value.split(':') : [];
       const src = kind ? { kind, n: Number(n) } : null;
       // The same channel or mix again keeps its side (left or right of a stereo one)
@@ -571,7 +616,7 @@
       if (src && was && was.kind === src.kind && was.n === src.n && was.side) src.side = was.side;
       // A blank name, or one that was the console's, follows the console's name
       const wasAuto = !name.value || (before.src && name.value === consoleItemName(before.src));
-      const patch = { src };
+      const patch = { src, fed: false };
       if (src && wasAuto && consoleItemName(src)) { name.value = consoleItemName(src); patch.name = name.value; }
       // A channel with 48V on at the desk: this socket needs it
       if (canPhantom(p) && deskPhantom(src) === true) patch.phantom = true;
@@ -617,7 +662,7 @@
     if (state.boxes.length) {
       kids.push(tab('all', 'All boxes'));
       const every = allPorts();
-      for (const b of state.boxes) { const ps = every.filter((x) => x.box === b); kids.push(tab(b.id, boxTitle(b), `${ps.filter((x) => x.data.src).length}/${ps.length}`)); }
+      for (const b of state.boxes) { const ps = every.filter((x) => x.box === b); kids.push(tab(b.id, boxTitle(b), `${ps.filter((x) => x.data.src || x.data.fed).length}/${ps.length}`)); }
       kids.push(tab('sheet', 'Patch sheet'));
     }
     tabs.replaceChildren(...kids);
@@ -630,7 +675,7 @@
       el('button', { type: 'button', class: 'btn small danger', text: 'Remove', onclick: () => removeBox(box) }));
     const card = el('section', { class: 'box', 'data-box': box.id },
       el('div', { class: 'box-head' },
-        el('div', {}, el('h2', { text: boxTitle(box) }), el('p', { class: 'meta', text: `${modelOf(box).maker ? modelOf(box).maker + ' ' : ''}${modelOf(box).name}${box.location ? ` · ${box.location}` : ''} · ${ps.filter((x) => x.data.src).length} of ${ps.length} patched` })),
+        el('div', {}, el('h2', { text: boxTitle(box) }), el('p', { class: 'meta', text: `${modelOf(box).maker ? modelOf(box).maker + ' ' : ''}${modelOf(box).name}${box.location ? ` · ${box.location}` : ''} · ${ps.filter((x) => x.data.src || x.data.fed).length} of ${ps.length} patched` })),
         tools),
       el('div', { class: 'drawing' }), // the faces (redrawBoxes)
       el('p', { class: 'legend' },
@@ -651,10 +696,11 @@
       const faces = layoutOf(box).faces.filter((f) => !holder.dataset.face || f.id === holder.dataset.face);
       area.replaceChildren(...faces.map((f) => viewer(box, f, dbl)));
       // Every box at the same scale: a 2U box is half as tall as a 4U one,
-      // and a floor box narrower than a 19-inch rack
+      // and a floor box narrower than a 19-inch rack. A network device has no
+      // size: on a phone its tiles (4 to a row) use the whole width
       for (const v of area.querySelectorAll('.face')) {
         const face = faces.find((f) => f.id === v.querySelector('svg').dataset.face);
-        if (face && !holder.dataset.face) v.style.maxWidth = `${(face.w / L.RACK_W) * 100}%`;
+        if (face && !holder.dataset.face && !(face.virtual && narrow.matches)) v.style.maxWidth = `${(face.w / L.RACK_W) * 100}%`;
       }
     }
   }
@@ -712,11 +758,11 @@
       return el('tr', { class: isDouble ? 'double' : '', onclick: () => select(x.box.id, x.port.key), style: 'cursor:pointer' },
         el('td', { text: `${showBox ? boxTitle(x.box) + ' · ' : ''}${x.port.label}` }),
         el('td', { text: x.data.name || '' }),
-        el('td', { class: `src ${x.port.kind}`, text: x.data.src ? sourceName(x.data.src) + (isDouble ? ' (twice)' : '') : '—' }),
+        el('td', { class: `src ${x.port.kind}`, text: x.data.src ? sourceName(x.data.src) + (isDouble ? ' (twice)' : '') : x.data.fed ? FED_TEXT : '—' }),
         el('td', { class: phantomState(x.port, x.data) ? `ph-${phantomState(x.port, x.data)}` : '', text: phantomState(x.port, x.data) ? PHANTOM_TEXT[phantomState(x.port, x.data)] : '' }),
         el('td', { class: 'muted', text: x.data.note || '' }));
     };
-    const used = (x) => sheetAll || x.data.src || x.data.name || x.data.note || x.data.phantom;
+    const used = (x) => sheetAll || x.data.src || x.data.fed || x.data.name || x.data.note || x.data.phantom;
     if (sheetOrder === 'box') {
       for (const box of state.boxes) {
         const own = rows.filter((r) => r.box === box);
@@ -740,7 +786,7 @@
     // a spreadsheet: a ' in front keeps it text
     const q = (v) => { const t = String(v || ''); return `"${(/^[=+\-@\t\r]/.test(t) ? `'${t}` : t).replace(/"/g, '""')}"`; };
     const lines = [['Stage box', 'Model', 'Location', 'Socket', 'Name', 'Patched to', '48V', 'Note'].map(q).join(',')];
-    for (const x of rows) lines.push([boxTitle(x.box), modelOf(x.box).name, x.box.location, x.port.label, x.data.name, x.data.src ? sourceName(x.data.src) : '', PHANTOM_TEXT[phantomState(x.port, x.data)] || '', x.data.note].map(q).join(','));
+    for (const x of rows) lines.push([boxTitle(x.box), modelOf(x.box).name, x.box.location, x.port.label, x.data.name, x.data.src ? sourceName(x.data.src) : x.data.fed ? FED_TEXT : '', PHANTOM_TEXT[phantomState(x.port, x.data)] || '', x.data.note].map(q).join(','));
     const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv' }));
     const a = el('a', { href: url, download: 'patch.csv' });
     document.body.append(a); a.click(); a.remove();
@@ -769,11 +815,12 @@
     $('boxAbout').textContent = model ? model.about : '';
     if (!model) return;
     if (model.generic) {
-      const g = (box && box.generic) || { inputs: 16, outputs: 8 };
+      const g = (box && box.generic) || { inputs: 16, outputs: model.virtual ? 0 : 8 };
       setup.append(
         el('label', {}, 'Inputs', el('input', { type: 'number', min: 0, max: 128, value: g.inputs, 'data-generic': 'inputs' })),
         el('label', {}, 'Outputs', el('input', { type: 'number', min: 0, max: 128, value: g.outputs, 'data-generic': 'outputs' })));
-    } else if (model.slots) {
+    }
+    if (model.slots) {
       model.slots.forEach((allowed, i) => {
         const slot = i + 1;
         const s = el('select', { 'data-slot': slot });
@@ -850,22 +897,24 @@
   }
 
   // ── Importing a session ──
-  // A session saved on LV1 (.emo) or a DiGiCo (.ses) holds its patch: what's
-  // on every socket. It's read here in the page (sqlite.js + lv1-session.js,
-  // digico-session.js), and only the boxes it makes are saved. LV1 names its
-  // stage boxes; a DiGiCo with a rack on Dante or MADI doesn't, so the
-  // preview asks which rack is there.
+  // A session saved on LV1 (.emo), a DiGiCo (.ses) or a dLive show (.tar.gz)
+  // holds its patch: what's on every socket. It's read here in the page
+  // (sqlite.js + lv1-session.js, digico-session.js, dlive-show.js), and only
+  // the boxes it makes are saved. LV1 names its stage boxes; a DiGiCo with a
+  // rack on Dante or MADI doesn't, and a dLive show doesn't say which MixRack
+  // or surface it's for, so the preview asks.
   let imported = null; // { boxes, inputs, outputs, … } waiting for Import
   let digico = null;   // { session, choices } for a DiGiCo session
+  let dlive = null;    // { show, choices } for a dLive show
   let importName = '';
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-  const picker = el('input', { type: 'file', accept: '.emo,.dat,.ses', hidden: true });
+  const picker = el('input', { type: 'file', accept: '.emo,.dat,.ses,.gz,.tgz', hidden: true });
   document.body.append(picker);
   $('importLv1').addEventListener('click', () => { picker.value = ''; picker.click(); });
   picker.addEventListener('change', async () => {
     const file = picker.files && picker.files[0];
     if (!file) return;
-    imported = null; digico = null; importName = file.name;
+    imported = null; digico = null; dlive = null; importName = file.name;
     try {
       if (file.size > 300 * 1024 * 1024) throw new Error('That file is too big to be a session.');
       const buffer = await file.arrayBuffer();
@@ -876,7 +925,11 @@
       } else if (start.startsWith('SQLite format 3')) {
         imported = window.PatchLV1.read(window.PatchSQLite.open(buffer));
         imported.kind = 'LV1';
-      } else throw new Error('This isn’t an LV1 (.emo) or DiGiCo (.ses) session.');
+      } else if (new Uint8Array(buffer, 0, Math.min(2, buffer.byteLength)).join() === '31,139') {
+        // gzip (bytes 1f 8b): a dLive show
+        dlive = { show: await window.PatchDLive.read(buffer), choices: {} };
+        rebuildDlive();
+      } else throw new Error('This isn’t an LV1 (.emo) or DiGiCo (.ses) session, or a dLive show (.tar.gz).');
       if (!imported.boxes.length) throw new Error('This session has no stage boxes or patch in it.');
     } catch (e) {
       imported = null;
@@ -885,6 +938,34 @@
     }
     showImport(file.name);
   });
+  function rebuildDlive() {
+    imported = window.PatchDLive.build(dlive.show, dlive.choices, L);
+    imported.kind = 'dLive';
+  }
+  // A dLive show: which MixRack, which surface, the DX expanders' model, and
+  // whether the I/O port card's channels get a box
+  function dliveChoices() {
+    const wrap = $('importChoices');
+    const redo = () => { rebuildDlive(); showImport(importName); };
+    const pick = (label, key, options, value) => {
+      const s = el('select', {});
+      for (const [v, text] of options) s.add(new Option(text, v));
+      s.value = value;
+      s.addEventListener('change', () => { dlive.choices[key] = s.value; redo(); });
+      wrap.append(el('label', {}, label, s));
+    };
+    const name = (m) => `${m.maker} ${m.name.replace(/ \((surface|console)\)$/, '')}`;
+    const guess = window.PatchDLive.rackFor(dlive.show);
+    pick('The MixRack', 'rack', window.PatchDLive.rackModels(L).map((m) => [m.id, `${name(m)}${m.id === guess ? ' (the smallest with every input the show uses)' : ''}`]), dlive.choices.rack || guess);
+    pick('The surface', 'surface', [...window.PatchDLive.surfaceModels(L).map((m) => [m.id, name(m)]), ['none', 'Leave it off']], dlive.choices.surface || 'ah-s7000');
+    pick('DX expanders', 'dx', [['ah-dx168', 'Allen & Heath DX168'], ['generic', 'Generic box (16 in, 8 out)'], ['none', 'Leave them off']], dlive.choices.dx || 'ah-dx168');
+    if (imported.card || dlive.choices.card === false) {
+      const draw = el('input', { type: 'checkbox' });
+      draw.checked = dlive.choices.card !== false;
+      draw.addEventListener('change', () => { dlive.choices.card = draw.checked; redo(); });
+      wrap.append(el('label', { class: 'check' }, draw, el('span', { text: `A Dante or network device for each I/O port in use: ${plural(imported.card || 0, 'channel')}` })));
+    }
+  }
   function rebuildDigico() {
     const mixes = state.console && state.console.type === 'digico' ? state.console.mixes : [];
     imported = window.PatchDiGiCo.build(digico.session, digico.choices, L, mixes);
@@ -935,9 +1016,11 @@
     }
   }
   function showImport(fileName, error) {
-    $('importTitle').textContent = error || !imported ? 'Import a session' : `Import a${imported.kind === 'LV1' ? 'n' : ''} ${imported.kind} session`;
+    $('importTitle').textContent = error || !imported ? 'Import a session' : `Import a${imported.kind === 'LV1' ? 'n' : ''} ${imported.kind} ${imported.kind === 'dLive' ? 'show' : 'session'}`;
     $('importAbout').textContent = error ? fileName : `${fileName}: ${imported.devices} stage box${imported.devices === 1 ? '' : 'es'}, with ${plural(imported.inputs, 'input')} and ${plural(imported.outputs, 'output')} patched.`;
-    if (error) $('importChoices').replaceChildren(); else digicoChoices();
+    $('importChoices').replaceChildren();
+    if (!error && digico) digicoChoices();
+    if (!error && dlive) dliveChoices();
     const left = !error && imported.left && imported.left.length ? `Not on a box: ${imported.left.slice(0, 8).join(', ')}${imported.left.length > 8 ? ` and ${imported.left.length - 8} more` : ''}.` : '';
     const elsewhere = !error && imported.others ? ` ${plural(imported.others, 'playback input')} ${imported.others === 1 ? 'isn’t' : 'aren’t'} drawn.` : '';
     $('importLeft').textContent = `${left}${elsewhere}`.trim();
@@ -945,14 +1028,14 @@
       const ports = layoutOf(b).ports;
       const used = (kind) => ports.filter((p) => p.kind === kind && b.ports[p.key]).length;
       return el('li', {}, el('b', { text: b.name }),
-        el('span', { text: `${b.model === 'generic' ? `Generic box (${b.generic.inputs} in, ${b.generic.outputs} out)` : modelOf(b).name} · ${plural(used('in'), 'input')}, ${plural(used('out'), 'output')}${boxById(b.id) ? ' · updates the one already here' : ''}` }));
+        el('span', { text: `${b.model === 'generic' ? `Generic box (${b.generic.inputs} in, ${b.generic.outputs} out)` : b.model === 'network' ? `${((k) => k.short || k.label)(L.NETWORK_KINDS.find((k) => k.value === ((b.options || {}).kind || '')) || L.NETWORK_KINDS[0])} device, no sockets` : modelOf(b).name} · ${plural(used('in'), 'input')}, ${plural(used('out'), 'output')}${boxById(b.id) ? ' · updates the one already here' : ''}` }));
     })));
     const others = error ? [] : state.boxes.filter((b) => !imported.boxes.some((x) => x.id === b.id));
     $('importReplaceRow').hidden = !others.length;
     $('importReplace').checked = false;
     $('importReplaceRow').querySelector('span').textContent = `Remove the other ${others.length === 1 ? 'stage box' : `${others.length} stage boxes`} on this page`;
-    $('importNote').textContent = error ? 'Choose a session saved on LV1 (.emo) or a DiGiCo (.ses).'
-      : `Each socket gets the channel or mix ${imported.kind} has patched to it, and its name.${imported.kind === 'DiGiCo' ? ' A DiGiCo session doesn’t say which rack is on a port, so choose it above; its mic inputs go on it by channel number.' : ''}${imported.phantom ? ` ${plural(imported.phantom, 'socket')} with 48V on in the session ${imported.phantom === 1 ? 'is' : 'are'} marked 48V.` : ''} Boxes imported before are updated; your notes and 48V marks on them are kept.`;
+    $('importNote').textContent = error ? 'Choose a session saved on LV1 (.emo) or a DiGiCo (.ses), or a dLive show (.tar.gz).'
+      : `Each socket gets the channel or mix ${imported.kind} has patched to it, and its name.${imported.kind === 'DiGiCo' ? ' A DiGiCo session doesn’t say which rack is on a port, so choose it above; its mic inputs go on it by channel number.' : ''}${imported.kind === 'dLive' ? ' A dLive show doesn’t say which MixRack or surface it’s for, so choose them above. Outputs get the mix, direct out or tie line patched to them.' : ''}${imported.phantom ? ` ${plural(imported.phantom, 'socket')} with 48V on in the session ${imported.phantom === 1 ? 'is' : 'are'} marked 48V.` : ''} Boxes imported before are updated; your notes and 48V marks on them are kept.`;
     $('importGo').hidden = !!error;
     $('importCancel').textContent = error ? 'Close' : 'Cancel';
     if (!$('importDialog').open) $('importDialog').showModal();
@@ -965,6 +1048,8 @@
       for (const b of state.boxes.filter((x) => !imported.boxes.some((y) => y.id === x.id))) queueOp({ op: 'removeBox', box: b.id });
       state.boxes = state.boxes.filter((x) => imported.boxes.some((y) => y.id === x.id));
     }
+    // The notes an import writes (dlive-show.js's outputs among them): replaced by the next import
+    const IMPORTED_NOTE = /^(Also patched to |Also on this pair: |On the console as |(MixRack|surface) I\/O port \d+ output \d+\.|Tie line from |Direct out of |Insert send of |Stereo (aux|matrix|group) \d+,|(Aux|Matrix|Group) \d+\.|The main mix|PAFL \d+,|FX send \d+\.|A dLive source )/;
     for (const fresh of imported.boxes) {
       const had = boxById(fresh.id);
       const box = JSON.parse(JSON.stringify(fresh));
@@ -972,7 +1057,7 @@
         // What LV1 doesn't know stays: where the box is, notes and 48V marks
         box.location = had.location || '';
         for (const [key, p] of Object.entries(had.ports || {})) {
-          const ownNote = p.note && !/^(Also patched to|Also on this pair:|On the console as) /.test(p.note); // not one an earlier import wrote
+          const ownNote = p.note && !IMPORTED_NOTE.test(p.note); // not one an earlier import wrote
           const keep = { ...(ownNote ? { note: p.note } : {}), ...(p.phantom ? { phantom: true } : {}) };
           if (!Object.keys(keep).length) continue;
           box.ports[key] = { ...(box.ports[key] || { name: '' }), ...keep };

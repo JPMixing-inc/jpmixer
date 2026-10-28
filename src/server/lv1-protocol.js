@@ -123,6 +123,18 @@ class FrameReader {
 const i = v => ({ t: 'i', v });
 const clampLevel = db => Math.max(LEVEL_MIN, Math.min(LEVEL_MAX, db));
 const clampPan = p => Math.max(-PAN_MAX, Math.min(PAN_MAX, p));
+// Each track's EQ (LV1's eMo Q4): four bands, 1 lowest. Its gain, frequency
+// and Q are set as dB, Hz and the real Q, but LV1 reports the Q as its knob's
+// position, 0..1000 on a log scale from 0.05 to 6.50 (checked against LV1's
+// own display at 0, 203, 569.6 and 1000).
+const EQ_BANDS = 4;
+const EQ_GAIN_MAX = 18, EQ_FREQ_MIN = 20, EQ_FREQ_MAX = 20000, EQ_Q_MIN = 0.05, EQ_Q_MAX = 6.5;
+const clampEqGain = db => Math.max(-EQ_GAIN_MAX, Math.min(EQ_GAIN_MAX, db));
+const clampEqFreq = hz => Math.max(EQ_FREQ_MIN, Math.min(EQ_FREQ_MAX, hz));
+const clampEqQ = q => Math.max(EQ_Q_MIN, Math.min(EQ_Q_MAX, q));
+const eqQFromKnob = k => EQ_Q_MIN * Math.pow(EQ_Q_MAX / EQ_Q_MIN, Math.max(0, Math.min(1000, k)) / 1000);
+const eqBand = band => i(Math.max(1, Math.min(EQ_BANDS, band)));
+
 const msg = {
   handshake: () => frame('/handshake', [i(1), i(-1), i(1)]),
   deviceName: (name, uuid) => frame('/device_name', [{ t: 's', v: name }, { t: 's', v: uuid }]),
@@ -135,8 +147,17 @@ const msg = {
   setTrackGain: (type, index, db) => frame('/Set/Track/Out/Gain', [i(type), i(index), { t: 'd', v: clampLevel(db) }]),
   setTrackMute: (type, index, on) => frame('/Set/Track/Out/Mute', [i(type), i(index), { t: on ? 'T' : 'F' }]),
   setSolo: (type, index, on) => frame('/Set/Solo', [i(type), i(index), i(on ? 1 : 0)]),
-  // Not yet confirmed on a real LV1 — see lv1-server.js fireSnapshot()
-  recallScene: (index) => frame('/Scene/Recall', [i(index)]),
+  // EQ: /GetEQ answers with every band (/Notify/EQ/Band/*), for any track
+  getEq: (type, index) => frame('/GetEQ', [i(type), i(index)]),
+  setEqGain: (type, index, band, db) => frame('/Set/EQ/Band/Gain', [i(type), i(index), eqBand(band), { t: 'd', v: clampEqGain(db) }]),
+  setEqFreq: (type, index, band, hz) => frame('/Set/EQ/Band/Freq', [i(type), i(index), eqBand(band), { t: 'd', v: clampEqFreq(hz) }]),
+  setEqQ: (type, index, band, q) => frame('/Set/EQ/Band/Q', [i(type), i(index), eqBand(band), { t: 'd', v: clampEqQ(q) }]),
+  setEqBandOn: (type, index, band, on) => frame('/Set/EQ/Band/On', [i(type), i(index), eqBand(band), { t: on ? 'T' : 'F' }]),
+  setEqIn: (type, index, on) => frame('/SetEQState', [i(type), i(index), i(on ? 1 : 0)]),
+  // Moves LV1 to a scene in its list, as its own scene buttons do (checked on a
+  // real LV1 17.6, 2026-10-27: it answers with /Notify/CurSceneIndex at once).
+  // /Scene/Recall, which LV1 also knows, does nothing.
+  recallScene: (index) => frame('/Set/CurSceneIndex', [i(index)]),
 };
 
 // ── Readers for what LV1 sends ───────────────────────────────────────────
@@ -185,4 +206,5 @@ module.exports = {
   encodeMessage, decodeMessage, frame, FrameReader, msg,
   parseChannels, parseAuxTracks, parseSends, parseSceneList,
   panFromSlider, panToSlider, clampLevel,
+  EQ_BANDS, EQ_GAIN_MAX, EQ_FREQ_MIN, EQ_FREQ_MAX, EQ_Q_MIN, EQ_Q_MAX, clampEqGain, clampEqFreq, clampEqQ, eqQFromKnob,
 };

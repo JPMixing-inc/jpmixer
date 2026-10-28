@@ -926,6 +926,175 @@
     },
   });
 
+  // ── Allen & Heath dLive ──
+  // The C Class MixRacks (CDM32, CDM48, CDM64): traced from Allen & Heath's
+  // datasheet drawings, everything on the front. Mic/line in in rows of 8 on
+  // the left, line out in rows of 4 on the right, counted down from the top;
+  // along the bottom the I/O Port 1 slot, network, gigaACE, DX1, DX3, ME,
+  // word clock and power. The rows sit at the same height above the bottom on
+  // each, so the taller racks only add rows at the top.
+  const ahLabel = (x, y, text, o = {}) => T(x, y, text, { size: 2.6, anchor: 'middle', fill: '#aeb2b9', ...o });
+  function cdmChassis(name, rows, rackU) {
+    const H = units(rackU);
+    const rowY = (r) => H - 79 - (rows - 1 - r) * 35.8; // r from 0, the top row
+    const bottom = (fromBottom) => H - fromBottom;
+    return {
+      id: `ah-${name.toLowerCase()}`, family: 'allen-heath', maker: 'Allen & Heath', name: `dLive ${name} MixRack`,
+      about: `${rows * 8} mic/line inputs and ${rows * 4} line outputs on the front, with the I/O port, network, gigaACE, DX1, DX3 and ME ports along the bottom. ${rackU}U.`,
+      build() {
+        const parts = [
+          // Phones and the name, beside the top rows
+          ahLabel(408, rowY(0) - 13, 'Phones', { size: 2.8 }), part('knob', 392, rowY(0), { dots: true }), part('jack', 424, rowY(0), { r: 5 }),
+          T(410, rowY(1) - 2, `dLive ${name}`, { size: 8, weight: 300, anchor: 'middle' }), T(410, rowY(1) + 11, 'ALLEN&HEATH', { size: 8, weight: 800, anchor: 'middle' }),
+          part('sticker', 374, rowY(rows - 2) - 8, { w: 75, h: 34 }), part('sticker', 374, rowY(rows - 1) - 6, { w: 50, h: 12 }),
+          // Along the bottom
+          part('box', 37, bottom(50), { w: 160.5, h: 45.4 }), ahLabel(115.6, bottom(55), 'I/O Port 1', { size: 3 }),
+          ahLabel(227.4, bottom(42), 'Network', { size: 3 }), part('rj45', 227.4, bottom(30)), part('rj45', 227.4, bottom(16)),
+          ahLabel(248, bottom(30), 'Reset'), part('led', 248, bottom(25), { color: '#0b0c0e' }),
+          part('box', 254.7, bottom(47.5), { w: 29.4, h: 44, fill: '#0d0e10' }), part('ethercon', 269.6, bottom(22), { label: 'gigaACE' }),
+          part('ethercon', 301.5, bottom(21), { label: 'DX1' }), part('ethercon', 329.6, bottom(21), { label: 'DX3' }), part('ethercon', 359.8, bottom(21), { label: 'ME' }),
+          ahLabel(393.8, bottom(30), 'Word Clock', { size: 2.8 }), part('bnc', 393.8, bottom(19)),
+          part('led', 379, bottom(7), { label: 'In' }), part('led', 384, bottom(7)), part('led', 407, bottom(7), { label: 'Ready' }), part('led', 413, bottom(7)),
+          part('box', 421, bottom(70), { w: 34, h: 66 }), part('switch', 438, bottom(58)), part('iec', 438, bottom(30)),
+        ];
+        const sockets = [];
+        for (let r = 0; r < rows; r++) {
+          sockets.push(...grid({ group: 'in', kind: 'in', connector: 'xlr-f', count: 8, cols: 8, x0: 48.2, dx: 27.15, y0: rowY(r), dy: 0, size: 22, start: r * 8 + 1, keyStart: r * 8 + 1, where: 'Mic/line inputs' }));
+          sockets.push(...grid({ group: 'out', kind: 'out', connector: 'xlr-m', count: 4, cols: 4, x0: 271.5, dx: 27.1, y0: rowY(r), dy: 0, size: 22, start: r * 4 + 1, keyStart: r * 4 + 1, where: 'Line outputs' }));
+        }
+        return { faces: [{ id: 'front', label: 'Front', rack: rackU, w: RACK_W, h: H, parts, sockets, note: 'Drawn from Allen & Heath’s datasheet' }] };
+      },
+    };
+  }
+  add(cdmChassis('CDM32', 4, 5));
+  add(cdmChassis('CDM48', 6, 7));
+  add(cdmChassis('CDM64', 8, 8));
+
+  // DX168: the portable expander, 410 × 185 mm with its corner bumpers and
+  // carry handle, traced from its Getting Started Guide. Inputs 1-8 and 9-16
+  // on the left, outputs 1-4 and 5-8 on the right; DX A, DX B and power on
+  // the side.
+  add({
+    id: 'ah-dx168', family: 'allen-heath', maker: 'Allen & Heath', name: 'DX168',
+    about: '16 mic/line inputs and 8 line outputs on the front; DX A, DX B and power on the side. 410 × 185 mm.',
+    build() {
+      const W = 410, H = 185;
+      const corners = (w) => [part('bumper', 0, 0), part('bumper', w - 36 - (w === W ? 25 : 0), 0), part('bumper', 0, H - 30), part('bumper', w - 36 - (w === W ? 25 : 0), H - 30)];
+      const front = {
+        id: 'front', label: 'Front', w: W, h: H,
+        parts: [
+          ...corners(W), part('handle', W - 12, 42, { h: 70, side: true }),
+          T(63, 27, 'ALLEN&HEATH', { size: 6, weight: 800, anchor: 'middle' }), part('box', 322, 18, { w: 30, h: 17, fill: '#0d0e10' }),
+          T(337, 26, 'DX168', { size: 5, weight: 700, anchor: 'middle' }), T(337, 32, 'AudioRack', { size: 2.6, anchor: 'middle', fill: '#aeb2b9' }),
+          part('box', 29.5, 44, { w: 208.5, h: 7, fill: '#0d0e10' }), T(134, 49.4, 'INPUTS', { size: 3.4, weight: 700, anchor: 'middle' }),
+          part('box', 251.7, 44, { w: 102.3, h: 7, fill: '#0d0e10' }), T(303, 49.4, 'OUTPUTS', { size: 3.4, weight: 700, anchor: 'middle' }),
+          part('led', 245.5, 58, { label: 'Power' }), part('led', 245.5, 96.7, { label: 'Ready' }),
+        ],
+        sockets: [
+          ...grid({ group: 'in', kind: 'in', connector: 'xlr-f', count: 16, cols: 8, x0: 41, dx: 26.5, y0: 70.4, dy: 38.7, size: 22, where: 'Mic/line inputs' }),
+          ...grid({ group: 'out', kind: 'out', connector: 'xlr-m', count: 8, cols: 4, x0: 263.2, dx: 26.5, y0: 70.4, dy: 38.7, size: 22, where: 'Line outputs' }),
+        ],
+      };
+      const side = {
+        id: 'side', label: 'Side', w: 190, h: H,
+        parts: [
+          ...corners(190), T(122, 21, 'ALLEN&HEATH', { size: 4.5, weight: 800, anchor: 'middle' }),
+          part('vent', 48, 28, { w: 100, h: 14 }), part('sticker', 70, 64, { w: 80, h: 26 }),
+          part('iec', 49, 107), part('box', 125, 102, { w: 22, h: 12, fill: '#0d0e10' }), T(136, 110, 'DX168', { size: 3.4, weight: 700, anchor: 'middle' }),
+          part('box', 54, 143, { w: 16, h: 8 }), ahLabel(62, 140, 'Mode'),
+          part('ethercon', 92, 141, { label: 'DX B' }), part('ethercon', 132, 141, { label: 'DX A' }),
+        ],
+        sockets: [],
+      };
+      return { faces: [front, side] };
+    },
+  });
+
+  // dLive S7000: the back of the surface, traced from Allen & Heath's
+  // datasheet drawing, 1325 mm wide. Mic/line in 1-8 and the AES ins (9/10,
+  // 11/12), then line out 1-8 and the AES outs (9/10 to 13/14), along the
+  // bottom; above them the I/O Port 4 and 5 slots, DX 5 and 6, word clock,
+  // network and the two gigaACE ports; the power bays on the right.
+  add({
+    id: 'ah-s7000', family: 'allen-heath-console', maker: 'Allen & Heath', name: 'dLive S7000 (surface)',
+    about: 'The back of the S7000: 8 mic/line inputs, 2 AES inputs, 8 line outputs and 3 AES outputs, with I/O Ports 4 and 5, DX 5/6 and gigaACE.',
+    build() {
+      const y = 144.2;
+      const parts = [
+        part('vent', 290, 19, { w: 375, h: 20 }), part('vent', 675, 19, { w: 205, h: 20 }),
+        part('box', 278.6, 68, { w: 168, h: 28 }), ahLabel(362.6, 63, 'I/O Port 4', { size: 3.4 }),
+        part('box', 469, 68, { w: 166.6, h: 28 }), ahLabel(552.3, 63, 'I/O Port 5', { size: 3.4 }),
+        part('sticker', 664, 51, { w: 12, h: 12 }), part('usb', 758, 58), part('box', 828, 53, { w: 21, h: 11 }), ahLabel(838.6, 50, 'Screen Out'),
+        part('ethercon', 670.6, 102, { label: 'DX 5' }), part('ethercon', 709.1, 102, { label: 'DX 6' }),
+        ahLabel(744.8, 92, 'Word Clock'), part('bnc', 735, 110), part('bnc', 754.6, 110), ahLabel(735, 100, 'In'), ahLabel(754.6, 100, 'Out'),
+        ahLabel(779, 84, 'Network'), part('rj45', 779, 98), part('rj45', 779, 112),
+        part('box', 789.6, 75.6, { w: 66.5, h: 44.8, fill: '#0d0e10' }), part('ethercon', 812.7, 104, { label: 'gigaACE A' }), part('ethercon', 844.2, 104, { label: 'gigaACE B' }),
+        part('led', 862, 114, { label: 'Sync' }),
+        ...rowLabel(276, 492, 126, 'MIC/LINE IN'), ...rowLabel(500, 552, 126, 'DIGITAL IN'), ...rowLabel(553, 768, 126, 'LINE OUT'), ...rowLabel(774, 853, 126, 'DIGITAL OUT'),
+        part('box', 886, 21, { w: 75, h: 142 }), ahLabel(923.5, 17, 'Power 1', { size: 3 }), T(923.5, 45, 'MPS16', { size: 5, weight: 700, anchor: 'middle' }),
+        part('switch', 936.6, 90), part('iec', 936.6, 111),
+        part('box', 975, 21, { w: 75, h: 142, fill: '#1a1c20' }), ahLabel(1012.5, 17, 'Power 2', { size: 3 }),
+        part('sticker', 233, 160, { w: 42, h: 6 }), T(1180, 100, 'dLive', { size: 22, weight: 300, anchor: 'middle', fill: '#5c6068' }),
+      ];
+      const sockets = [
+        ...grid({ group: 'in', kind: 'in', connector: 'xlr-f', count: 8, cols: 8, x0: 287, dx: 27.6, y0: y, dy: 0, size: 22, where: 'Mic/line inputs' }),
+        sock('aesin.1', 'in', 'xlr-f', 511, y, 22, 'AES 9/10', 'AES in 9/10', 'Digital in', { pair: true }),
+        sock('aesin.2', 'in', 'xlr-f', 539, y, 22, 'AES 11/12', 'AES in 11/12', 'Digital in', { pair: true }),
+        ...grid({ group: 'out', kind: 'out', connector: 'xlr-m', count: 8, cols: 8, x0: 564.2, dx: 27.5, y0: y, dy: 0, size: 22, where: 'Line outputs' }),
+        sock('aesout.1', 'out', 'xlr-m', 786.1, y, 22, 'AES 9/10', 'AES out 9/10', 'Digital out', { pair: true }),
+        sock('aesout.2', 'out', 'xlr-m', 813.4, y, 22, 'AES 11/12', 'AES out 11/12', 'Digital out', { pair: true }),
+        sock('aesout.3', 'out', 'xlr-m', 840.7, y, 22, 'AES 13/14', 'AES out 13/14', 'Digital out', { pair: true }),
+      ];
+      return { faces: [{ id: 'back', label: 'Back', w: 1325, h: 171.5, parts, sockets, note: 'Drawn from Allen & Heath’s datasheet' }] };
+    },
+  });
+
+  // Something on the network or a computer, with no sockets to plug into (a
+  // Dante device or card, a playback computer, MADI, USB, SoundGrid): drawn
+  // as a panel of tiles, one per channel, 8 to a row, each with its name.
+  // Its kind (box.options.kind) is only the label; its size is box.generic.
+  // On a phone the page asks for 4 to a row ({ cols: 4 }): the keys stay the same.
+  const NETWORK_KINDS = [
+    { value: '', label: 'Dante', mark: 'DANTE', color: '#c8323c' },
+    { value: 'madi', label: 'MADI', mark: 'MADI', color: '#3a6fd8' },
+    { value: 'soundgrid', label: 'SoundGrid', mark: 'SOUNDGRID', color: '#1f9d8a' },
+    { value: 'usb', label: 'USB', mark: 'USB', color: '#6b7280' },
+    { value: 'other', label: 'Other (a computer, AVB…)', short: 'Network', mark: 'NETWORK', color: '#6b7280' },
+  ];
+  const networkKind = (box) => NETWORK_KINDS.find((k) => k.value === ((box.options || {}).kind || '')) || NETWORK_KINDS[0];
+  add({
+    id: 'network', family: 'any', maker: '', name: 'Dante or network device',
+    about: 'Something with no sockets to plug into: a Dante device or card, a playback computer, MADI, USB or SoundGrid. Each channel is a tile with its name on it.',
+    generic: true, virtual: true,
+    options: [{ key: 'kind', label: 'Kind', choices: NETWORK_KINDS.map((k) => ({ value: k.value, label: k.label })) }],
+    build(box, opts = {}) {
+      const clampInt = (v, lo, hi, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d; };
+      const ins = clampInt(box.generic && box.generic.inputs, 0, 128, 16), outs = clampInt(box.generic && box.generic.outputs, 0, 128, 0);
+      const kind = networkKind(box);
+      const cols = opts.cols === 4 ? 4 : 8, tw = 50, th = 32, gap = 4, M = 12, W = M * 2 + cols * tw + (cols - 1) * gap;
+      const parts = [
+        part('box', 3, 3, { w: W - 6, h: 28, fill: '#1f2228', rx: 4 }),
+        T(M, 21, (box.name || kind.short || kind.label).slice(0, cols === 4 ? 22 : 48), { size: 11, weight: 700 }),
+        part('badge', W - M, 17, { text: kind.mark, color: kind.color }),
+      ];
+      const sockets = [];
+      let y = 34;
+      const section = (count, kindOf, title, where) => {
+        if (!count) return;
+        parts.push(T(M, y + 14, title, { size: 6, weight: 700, fill: '#aeb2b9' }));
+        y += 20;
+        sockets.push(...grid({ group: kindOf, kind: kindOf, connector: 'tile', count, cols, x0: M + tw / 2, dx: tw + gap, y0: y + th / 2, dy: th + gap, size: th, where, label: (n) => `Channel ${n}`, extra: { w: tw, h: th } }));
+        y += Math.ceil(count / cols) * (th + gap) + 2;
+      };
+      section(ins, 'in', 'SENDS TO THE CONSOLE', 'Sends to the console');
+      section(outs, 'out', 'RECEIVES FROM THE CONSOLE', 'Receives from the console');
+      if (!ins && !outs) { parts.push(T(W / 2, y + 24, cols === 4 ? 'No channels yet' : 'No channels yet: Edit it to give it some', { size: 6, anchor: 'middle', fill: '#8b9098' })); y += 40; }
+      const counts = [ins && `${ins} to the console`, outs && `${outs} from it`].filter(Boolean).join(', ');
+      const word = kind.short || kind.label;
+      return { faces: [{ id: 'front', label: word, w: W, h: y + 8, virtual: true, parts, sockets, sizeText: `${word}, no sockets${counts ? `: ${counts}` : ''}` }] };
+    },
+  });
+
   // Anything else: a 19-inch rack, as many units tall as its sockets need
   add({
     id: 'generic', family: 'any', maker: '', name: 'Generic stage box',
@@ -951,21 +1120,23 @@
     digico: 'DiGiCo racks',
     'digico-console': 'DiGiCo consoles (their own I/O)',
     waves: 'Waves SoundGrid (eMotion LV1)',
+    'allen-heath': 'Allen & Heath dLive MixRacks and expanders',
+    'allen-heath-console': 'Allen & Heath dLive surfaces (their own I/O)',
     any: 'Any console',
   };
   // Which families come first for each console: LV1 can also use DiGiCo
   // racks through a MADI interface
-  const FOR_CONSOLE = { digico: ['digico', 'digico-console', 'any'], lv1: ['waves', 'digico', 'any'] };
+  const FOR_CONSOLE = { digico: ['digico', 'digico-console', 'any'], lv1: ['waves', 'digico', 'any'], dlive: ['allen-heath', 'allen-heath-console', 'any'] };
 
   // A box drawn: its faces (with sockets placed) and every socket in order,
-  // inputs then outputs, each with its face
-  function layoutFor(box) {
+  // inputs then outputs, each with its face. `opts.cols`: see the network device
+  function layoutFor(box, opts) {
     const model = BOXES.find((b) => b.id === box.model) || BOXES.find((b) => b.id === 'generic');
-    const { faces } = model.build.call(model, box);
+    const { faces } = model.build.call(model, box, opts || {});
     const ports = faces.flatMap((f) => f.sockets.map((s) => ({ ...s, face: f.id, faceLabel: f.label })));
     const ordered = [...ports.filter((p) => p.kind === 'in'), ...ports.filter((p) => p.kind === 'out')];
     return { model, faces, ports: ordered };
   }
 
-  window.PATCH_LIBRARY = { BOXES, CARDS, FAMILIES, FOR_CONSOLE, layoutFor, RACK_W, U, EAR };
+  window.PATCH_LIBRARY = { BOXES, CARDS, FAMILIES, FOR_CONSOLE, NETWORK_KINDS, layoutFor, RACK_W, U, EAR };
 })();

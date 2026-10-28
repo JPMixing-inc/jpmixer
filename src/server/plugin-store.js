@@ -176,8 +176,9 @@ const tooNewFor = (e, appVersion) => !!(e.minJPMixer && appVersion && newer(e.mi
 // The approved list, each with whether it's installed and if there's an
 // update: { ok, plugins, submitUrl, notice? } or { ok: false, error }. JPMixer's
 // own plugins that come with it are listed too (bundled: true) when the list
-// on GitHub doesn't have them, or has only a version for a newer JPMixer, or
-// can't be reached: those install from the copy here, with no internet.
+// on GitHub doesn't have them, has an older version of them (a JPMixer out
+// before the list caught up), or only a version for a newer JPMixer, or can't
+// be reached: those install from the copy here, with no internet.
 async function catalog(appVersion) {
   let raw, error = null;
   try { raw = JSON.parse((await fetchLimited(CATALOG_URL, MAX_CATALOG_BYTES)).toString('utf8')); }
@@ -189,7 +190,7 @@ async function catalog(appVersion) {
   if (error && !bundled.length) return { ok: false, submitUrl: SUBMIT_URL, error };
   const entries = online.map((e) => {
     const here = bundled.find((b) => b.id === e.id);
-    return here && tooNewFor(e, appVersion) && !tooNewFor(here, appVersion) ? here : e;
+    return here && !tooNewFor(here, appVersion) && (tooNewFor(e, appVersion) || newer(here.version, e.version) > 0) ? here : e;
   });
   for (const b of bundled) if (!entries.some((e) => e.id === b.id)) entries.push(b);
   lastCatalog = { at: Date.now(), plugins: entries };

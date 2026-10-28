@@ -377,6 +377,23 @@ test('a mute goes out ahead of a queued Ear Scene recall', () => {
   assert.equal(firstTick[0].args[0], -150);
 });
 
+test('muting a send whose level has not been read asks the desk for it, then silences it', () => {
+  // Skipped before: every phone showed the channel muted while it stayed audible
+  const h = serverHarness();
+  const mark = h.ports[0].sent.length;
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: true });
+  h.clock.advance(300);
+  assert(h.ports[0].sent.slice(mark).some(m => m.address === `${level(1)}/?`), 'the level is asked for');
+  assert(!h.ports[0].sent.slice(mark).some(m => m.address === level(2) || m.address === `${level(2)}/?`), 'an audible channel is left alone');
+  h.echo({ address: level(1), args: [-12] });
+  h.clock.advance(100);
+  assert.deepEqual([h.ports[0].sent.at(-1).address, h.ports[0].sent.at(-1).args[0]], [level(1), -150]);
+  assert.equal(h.cached(level(1)), -12, 'the real level is kept for the unmute');
+  h.send({ type: 'set-mute', aux: 1, ch: 1, muted: false });
+  h.clock.advance(100);
+  assert.deepEqual([h.ports[0].sent.at(-1).address, h.ports[0].sent.at(-1).args[0]], [level(1), -12]);
+});
+
 test('a mute writes only silenced channels, not the whole mix', () => {
   const h = serverHarness();
   h.echo({ address: level(1), args: [-12] });
@@ -737,6 +754,58 @@ test('phone faders: values arriving mid-drag wait, and the latest shows after th
   assert.equal(slider.value, 0.2, 'still held for a moment after release');
   clock.advance(400);
   assert.equal(slider.value, 0.21, 'then the latest value is shown');
+});
+
+test('phone faders: two quick drags are not a double-tap, and each fader follows its own finger', () => {
+  const clock = fakeClock();
+  let now = 1000;
+  const context = vm.createContext({ ...clock, Date: { now: () => now }, sceneLocked: false, hasSavedScene: () => false, showLockedHint() {}, Event: class { constructor(type) { this.type = type; } } });
+  const source = read('src/mixer/mixer.js');
+  vm.runInContext(source.slice(source.indexOf('const ECHO_HOLD_MS'), source.indexOf('// Double-tap puts the send at unity')), context);
+  // A 344 px fader at x 0-344: the thumb's centre is 22 + value * 300
+  function fader() {
+    const handlers = {};
+    const overlay = { style: {}, addEventListener: (type, fn) => { handlers[type] = fn; } };
+    const slider = { value: '0.5', min: '0', max: '1', style: {}, parentNode: { style: {}, appendChild() {} },
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 344, height: 40 }), dispatchEvent() {} };
+    context.document = { createElement: () => overlay, querySelector: () => null };
+    let resets = 0;
+    context.addFaderOverlay(slider, () => { resets++; }, false);
+    const fire = (type, changed, all = changed) => handlers[type]({ changedTouches: changed, touches: type === 'touchend' ? [] : all, preventDefault() {} });
+    return { slider, fire, resets: () => resets };
+  }
+  const t = (id, x, y = 20) => ({ identifier: id, clientX: x, clientY: y });
+  context.addFaderOverlay = vm.runInContext('addFaderOverlay', context);
+
+  const a = fader();
+  // Pulling a loud channel down in two quick flicks
+  a.fire('touchstart', [t(0, 172)]); a.fire('touchmove', [t(0, 140)]); now += 80; a.fire('touchend', [t(0, 140)]);
+  now += 100;
+  const x = 22 + parseFloat(a.slider.value) * 300;
+  a.fire('touchstart', [t(1, x)]); a.fire('touchmove', [t(1, x - 30)]); now += 80; a.fire('touchend', [t(1, x - 30)]);
+  assert.equal(a.resets(), 0, 'two drags in a row must not put the fader at 0 dB');
+  assert(parseFloat(a.slider.value) < 0.5);
+  // A real double tap on the thumb still resets it
+  now += 1000;
+  const at = 22 + parseFloat(a.slider.value) * 300;
+  a.fire('touchstart', [t(2, at)]); now += 60; a.fire('touchend', [t(2, at)]);
+  now += 120;
+  a.fire('touchstart', [t(3, at)]); now += 60; a.fire('touchend', [t(3, at)]);
+  assert.equal(a.resets(), 1, 'a double tap still resets');
+
+  // A thumb already resting on the screen (finger 7) doesn't drive this fader
+  const b = fader();
+  b.fire('touchstart', [t(8, 172)], [t(7, 600), t(8, 172)]);
+  b.fire('touchmove', [t(8, 202)], [t(7, 600), t(8, 202)]);
+  assert(Math.abs(parseFloat(b.slider.value) - 0.6) < 1e-9, 'moves with its own finger: +30 px = +0.1');
+  b.fire('touchmove', [t(7, 650)], [t(7, 650), t(8, 202)]);
+  assert(Math.abs(parseFloat(b.slider.value) - 0.6) < 1e-9, 'another finger moving changes nothing');
+  b.fire('touchstart', [t(9, 202)], [t(7, 650), t(8, 202), t(9, 202)]);
+  b.fire('touchmove', [t(9, 300)], [t(7, 650), t(8, 202), t(9, 300)]);
+  assert(Math.abs(parseFloat(b.slider.value) - 0.6) < 1e-9, 'a second finger on a held fader is ignored');
+  b.fire('touchend', [t(9, 300)]);
+  b.fire('touchmove', [t(8, 232)], [t(7, 650), t(8, 232)]);
+  assert(Math.abs(parseFloat(b.slider.value) - 0.7) < 1e-9, 'and lifting it leaves the first finger in charge');
 });
 
 test('monitor faders: values arriving mid-drag wait, and the latest shows after the hold', () => {

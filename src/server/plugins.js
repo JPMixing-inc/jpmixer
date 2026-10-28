@@ -44,10 +44,9 @@
 // restart by itself whenever its files change (watch).
 //
 // Which plugins are on, and their settings, are kept in plugins.json (not
-// config.json, so a Settings save can never drop them). Plugins as a whole
-// are off until Allow plugins (Settings → Plugins) turns them on (pluginsEnabled
-// in the config, passed in as `allowed`): while off, none runs and FOH Home
-// has no plugin cards, whatever plugins.json says.
+// config.json, so a Settings save can never drop them). Each one is off until
+// it's turned on in Settings → Plugins. (Up to 2.0.14 there was also an Allow
+// plugins switch for all of them: see turnOffOthers.)
 
 const fs = require('fs');
 const path = require('path');
@@ -66,9 +65,9 @@ const PERMISSIONS = {
   page: 'Show a page of its own, listed with the Home pages',
   integration: 'Feed JPMixer’s own pages and Settings (official JPMixer plugins only)',
 };
-// Official JPMixer plugins: they run without Allow plugins, as long as their
-// files are the ones installed from the approved list (or from the copy that
-// comes with JPMixer). An integration (Shure, Smaart, Companion) also has its
+// Official JPMixer plugins: marked as JPMixer's own (and an integration can
+// feed JPMixer's pages), as long as their files are the ones installed from
+// the approved list (or from the copy that comes with JPMixer). An integration (Shure, Smaart, Companion) also has its
 // on/off and settings in JPMixer's config, in its own Settings tab
 // (integrations.js hands them over), not in plugins.json.
 const OFFICIAL = { patch: {}, shure: { integration: true }, smaart: { integration: true }, companion: { integration: true } };
@@ -232,7 +231,6 @@ let providers = { console: null, planningCenter: null };
 const running = new Map(); // id -> run
 const crashed = new Map(); // id -> { at: [times], message }
 let started = false;
-let allowed = false; // Allow plugins (Settings → Plugins)
 let pushTimers = [];
 
 function permissionFlag() {
@@ -287,15 +285,23 @@ function stampOf(folder) {
 }
 // Installed from the approved list before JPMixer recorded the files (Patch,
 // on 2.0.13): official if they're the same as the copy that comes with
-// JPMixer, and recorded from then on
+// JPMixer, or as an earlier version of it (official-history.json), and
+// recorded from then on
 function adoptFiles(entry) {
   try {
-    const catalog = JSON.parse(fs.readFileSync(path.join(bundledDir(), 'catalog.json'), 'utf8'));
+    const read = (name) => { try { return JSON.parse(fs.readFileSync(path.join(bundledDir(), name), 'utf8')); } catch (_) { return null; } };
+    const catalog = read('catalog.json') || {};
+    const history = read('official-history.json') || {};
     const listed = (Array.isArray(catalog.plugins) ? catalog.plugins : []).find((p) => p && p.id === entry.id);
-    if (!listed || !Array.isArray(listed.files)) return false;
+    const earlier = history.plugins && Array.isArray(history.plugins[entry.id]) ? history.plugins[entry.id] : [];
+    const lists = [listed, ...earlier].filter((v) => v && Array.isArray(v.files)).map((v) => v.files);
+    if (!lists.length) return false;
     const now = hashFiles(entry.folder);
-    const want = Object.fromEntries(listed.files.map((f) => [f.path, f.sha256]));
-    if (Object.keys(now).length !== Object.keys(want).length || !Object.entries(want).every(([f, h]) => now[f] === h)) return false;
+    const matches = (files) => {
+      const want = Object.fromEntries(files.map((f) => [f.path, f.sha256]));
+      return Object.keys(now).length === Object.keys(want).length && Object.entries(want).every(([f, h]) => now[f] === h);
+    };
+    if (!lists.some(matches)) return false;
     state = toNullProto(JSON.parse(JSON.stringify(state)));
     state[entry.id] = { ...state[entry.id], files: now };
     return saveState();
@@ -328,13 +334,13 @@ function isOfficial(entry, { fresh = false } = {}) {
   return ok;
 }
 // Should this plugin be running? An integration: when its Settings tab has it
-// on. Any other: when it's on, and plugins are allowed (or it's official).
+// on (and it's the approved copy). Any other: when it's on.
 // Plugins being installed (their folder about to be swapped): held stopped till it's done
 const installingIds = new Set();
 function wantsRun(entry, { fresh = false } = {}) {
   if (!entry || !entry.manifest || installingIds.has(entry.id)) return false;
   if (isIntegrationId(entry.id)) return !!(integrations[entry.id] && integrations[entry.id].enabled) && isOfficial(entry, { fresh });
-  return !!(state[entry.id] && state[entry.id].enabled === true) && (allowed || isOfficial(entry, { fresh }));
+  return !!(state[entry.id] && state[entry.id].enabled === true);
 }
 // An integration's on/off and settings, from JPMixer's config (integrations.js)
 let integrations = Object.create(null); // id -> { enabled, settings }
@@ -615,7 +621,6 @@ async function push(what) {
 
 function start(given = {}) {
   providers = { console: given.console || null, planningCenter: given.planningCenter || null };
-  allowed = given.allowed === true;
   provided.clear();
   if (started) return apply();
   started = true;
@@ -627,10 +632,14 @@ function start(given = {}) {
   return apply();
 }
 
-// Allow plugins turned on or off
-function setAllowed(value) {
-  allowed = value === true;
-  return apply();
+// Allow plugins is gone (2.0.15): each plugin's own switch is the only one.
+// For anyone who had it off, each plugin that isn't JPMixer's own is turned
+// off once, so none starts by itself just because the switch went. The ids
+// turned off.
+function turnOffOthers() {
+  const off = list().filter((p) => p.manifest && p.enabled && !p.official && !isIntegrationId(p.id)).map((p) => p.id);
+  if (off.length) save(Object.fromEntries(off.map((id) => [id, { enabled: false }])));
+  return off;
 }
 
 // ── Official integrations (integrations.js) ──
@@ -968,7 +977,7 @@ function mountPluginPages(app) {
     if (!req.params[1]) { res.redirect(301, `/p/${id}/`); return; }
     const page = pageEntry(id);
     res.set('Cache-Control', 'no-cache');
-    if (!page) { res.status(404).type('text/plain').send('This plugin page isn’t available. Its plugin may be off, or plugins may not be allowed (Settings → Plugins).'); return; }
+    if (!page) { res.status(404).type('text/plain').send('This plugin page isn’t available. Its plugin may be off (Settings → Plugins).'); return; }
     // Express has already decoded the path once
     let rel = req.params[1].slice(1);
     if (!rel) rel = page.index;
@@ -1030,7 +1039,7 @@ module.exports = {
   setIntegrations, noteIntegrationSettings, bundledVersion, onShare, callIntegration, officialState, installBundled, checkBundled, bundledCatalog, isIntegrationId, OFFICIAL, bundledDir,
   isRunning: (id) => { const run = running.get(id); return !!(run && run.child); },
   isInstalled: (id) => scanSoon().some((e) => e.id === id && e.manifest),
-  start, setAllowed, apply, restart, stopAll, stopOne, list, getLog, save, forget, cards, readManifest, scan, previewInstall, install,
+  start, turnOffOthers, apply, restart, stopAll, stopOne, list, getLog, save, forget, cards, readManifest, scan, previewInstall, install,
   pluginsDir, dataDir, PERMISSIONS,
   _cleanCard: cleanCard, _coerce: coerce, _running: running,
   _setRestartDelays: (list) => { RESTART_DELAYS_MS.splice(0, RESTART_DELAYS_MS.length, ...list); },

@@ -56,6 +56,8 @@
 .chp-eq .curve.off { stroke: var(--jp-muted); stroke-dasharray: 4 4; }
 .chp-eq .dot { stroke: #0e0f11; stroke-width: 2; cursor: grab; }
 .chp-eq .dot.sel { stroke: #fff; }
+.chp-eq .dot.off { opacity: .4; } /* a band switched off (LV1) */
+.chp-note { margin: 0 0 8px; color: var(--jp-secondary); font-size: 11px; } /* a band's shape, set on the console (LV1) */
 .chp-eq .fhandle { fill: var(--jp-light); stroke: #0e0f11; stroke-width: 2; cursor: ew-resize; }
 .chp-eq .fhandle.off { fill: var(--jp-muted); }
 .chp-bands { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }

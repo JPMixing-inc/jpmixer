@@ -38,6 +38,7 @@
         "to": "plugins",
         "filter": [
           "catalog.json",
+          "official-history.json",
           "patch/**/*",
           "smaart/**/*",
           "shure/**/*",

@@ -19,7 +19,7 @@
     pco: ['Planning Center', 'Connect your schedule and map team positions to mixes.'],
     backup: ['Backup & restore', 'Save your configuration or restore a previous backup.'],
     api: ['Control API', 'Connect Companion, Stream Deck, and external tools.'],
-    plugins: ['Plugins', 'Allow plugins, and add or remove them. Each plugin’s own settings are listed under Plugins in the sidebar.'],
+    plugins: ['Plugins', 'Find, add, turn on and remove plugins. Each plugin’s own settings are listed under Plugins in the sidebar.'],
     osclog: ['OSC log', 'Inspect traffic between JPMixer and your console.']
   };
   const tabs = document.querySelectorAll('.tab');
