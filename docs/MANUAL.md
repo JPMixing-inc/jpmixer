@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.14 · October 2026**
+**Version 2.0.15 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -287,7 +287,7 @@ Settings → Aux mixes lists every monitor mix on the console. For each one you 
 | **Name** | The console’s name shows faded in the box. Type a name to use your own instead (in JPMixer only); leave it empty for the console’s. |
 | **Opens to** | The channel groups a phone starts on when it opens this mix, for example Drums and Playback for the drummer. Performers can still tap All. Pick **All channels** to show everything. |
 | **Show** | Lists the mix in the performer mix picker. Turn off mixes that aren’t monitor mixes, such as a recording feed. |
-| **EQ** | Lets performers adjust this mix’s built-in 8-band EQ from their phone (DiGiCo only). |
+| **EQ** | Lets performers adjust this mix’s EQ from their phone: the built-in 8-band EQ on a DiGiCo, or the mix’s own 4-band EQ on LV1 (monitor mixes; LV1’s aux buses, such as FX returns, have none). On LV1 it’s the same EQ as on the console, so a change on either shows on both. |
 | **Link only** | Hides the mix from the picker; it opens only from its direct link. Useful for a pastor’s wedge or a mix one person should have. |
 
 ### Direct links
@@ -377,7 +377,7 @@ The console’s main faders, mutes and solos for **Inputs**, **Control groups** 
 
 On DiGiCo, each strip’s **EQ** button opens the **channel processing panel**: input gain, 48V, phase, delay and pan; a 4-band EQ graph you can drag, with high-pass and low-pass filters; and compressor and gate.
 
-On LV1, each strip’s **GAIN** button shows that channel’s **preamp** as LV1 has it, updating live: whether its gain comes from the stage box preamp or is Local, the gain, 48V, phase and trim. It’s read-only; change them on LV1. A stereo channel shows its left side.
+On LV1, each strip’s **EQ** button opens that channel’s panel, updating live as LV1 changes. **EQ** is the channel’s own 4-band EQ on LV1: drag a band’s dot, or choose a band and set its gain, frequency and Q or switch it off, and the change goes straight to LV1. A band LV1 has as a shelf or a Hi-Pass or Low-Pass filter is drawn that way; its shape is set on LV1. **Input** shows the **preamp**: whether its gain comes from the stage box preamp or is Local, the gain, 48V, phase and trim. The preamp is read-only, so nobody switches 48V by accident; change it on LV1. A stereo channel shows its left side.
 
 <p align="center"><img src="manual/img/console-eq.png" alt="The channel processing panel open on the Kick channel, showing the EQ graph"></p>
 
@@ -521,7 +521,7 @@ A station they have never saved starts from their layout on another station. Unt
 Messages go to all four stations live. Each shows who sent it and from which station. The chat clears itself when Planning Center moves on to the next service, for example from Saturday night’s plan to Sunday morning’s, and it starts empty whenever JPMixer opens.
 
 > [!NOTE]
-> Companion buttons, Smaart SPL and Shure wireless are each a plugin of their own: install only the ones you use. To add one, open **Settings → Plugins** and click **Install** on it under **Find plugins**. Each comes with JPMixer, so it installs even with no internet, and it runs without Allow plugins. Its tab then appears under Plugins in the sidebar. If you used one before 2.0.14, it was moved over by itself, with its settings. Removing one turns it off and keeps its settings, for if you install it again.
+> Companion buttons, Smaart SPL and Shure wireless are each a plugin of their own: install only the ones you use. To add one, open **Settings → Plugins** and click **Install** on it under **Find plugins**. Each comes with JPMixer, so it installs even with no internet. Its tab then appears under Plugins in the sidebar. If you used one before 2.0.14, it was moved over by itself, with its settings. Removing one turns it off and keeps its settings, for if you install it again.
 
 ### Companion buttons
 
@@ -560,9 +560,8 @@ Each input shows a big reading (LAeq 10 unless you choose another) and a small l
 
 Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Everything to do with them is under **Settings → Plugins**. Each plugin runs on its own, so if one stops working, JPMixer and the console carry on. A plugin can’t read JPMixer’s settings or passwords, or open other programs.
 
-1. Turn on **Allow plugins** and click **Save & Apply**. While it’s off, no plugin runs.
-2. Under **Find plugins**, click **Install** on a plugin from JPMixer’s approved list. Each one says what it can do. To install one that isn’t on the list, use **Import plugin…** with its `.jpmplugin` or `.zip` file, drop the file on the page, or double-click it. These are labelled *Not reviewed*: only install them if you trust whoever made them.
-3. Each plugin gets its own tab under Plugins in the sidebar. Turn it on there, fill in its settings, and click **Save & Apply**. If it shows a card, the card appears on FOH Home and can be arranged like any other.
+1. Under **Find plugins**, click **Install** on a plugin from JPMixer’s approved list. Each one says what it can do. To install one that isn’t on the list, use **Import plugin…** with its `.jpmplugin` or `.zip` file, drop the file on the page, or double-click it. These are labelled *Not reviewed*: only install them if you trust whoever made them.
+2. Each plugin gets its own tab under Plugins in the sidebar, and starts off. Turn it on there, fill in its settings, and click **Save & Apply**. If it shows a card, the card appears on FOH Home and can be arranged like any other.
 
 When a plugin on the approved list has a newer version, a red dot appears next to **Plugins** in the sidebar, and the plugin’s row has an **Update** button. JPMixer looks a minute after it starts, every 6 hours after that, and whenever you open the Plugins page. Updating keeps the plugin’s settings.
 
@@ -572,7 +571,7 @@ To remove a plugin, click **Remove…**: on its row under **Your plugins**, at t
 
 <p align="center"><sub>Fig. 11.4 · Settings → Plugins. JPMixer’s own plugins have a red JPMixer Original badge; each row shows how it’s doing.</sub></p>
 
-JPMixer’s own plugins (Patch, Companion buttons, Smaart SPL and Shure wireless) have a red *JPMixer Original* badge and run without Allow plugins, as long as their files are the approved ones. Companion, Smaart and Shure each get their own tab under Plugins once installed; their row in the list opens that tab.
+JPMixer’s own plugins (Patch, Companion buttons, Smaart SPL and Shure wireless) have a red *JPMixer Original* badge, as long as their files are the approved ones. Companion, Smaart and Shure each get their own tab under Plugins once installed; their row in the list opens that tab.
 
 To make a plugin, by hand or with an AI assistant, see the [plugin guide](https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md) (**Open the plugin guide** on the Plugins page).
 
@@ -580,10 +579,10 @@ To make a plugin, by hand or with an AI assistant, see the [plugin guide](https:
 
 **Patch**, on JPMixer’s approved list, draws your stage boxes and console to scale, so anyone can see what’s plugged in where. Install it and turn it on as above, then open **Patch** from the Home pages list on any phone, iPad or computer. Every screen shows and edits the same patch.
 
-- **Add stage box** adds a DiGiCo rack (D-Rack, D2-Rack, DQ-Rack, MQ-Rack, SD-Rack and the others), a Waves IONIC or DiGiGrid box, the back of a DiGiCo console or an LV1 Classic, or a generic box of any size. Racks with card slots are built from the cards you choose.
+- **Add stage box** adds a DiGiCo rack (D-Rack, D2-Rack, DQ-Rack, MQ-Rack, SD-Rack and the others), a Waves IONIC or DiGiGrid box, an Allen & Heath CDM MixRack or DX168, the back of a DiGiCo console, an LV1 Classic or a dLive S7000, a Dante or network device (no sockets: a tile for each channel, with its name and the console channel it goes to), or a generic box of any size. Racks with card slots are built from the cards you choose.
 - Tap a socket to name it and choose the channel, control group or mix it’s patched to; the lists use your console’s own names. A channel patched from two sockets is marked in red.
 - **48V:** mark a mic socket as needing 48V. On DiGiCo and LV1, a socket patched to a channel with 48V on at the desk lights up by itself, and one marked for 48V on a channel that has it off shows in yellow.
-- **Import session** reads a session saved on the console: a DiGiCo `.ses` or an LV1 `.emo`. Every box comes in with each socket named, patched and marked 48V as the session has it. A DiGiCo session doesn’t say which rack is on Dante or MADI, so the preview asks; it draws the console you mixed on, which you can change there too. Playback channels (a computer on Dante, USB or Waves) get a box of their own. The file is read on the page; nothing is sent anywhere. Importing again updates the same boxes and keeps your own notes and 48V marks.
+- **Import session** reads a session saved on the console: a DiGiCo `.ses`, an LV1 `.emo` or a dLive show (`.tar.gz`). Every box comes in with each socket named, patched and marked 48V as the session has it. A DiGiCo session doesn’t say which rack is on Dante or MADI, so the preview asks; it draws the console you mixed on, which you can change there too. Playback channels (a computer on Dante, USB or Waves) go on a Dante or network device of their own. A dLive show brings in its inputs and outputs: the MixRack as the CDM it needs (or the one you choose), the surface’s sockets on the back of an S7000, each DX expander as a DX168, and each I/O port’s channels on a network device of their own. Each output gets the mix, direct out or tie line patched to it. The file is read on the page; nothing is sent anywhere. Importing again updates the same boxes and keeps your own notes and 48V marks.
 - **Patch sheet** lists every socket, to print or download as a spreadsheet.
 - In its settings, **Lock the patch** makes it view-only during a service, and **Show a patch summary on FOH Home** adds a card with how much is patched.
 
@@ -801,9 +800,9 @@ Every page works the same whichever console you use. What changes is what each c
 | Counts from the console | Yes | Mixes | No | No | Yes |
 | My Mixes and Devices | Yes | Yes | Yes | Yes | Yes |
 | Ear Scenes | By snapshot name | By scene number | By scene number | No | By scene name |
-| Built-in aux EQ | Yes | No | No | No | No |
+| Built-in aux EQ | Yes | No | No | No | Monitor mixes |
 | Console Controller | Yes | Yes | No | No | Yes |
-| Channel processing panel | Yes | No | No | No | Preamp, read-only |
+| Channel processing panel | Yes | No | No | No | EQ, and the preamp read-only |
 
 * KLANG mode reads channel names from the paired dLive, when its address is entered. DiGiCo is in regular use. dLive has been tested against dLive Director, LV1 against an LV1 show, and KLANG and WING against their published protocols; try each on your own console before a service.
 

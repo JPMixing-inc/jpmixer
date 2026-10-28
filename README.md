@@ -21,7 +21,7 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-14">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-15">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#plugins">Plugins</a> &nbsp;·&nbsp;
@@ -79,21 +79,26 @@
 
 ---
 
-<a id="new-in-2-0-14"></a>
+<a id="new-in-2-0-15"></a>
 
-## 🆕 New in 2.0.14
+## 🆕 New in 2.0.15
 
 | | |
 |---|---|
-| 🧩 **Choose your integrations** | Shure wireless, Smaart SPL and Companion buttons are now plugins of their own: run only the ones you use, each in its own process, so a problem with one never touches the console. Install the ones you want from Find plugins (they come with JPMixer, so no internet is needed), and each gets its own tab under Plugins. |
-| 🔁 **Nothing to do when updating** | Each one you already use moves over by itself on first launch, with all its settings, even with no internet. |
-| 🗓️ **Planning Center is optional** | A Use Planning Center switch: turned off, JPMixer doesn't contact Planning Center and nothing that needs it shows. Everything set up is kept for when it's turned back on. |
+| 🎛️ **LV1 EQ** | Performers adjust their monitor mix's own 4-band EQ on LV1 from their phone, and the Console Controller's channel panel shows each input's EQ, which can be changed. A change on LV1 shows on the phones within a second. |
+| 🔌 **dLive in Patch** | Import a dLive show, inputs and outputs, onto CDM MixRacks, a DX168 and the S7000. Dante and other network devices are drawn as a tile for each channel. |
+| 🧩 **One switch per plugin** | The Allow plugins switch is gone: each plugin's own switch turns it on or off. |
+| 🛟 **More reliable mutes and faders** | An unmute made while the console was offline now reaches it, two quick flicks no longer jump a fader to 0 dB, and each fader follows only its own finger. |
 
 <details>
-<summary><b>Earlier releases: 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.14
+- **Choose your integrations**: Shure wireless, Smaart SPL and Companion buttons are plugins of their own, each installed from Find plugins and moved over by itself, with its settings.
+- **Planning Center is optional**: turned off, JPMixer doesn't contact it, and everything set up is kept.
 
 ### 2.0.13
-- **Patch**: stage boxes and the console drawn to scale, each socket named and patched, 48V at a glance, and DiGiCo and LV1 sessions imported.
+- **Patch**: stage boxes and the console drawn to scale, each socket named and patched, 48V at a glance, and DiGiCo sessions, LV1 sessions and dLive shows imported.
 - **LV1 preamps** live in the Console Controller.
 - **Plugin pages**: a plugin can have a page of its own, listed with the Home pages.
 
@@ -236,7 +241,7 @@ Every monitor mix side by side, grouped the same way as the phones. Trim a whole
 
 ### Console Controller and channel processing
 
-The console's own faders, mutes and solos for inputs, control groups or DCAs, and aux outputs, from any browser (DiGiCo, dLive and LV1). On DiGiCo, each channel opens a **processing panel**: gain, 48V, filters, a draggable 4-band EQ and dynamics. On LV1, each channel shows its **preamp** as LV1 has it, live: Preamp or Local gain, the gain, 48V, phase and trim (read-only; change them on LV1).
+The console's own faders, mutes and solos for inputs, control groups or DCAs, and aux outputs, from any browser (DiGiCo, dLive and LV1). On DiGiCo, each channel opens a **processing panel**: gain, 48V, filters, a draggable 4-band EQ and dynamics. On LV1, each channel opens its own 4-band **EQ**, which can be changed from the panel, and its **preamp** as LV1 has it, live: Preamp or Local gain, the gain, 48V, phase and trim (read-only; change them on LV1).
 
 <p align="center"><img src="docs/manual/img/console-eq.png" alt="Console Controller with the channel processing panel open" width="880" /></p>
 
@@ -312,7 +317,7 @@ Settings opens on a **Get started** checklist: the address to give performers an
 
 ### And more
 
-- **Built-in aux EQ:** an optional 8-band EQ per mix (DiGiCo).
+- **Built-in aux EQ:** an optional EQ per mix: DiGiCo's 8 bands, or each LV1 monitor mix's own 4-band EQ.
 - **Private mixes:** hide a mix from the picker and share it by direct link.
 - **iPad relay:** run the DiGiCo iPad app through JPMixer alongside the phones.
 - **Control API:** a token-protected HTTP API for Companion, Stream Deck and other tools.
@@ -336,7 +341,7 @@ Every feature is explained step by step in the **[User Manual](docs/MANUAL.md)**
 | **Names from the console** | ✅ channels, mixes | ✅ channels, mixes | channels* | channels | ✅ channels, mixes |
 | **Counts from the console** | ✅ | mixes | — | — | ✅ |
 | **Ear Scenes** | ✅ by snapshot name | ✅ by scene number | ✅ by scene number | — | ✅ by scene name |
-| **Built-in aux EQ** | ✅ | — | — | — | — |
+| **Built-in aux EQ** | ✅ | — | — | — | ✅ monitor mixes |
 | **Console Controller** | ✅ | ✅ | — | — | ✅ |
 | **Channel processing panel** | ✅ | — | — | — | — |
 | **Tested on** | Live services | dLive Director | Protocol only | Protocol only | An LV1 show |

@@ -8,9 +8,8 @@ A card on FOH Home that says whether the console is connected, which console it 
 
 ## Install it
 
-1. In JPMixer, open **Settings → Plugins** and turn on **Allow plugins**, then click **Save & Apply**. It isn't one of JPMixer's own plugins, so it needs Allow plugins.
-2. Under **Find plugins**, click **Install** next to **Console check**.
-3. Select **Console check** under Plugins in the sidebar, turn it on, and click **Save & Apply**. The card appears on FOH Home, and can be arranged like any other.
+1. In JPMixer, open **Settings → Plugins**. Under **Find plugins**, click **Install** next to **Console check**.
+2. Select **Console check** under Plugins in the sidebar, turn it on, and click **Save & Apply**. The card appears on FOH Home, and can be arranged like any other.
 
 ## What it can do
 

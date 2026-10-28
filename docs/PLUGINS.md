@@ -14,9 +14,9 @@ A plugin is a folder holding a `plugin.json` file and some JavaScript. A complet
 
 ## Installing a plugin
 
-Everything to do with plugins is in **Settings → Plugins**. Plugins are off until they're allowed: turn on **Allow plugins** there, then select **Save & Apply**.
+Everything to do with plugins is in **Settings → Plugins**. Each plugin has its own switch, and a new one starts off. (Up to 2.0.14 there was also an **Allow plugins** switch for all of them; updating with it off turns off each plugin that isn't JPMixer's own, once.)
 
-**JPMixer's own plugins** run without Allow plugins, as long as their files are the approved ones: Patch, and from 2.0.14 Shure wireless, Smaart SPL and Companion buttons. Those three used to be built in. Each installs from **Find plugins** (from the copy that comes with JPMixer, so no internet is needed) and then gets its own tab under **Plugins** in the sidebar, set up as before. Removing one turns it off and keeps its settings. Someone updating who already used one gets its plugin by itself, with their settings, even with no internet.
+**JPMixer's own plugins** are marked *JPMixer Original*, as long as their files are the approved ones: Patch, and from 2.0.14 Shure wireless, Smaart SPL and Companion buttons. Those three used to be built in. Each installs from **Find plugins** (from the copy that comes with JPMixer, so no internet is needed) and then gets its own tab under **Plugins** in the sidebar, set up as before. Removing one turns it off and keeps its settings. Someone updating who already used one gets its plugin by itself, with their settings, even with no internet.
 
 - **From the approved list:** **Find plugins** lists the plugins that have been reviewed for JPMixer, each with what it can do. Select **Install**.
   - JPMixer downloads it from GitHub and checks every file against the approved copy.
@@ -32,10 +32,9 @@ Before anything is installed, JPMixer shows the plugin's name, who made it and w
 
 ### Trying the example
 
-1. Allow plugins, as above.
-2. Under **Find plugins**, install **Console check**.
-3. Open **Console check** under Plugins in the sidebar, turn it on, then select **Save & Apply**.
-4. Open FOH Home. A **Console check** card shows whether the console is connected, and lists its mixes.
+1. Under **Find plugins**, install **Console check**.
+2. Open **Console check** under Plugins in the sidebar, turn it on, then select **Save & Apply**.
+3. Open FOH Home. A **Console check** card shows whether the console is connected, and lists its mixes.
 
 ## Making a plugin
 
@@ -43,7 +42,7 @@ You don't need to know much JavaScript to make a plugin, and an AI assistant can
 
 1. **Copy the starter.** Copy the [`docs/plugin-template`](plugin-template) folder from this repository and rename it. It has a `plugin.json` and a commented `index.js` that puts a card on FOH Home.
 2. **Name it.** In `plugin.json`, change `id` (lowercase, dashes, unique), `name`, `description` and `author`.
-3. **Import it.** In JPMixer, open **Settings → Plugins** and turn on **Allow plugins**, then select **Save & Apply**. Then select **Import folder…** and choose your folder.
+3. **Import it.** In JPMixer, open **Settings → Plugins**, select **Import folder…** and choose your folder.
 4. **Turn it on.** Open your plugin under **Plugins** in the sidebar. Turn it on, tick **Restart when its files change**, then select **Save & Apply**.
 5. **Edit and save.** Edit `index.js` (and `plugin.json`) in the plugins folder. **Open plugins folder** shows where it is. Every time you save, the plugin starts again with your changes. Anything it prints with `console.log()`, and any error, shows in the **Log** on its tab.
 
@@ -334,7 +333,7 @@ Approved plugins live in the [`plugins/`](../plugins) folder of JPMixer's GitHub
 - Everything it connects to is listed in the submission, and it only reads and shows things.
 - It doesn't try to reach outside its own folder and `jp.plugin.dataFolder`, or start other programs.
 - Any npm packages in it are plain JavaScript, from their usual source.
-- It runs on the JPMixer version it says, with Allow plugins on, and survives the device it talks to being off.
+- It runs on the JPMixer version it says, and survives the device it talks to being off.
 
 **Once it's approved,** a maintainer:
 

@@ -2,11 +2,11 @@
 
 Plugins add things JPMixer doesn't do itself. Install only the ones you use: each runs in its own process, so if one stops working, JPMixer and the console carry on. Find them in JPMixer under **Settings → Plugins → Find plugins**.
 
-Plugins marked **JPMixer Original** are JPMixer's own. They run without **Allow plugins**, as long as their files are the approved ones.
+Plugins marked **JPMixer Original** are JPMixer's own, as long as their files are the approved ones. Each plugin has its own switch in Settings → Plugins, and starts off.
 
 | | Plugin | What it does |
 |---|---|---|
-| <img src="img/patch-foh-card.png" width="160" alt="" /> | **[Patch](patch.md)** · JPMixer Original | Patch screens for your stage boxes, drawn to scale. Import an LV1 or DiGiCo session, and see 48V at a glance. |
+| <img src="img/patch-foh-card.png" width="160" alt="" /> | **[Patch](patch.md)** · JPMixer Original | Patch screens for your stage boxes, drawn to scale. Import an LV1 or DiGiCo session or a dLive show, and see 48V at a glance. |
 | <img src="img/shure-card.png" width="160" alt="" /> | **[Shure wireless](shure.md)** · JPMixer Original | Each wireless mic's battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room. |
 | <img src="img/smaart-card.png" width="160" alt="" /> | **[Smaart SPL](smaart.md)** · JPMixer Original | Live sound levels from Smaart on FOH Home and the Green Room. |
 | <img src="img/companion-card.png" width="160" alt="" /> | **[Companion buttons](companion.md)** · JPMixer Original | Bitfocus Companion buttons on each Home page, live. Tap to press. |
