@@ -357,6 +357,7 @@ app.whenReady().then(async () => {
   wingServer  = require('./src/server/wing-server');
   lv1Server   = require('./src/server/lv1-server');
   server     = oscServer;
+  givePassToOwnWindows();
   presets    = require('./src/server/presets');
   scenes     = require('./src/server/scenes');
   autoBackup = require('./src/server/auto-backup');
@@ -467,6 +468,25 @@ function updateTrayIcon() {
   if (!icon) return; // keep the plain icon rather than none
   trayIconKey = key;
   tray.setImage(icon);
+}
+
+// JPMixer's own windows don't need the FOH Home or Console Controller code:
+// they carry this computer's pass (access.js), not trusted for their address
+function givePassToOwnWindows() {
+  const { session } = require('electron');
+  const value = require('./src/server/access').localPass();
+  const expirationDate = Math.floor(Date.now() / 1000) + 365 * 24 * 3600;
+  for (const url of ['http://localhost', 'http://127.0.0.1']) {
+    session.defaultSession.cookies.set({ url, name: require('./src/server/access').LOCAL_COOKIE, value, httpOnly: true, sameSite: 'strict', expirationDate })
+      .catch((err) => console.error('[JPMixer] Couldn’t give the windows their pass:', err.message));
+  }
+}
+// A JPMixer page opened in the browser from Settings: with a one-time link
+// that gives that browser the pass, so it doesn't ask for the codes either
+function openOwnPage(url) {
+  let link = url;
+  try { link = require('./src/server/access').oneTimeLink(url); } catch (_) { /* not a URL: as it was */ }
+  return shell.openExternal(link);
 }
 
 // One window per view: picking a view that's already open brings it forward
@@ -1029,7 +1049,7 @@ const RESTART_KEYS = [
   'serverPort', 'deskIp', 'deskSendPort', 'deskListenPort', 'consoleType', 'demoMode',
   // dLive / KLANG / WING connection settings
   'dliveBaseChannel', 'dliveTlsEnabled', 'dliveUsername', 'dlivePassword', 'dliveMidiPort',
-  'dliveListenSendLevels', 'dlivePollSendLevels', 'klangIp', 'klangPort', 'wingPort', 'lv1Port'
+  'dliveListenSendLevels', 'dlivePollSendLevels', 'dliveMuteBySendOff', 'dlivePan', 'dliveFxReturns', 'klangIp', 'klangPort', 'wingPort', 'lv1Port'
 ];
 // What the aux-name sync reads. The Team filter and the Green Room's hidden
 // positions only shape the Green Room display, which reads Planning Center
@@ -1098,6 +1118,14 @@ ipcMain.handle('save-config', async (_, incoming) => {
 });
 
 // Companion buttons' connection, for Settings → Pages
+// Settings → Console → dLive → Find: the console's base MIDI channel, by
+// asking it (read-only, names only), with what's in the fields now
+ipcMain.handle('dlive-find-channel', async (_e, opts) => {
+  const o = opts && typeof opts === 'object' ? opts : {};
+  const tlsEnabled = o.tlsEnabled === true;
+  const port = Number.isInteger(o.port) && o.port > 0 && o.port <= 65535 ? o.port : (tlsEnabled ? 51327 : 51325);
+  return require('./src/server/dlive-client').findBaseChannel({ host: String(o.host || '').trim(), port, tlsEnabled, username: o.username, password: o.password });
+});
 ipcMain.handle('get-companion-status', () => require('./src/server/companion-satellite').getStatus());
 // Smaart SPL's connection, for Settings → Pages
 ipcMain.handle('get-smaart-status', () => require('./src/server/smaart').getStatus());
@@ -1135,9 +1163,37 @@ function consoleForPlugins() {
     groups: running && server.getControlGroups ? (server.getControlGroups() || []).map((g) => ({ number: g.channel, name: String(g.label || '') })) : [],
   };
 }
+// The channel and control group faders and mutes, for JPMixer's own plugins
+// with "faders" (plugins.js): on the consoles with a Console Controller
+// (DiGiCo, dLive, LV1). `want` [{ kind, n }]: strips to ask the console for.
+function fadersForPlugins(want) {
+  const type = (config.get('consoleType') || 'digico');
+  if (!(serverRunning && server && typeof server.getStrips === 'function')) return { supported: false, type, connected: false, ch: {}, cg: {} };
+  if (want && server.primeStrips) server.primeStrips(want);
+  return { supported: true, type, connected: !!(server.isConsoleConnected && server.isConsoleConnected()), ...server.getStrips() };
+}
 const pluginProviders = {
   console: consoleForPlugins,
   planningCenter: () => require('./src/server/greenroom').planningCenterForPlugins(),
+  faders: fadersForPlugins,
+  setFader: (kind, n, what, value) => !!(serverRunning && server && typeof server.setStrip === 'function' && server.setStrip(kind, n, what, value)),
+  // Custom Pages' Companion buttons, through the Companion buttons plugin (companion-satellite.js)
+  companion: (op, body) => {
+    const cs = require('./src/server/companion-satellite');
+    if (op === 'surfaces') return cs.setCustomSurfaces(body.list);
+    if (op === 'view') return cs.customView(String(body.id || ''), Number.isInteger(body.since) ? body.since : 0);
+    if (op === 'press') return cs.customPress(String(body.id || ''), Number(body.index), body.pressed === true);
+    return cs.customStatus();
+  },
+  // The address phones use, as Settings shows it (for a plugin's links)
+  pageBase: async () => {
+    if (!serverRunning) return '';
+    const port = Number(config.get('serverPort'));
+    const host = getLocalIP();
+    if (!host) return `http://localhost:${port}`;
+    const [target, listening] = await Promise.all([port80ForwardTarget(), port80Listening()]);
+    return listening && target === port ? `http://${host}` : `http://${host}:${port}`;
+  },
 };
 const plugins = () => require('./src/server/plugins');
 ipcMain.handle('plugins-list', () => ({ folder: plugins().pluginsDir(), plugins: plugins().list() }));
@@ -1217,8 +1273,8 @@ async function installIntegrationFromCatalog(id) {
 function ensureIntegrationPlugins() {
   const integrations = require('./src/server/integrations');
   const cfg = config.getAll();
-  const now = integrations.status();
-  const missing = Object.entries(integrations.INTEGRATIONS).filter(([id, info]) => cfg[info.enabledKey] === true && !now[id].official).map(([id]) => id);
+  // Turned on: installed if it isn't, or updated if it's older than the copy that comes with JPMixer
+  const missing = Object.entries(integrations.INTEGRATIONS).filter(([id, info]) => cfg[info.enabledKey] === true && integrations.needsInstall(id)).map(([id]) => id);
   if (!missing.length) return Promise.resolve();
   return (async () => {
     for (const id of missing) {
@@ -1297,13 +1353,26 @@ ipcMain.handle('plugins-remove', async (_e, folder) => {
 });
 
 // How to make a plugin (by hand or with an AI assistant): docs/PLUGINS.md on GitHub
+// Custom Pages' editor, in its tab in Settings. Settings is on this computer,
+// so the plugin gets `local` (and the address phones use, for the links)
+const CUSTOM_PAGES_CALLS = new Set(['editor', 'save', 'remove', 'newLink']);
+ipcMain.handle('custom-pages-call', async (_e, name, body) => {
+  if (!CUSTOM_PAGES_CALLS.has(name)) return { ok: false, error: 'Unknown call.' };
+  if (!plugins().isRunning('custom-pages')) return { ok: false, off: true, error: 'Turn Custom Pages on and click Save & Apply to set up pages.' };
+  try {
+    const base = await pluginProviders.pageBase().catch(() => '');
+    return { ok: true, result: await plugins().callPage('custom-pages', name, body && typeof body === 'object' ? body : {}, { local: true, base }) };
+  } catch (e) { return { ok: false, error: e.message || 'Custom Pages didn’t answer.' }; }
+});
+// A QR code for a link (the Green Room's own), for Settings
+ipcMain.handle('qr-svg', (_e, text) => require('./src/server/greenroom').qrSvg(String(text || '').slice(0, 600)));
 ipcMain.handle('plugins-open-guide', () => { shell.openExternal('https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md'); return { ok: true }; });
 // A plugin's own page (plugins.js mountPluginPages), in the browser
 ipcMain.handle('plugins-open-page', (_e, id) => {
   if (!serverRunning) return { ok: false, error: 'Start the server first (Get started).' };
-  const entry = plugins().pages().find((p) => p.id === id);
+  const entry = plugins().pages({ all: true }).find((p) => p.id === id);
   if (!entry) return { ok: false, error: 'Turn the plugin on and Save & Apply first.' };
-  shell.openExternal(`http://localhost:${config.get('serverPort') || 8080}${entry.href}`);
+  openOwnPage(`http://localhost:${config.get('serverPort') || 8080}${entry.href}`);
   return { ok: true };
 });
 ipcMain.handle('plugins-open-submit', () => { shell.openExternal(require('./src/server/plugin-store').SUBMIT_URL); return { ok: true }; });
@@ -1570,7 +1639,7 @@ ipcMain.handle('open-greenroom', (_, url) => { shell.openExternal(url); return {
 // Same shape as open-greenroom — the FOH Engineer Home page is also meant to
 // be opened externally (the engineer's own laptop/iPad, a browser bookmark),
 // not only from the tray menu's in-app BrowserWindow below.
-ipcMain.handle('open-foh', (_, url) => { shell.openExternal(url); return { ok: true }; });
+ipcMain.handle('open-foh', (_, url) => { openOwnPage(url); return { ok: true }; });
 
 ipcMain.handle('get-presets',       () => presets.getAll());
 ipcMain.handle('delete-preset', (_, deviceId, name) => ({ ok: presets.deletePreset(deviceId, name) }));

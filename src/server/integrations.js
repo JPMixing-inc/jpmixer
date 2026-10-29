@@ -28,7 +28,7 @@ function newer(a, b) {
 const INTEGRATIONS = {
   smaart: { name: 'Smaart SPL', enabledKey: 'smaartEnabled', keys: ['smaartEnabled', 'smaartHost', 'smaartPort', 'smaartPassword', 'smaartMetric', 'smaartLiveMetric', 'smaartHiddenInputs'] },
   shure: { name: 'Shure wireless', enabledKey: 'wirelessEnabled', keys: ['wirelessEnabled', 'wirelessKnown', 'wirelessReceivers', 'wirelessAux'] },
-  companion: { name: 'Companion buttons', enabledKey: 'companionEnabled', keys: ['companionEnabled', 'companionHost', 'companionPort', 'companionColumns', 'companionRows'] },
+  companion: { name: 'Companion buttons', enabledKey: 'companionEnabled', keys: ['companionEnabled', 'companionHome', 'companionHost', 'companionPort', 'companionColumns', 'companionRows'] },
 };
 
 // Why an integration's plugin couldn't be installed, for its tab's status line
@@ -113,9 +113,17 @@ async function moveOver(cfg, log = (msg) => console.log('[JPMixer] ' + msg), { f
   return out;
 }
 
+// Does it need installing: missing, not the approved copy, or older than the
+// one that comes with JPMixer (Companion buttons before 1.1.0 can't do custom pages)
+function needsInstall(id) {
+  const now = plugins.officialState(id);
+  const bundled = plugins.bundledVersion(id);
+  return !now.installed || !now.official || !!(bundled && newer(bundled, now.version) > 0);
+}
+
 // For Settings: each integration's plugin (installed? running? its version)
 function status() {
   return Object.fromEntries(Object.keys(INTEGRATIONS).map((id) => [id, plugins.officialState(id)]));
 }
 
-module.exports = { INTEGRATIONS, applyConfig, noteSaved, ensureInstalled, moveOver, status, notInstalledMessage, notRunningMessage };
+module.exports = { INTEGRATIONS, applyConfig, noteSaved, ensureInstalled, needsInstall, moveOver, status, notInstalledMessage, notRunningMessage };

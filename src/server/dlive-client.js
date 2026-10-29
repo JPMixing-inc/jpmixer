@@ -18,6 +18,10 @@ const P = require('./dlive-protocol.js');
 //   'sceneRecall' { sceneNumber }                — a scene was recalled (by console or us)
 //   'name'        { midiCh, ch, name }
 //   'colour'      { midiCh, ch, colourIndex }
+//   'sendAssign'  { midiCh, ch, sndMidiCh, sndCh, on } — a send's own on/off
+//   'nrpn'        { midiCh, ch, param, value }   — any other NRPN (PEQ, HPF)
+//   'preampGain'  { midiCh, socket, gv, db }     — a socket preamp's gain
+//   'pad'/'phantom' { midiCh, socket, on }      — a socket preamp's pad and 48V
 //
 // NOTE: The spec explicitly documents that Fader Level, Mute, and Channel
 // Assignment changes are echoed back unsolicited (it says so for each one).
@@ -72,6 +76,8 @@ class DliveClient extends EventEmitter {
     this._reconnectDelay = 1000;
     this._manuallyStopped = false;
     this._sceneBankPending = null; // holds bank number between CC0 and the following Program Change
+    this._lastData = 0;            // when the console last sent anything (0: not yet)
+    this._heartbeat = null;
   }
 
   connect() {
@@ -105,9 +111,24 @@ class DliveClient extends EventEmitter {
       : net.createConnection({ host: this.host, port: this.port }, onConnect);
 
     this._socket = socket;
+    socket.setKeepAlive(true, 5000);
+    // A console powered off or unplugged leaves the socket open, and writes
+    // look sent. Once it has answered at all: after 10 s of quiet it's asked
+    // something small (input 1's fader), and after 30 s it's taken as gone
+    // and the link opened again (the server re-sends what's needed).
+    this._lastData = 0;
+    clearInterval(this._heartbeat);
+    this._heartbeat = setInterval(() => {
+      if (this._socket !== socket || !this.connected || !this._lastData) return;
+      const quiet = Date.now() - this._lastData;
+      if (quiet > 30000) { try { socket.destroy(new Error('The console stopped answering.')); } catch (_) {} return; }
+      if (quiet > 10000) this._write(P.buildFaderGet(this.baseChannel, 0));
+    }, 5000);
+    this._heartbeat.unref?.();
     let authBuf = '';
 
     socket.on('data', (chunk) => {
+      this._lastData = Date.now();
       if (this.tlsEnabled && !this._authOk) {
         authBuf += chunk.toString('latin1');
         if (authBuf.includes('AuthOK')) {
@@ -137,6 +158,7 @@ class DliveClient extends EventEmitter {
       this.connected = false;
       this._authOk = false;
       this._socket = null;
+      clearInterval(this._heartbeat); this._heartbeat = null;
       if (wasConnected) this.emit('close');
       if (!this._manuallyStopped) this._scheduleReconnect();
     });
@@ -151,6 +173,7 @@ class DliveClient extends EventEmitter {
   disconnect({ flush = false } = {}) {
     this._manuallyStopped = true;
     clearTimeout(this._reconnectTimer);
+    clearInterval(this._heartbeat); this._heartbeat = null;
     const socket = this._socket;
     this._socket = null;
     this.connected = false;
@@ -229,6 +252,31 @@ class DliveClient extends EventEmitter {
     return this._write(P.buildColourSet(coord.midiCh, coord.ch, hex));
   }
 
+  setSendAssign(inputCh, aux, on) {
+    return this._write(P.buildSendAssignSet(inputCh.midiCh, inputCh.ch, aux, on));
+  }
+
+  requestSendAssign(inputCh, aux) {
+    return this._write(P.buildSendAssignGet(inputCh.midiCh, inputCh.ch, aux));
+  }
+
+  // PEQ and HPF settings (any NRPN parameter on one channel)
+  setParam(coord, param, value) {
+    return this._write(P.buildNrpnSet(coord.midiCh, coord.ch, param, value));
+  }
+
+  requestParam(coord, param) {
+    return this._write(P.buildNrpnGet(coord.midiCh, coord.ch, param));
+  }
+
+  // Socket preamps (socket: 00-7F, see buildPreampGainSet)
+  setPreampGain(socket, db) { return this._write(P.buildPreampGainSet(this.baseChannel, socket, P.gainToGv(db))); }
+  requestPreampGain(socket) { return this._write(P.buildPreampGainGet(this.baseChannel, socket)); }
+  setPad(socket, on) { return this._write(P.buildPadSet(this.baseChannel, socket, on)); }
+  requestPad(socket) { return this._write(P.buildPadGet(this.baseChannel, socket)); }
+  setPhantom(socket, on) { return this._write(P.buildPhantomSet(this.baseChannel, socket, on)); }
+  requestPhantom(socket) { return this._write(P.buildPhantomGet(this.baseChannel, socket)); }
+
   recallScene(sceneNumber) {
     return this._write(P.buildSceneRecall(this.baseChannel, sceneNumber));
   }
@@ -258,6 +306,8 @@ class DliveClient extends EventEmitter {
           this.emit('fader', { ...coord, lv: nrpn.value, db: P.lvToDb(nrpn.value) });
         } else if (nrpn.param === P.PARAM.MAIN_ASSIGN) {
           this.emit('mainAssign', { ...coord, on: nrpn.value >= 0x40 });
+        } else {
+          this.emit('nrpn', { ...coord, param: nrpn.param, value: nrpn.value });
         }
       }
       return;
@@ -273,6 +323,12 @@ class DliveClient extends EventEmitter {
       const bank = this._sceneBankPending ?? 0;
       this._sceneBankPending = null;
       this.emit('sceneRecall', { sceneNumber: P.decodeSceneNumber(bank, ev.program) });
+      return;
+    }
+
+    // A socket preamp's gain: socket, then the value
+    if (ev.type === 'pitchbend') {
+      this.emit('preampGain', { midiCh: ev.midiCh, socket: ev.lsb, gv: ev.msb, db: P.gvToGain(ev.msb) });
       return;
     }
 
@@ -318,8 +374,57 @@ class DliveClient extends EventEmitter {
       const colourIndex = bytes[10];
       this.emit('colour', { midiCh, ch, colourIndex, hex: P.COLOURS[colourIndex] || P.COLOURS[0] });
     }
-    // Preamp pad/48V/gain and other opcodes: not implemented in this pass.
+    if (opcode === 0x0E) { // Input to Group / Aux on/off: the reply to a get, and a change
+      if (bytes.length < 13) return;
+      const [ch, sndMidiCh, sndCh, v] = bytes.slice(9);
+      this.emit('sendAssign', { midiCh, ch, sndMidiCh, sndCh, on: v >= 0x40 });
+      return;
+    }
+    // Socket preamp pad (0x08 the reply, 0x09 a set) and 48V (0x0B, 0x0C)
+    if (opcode === 0x08 || opcode === 0x09 || opcode === 0x0B || opcode === 0x0C) {
+      if (bytes.length < 11) return;
+      this.emit(opcode <= 0x09 ? 'pad' : 'phantom', { midiCh, socket: bytes[9], on: bytes[10] >= 0x40 });
+    }
   }
 }
 
-module.exports = { DliveClient };
+// The console's base MIDI channel (Utility → Control → MIDI), found by
+// asking: input 1's name on each of MIDI channels 1-12. A console only
+// answers on its own five channels (N for inputs, N+1 to N+4 for the
+// rest), so the lowest one that answers is N. Read-only: names only.
+// { ok, baseChannel } or { ok: false, error }
+function findBaseChannel({ host, port, tlsEnabled = false, username = null, password = null, timeoutMs = 4000 }) {
+  return new Promise((resolve) => {
+    if (!host) { resolve({ ok: false, error: 'Enter the console’s address first.' }); return; }
+    const client = new DliveClient({ host, port, tlsEnabled, username, password, baseChannel: 0 });
+    const answered = new Set();
+    let finished = false, asked = false;
+    const finish = (out) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      client.removeAllListeners();
+      client.on('error', () => {});
+      client.disconnect();
+      resolve(out);
+    };
+    const timer = setTimeout(() => {
+      if (answered.size) finish({ ok: true, baseChannel: Math.min(...answered) });
+      else finish({ ok: false, error: asked ? 'The console didn’t answer on any MIDI channel. Check that MIDI is on under Utility → Control → MIDI.' : `Couldn’t connect to ${host}:${port}.` });
+    }, timeoutMs);
+    client.on('error', () => {});
+    client.on('name', (ev) => {
+      if (ev.ch !== 0 || ev.midiCh > 11) return;
+      answered.add(ev.midiCh);
+      // The base channel and the next one answering is enough: nothing below it can
+      if (answered.has(ev.midiCh) && [...answered].some((n) => n === Math.min(...answered) + 1)) setTimeout(() => finish({ ok: true, baseChannel: Math.min(...answered) }), 300);
+    });
+    client.on('connect', () => {
+      asked = true;
+      for (let n = 0; n <= 11; n++) setTimeout(() => { if (!finished) client._write(P.buildNameGet(n, 0)); }, n * 60);
+    });
+    client.connect();
+  });
+}
+
+module.exports = { DliveClient, findBaseChannel };

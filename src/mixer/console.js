@@ -32,6 +32,9 @@ let auxMutes       = {};  // aux → bool
 let cgFaders       = {};  // cg → dB
 let cgMutes        = {};  // cg → bool
 let cgSolos        = {};  // cg → bool
+let extraConfig    = [];  // dLive's other strips: [{ kind, title, fader, strips: [{ n, label }] }]
+let extraFaders    = {};  // "kind:n" → dB
+let extraMutes     = {};  // "kind:n" → bool
 let heartbeatTimer = null;
 let hasConnected   = false;
 let disconnectTimer = null;
@@ -98,6 +101,8 @@ function connect() {
 // ── Message handler ───────────────────────────────────────────────────────
 
 function onMessage(json) {
+  // This device hasn't entered the Console Controller's code (or it changed)
+  if (json.type === 'console-locked') { showConsoleLock(true); return; }
   if (json.config) {
     globalThis.jpmSplash?.done();
     // Desk loaded a different session — everything cached here belongs to the
@@ -106,6 +111,7 @@ function onMessage(json) {
       consoleFaders = {}; consoleMutes = {}; consoleSolos = {};
       auxFaders     = {}; auxMutes     = {};
       cgFaders      = {}; cgMutes      = {}; cgSolos      = {};
+      extraFaders   = {}; extraMutes   = {};
       send({ type: 'request-console-state' });
     }
     // Consoles whose gain/EQ/dynamics this page can't open leave the panel out; LV1 shows its preamps
@@ -113,13 +119,20 @@ function onMessage(json) {
     chConfig  = json.config.channels || [];
     auxConfig = json.config.aux || [];
     cgConfig  = json.config.controlGroups || [];
+    extraConfig = Array.isArray(json.config.consoleExtras) ? json.config.consoleExtras : [];
     document.getElementById('conSnapshot').textContent = json.config.snapshot || '—';
     buildInputStrips();
     buildCGStrips();
     buildAuxStrips();
+    buildExtraStrips();
     document.getElementById('conInputCount').textContent = document.querySelectorAll('.ch-strip').length;
     document.getElementById('conGroupCount').textContent = cgConfig.length;
-    document.getElementById('conAuxCount').textContent = document.querySelectorAll('.aux-strip').length;
+    document.getElementById('conAuxCount').textContent = document.querySelectorAll('#auxStrips .aux-strip').length;
+    // dLive's other strips: their tab only when there are some
+    const extrasTab = document.querySelector('.con-tab[data-tab="extras"]');
+    extrasTab.hidden = !extraConfig.length;
+    document.getElementById('conExtraCount').textContent = extraConfig.reduce((n, x) => n + x.strips.length, 0);
+    if (!extraConfig.length && extrasTab.classList.contains('tab-active')) switchTab('inputs');
     return;
   }
 
@@ -209,6 +222,20 @@ function onMessage(json) {
     const cg = parseInt(cgSoloM[1]);
     cgSolos[cg] = !!args[0];
     updateCGSolo(cg, !!args[0]);
+    return;
+  }
+
+  // dLive's other strips (FX returns, groups, mains, mute groups…)
+  const extraM = address.match(/^\/Extra\/(\w+)\/(\d+)\/(fader|mute|name)$/);
+  if (extraM) {
+    const key = `${extraM[1]}:${extraM[2]}`;
+    if (extraM[3] === 'fader') { extraFaders[key] = args[0]; updateExtraFader(key, args[0]); }
+    else if (extraM[3] === 'mute') { extraMutes[key] = !!args[0]; updateExtraMute(key, !!args[0]); }
+    else {
+      const label = String(args[0] || '');
+      for (const x of extraConfig) if (x.kind === extraM[1]) for (const st of x.strips) if (String(st.n) === extraM[2]) st.label = label;
+      document.querySelectorAll(`.extra-strip[data-key="${key}"] .aux-name`).forEach(el => { el.textContent = label; el.title = label; });
+    }
     return;
   }
 
@@ -571,6 +598,108 @@ function buildAuxStrip(aux) {
   return strip;
 }
 
+// dLive's other strips, a heading for each kind: the aux strips' look, with
+// a fader (FX returns and sends, groups, matrices, mains) or a mute alone
+// (mute groups)
+function buildExtraStrips() {
+  const grid = document.getElementById('extraStrips');
+  grid.innerHTML = '';
+  for (const section of extraConfig) {
+    const head = document.createElement('h2');
+    head.className = 'extra-heading';
+    head.textContent = section.title;
+    grid.appendChild(head);
+    for (const st of section.strips) grid.appendChild(buildExtraStrip(section, st));
+  }
+}
+
+function buildExtraStrip(section, st) {
+  const key = `${section.kind}:${st.n}`;
+  const db    = extraFaders[key] ?? -90;
+  const muted = !!extraMutes[key];
+  const label = st.label || `${section.title} ${st.n}`;
+
+  const strip = document.createElement('div');
+  strip.className = 'aux-strip extra-strip' + (muted ? ' muted' : '') + (section.fader ? '' : ' no-fader');
+  strip.dataset.key = key;
+  const number = document.createElement('span');
+  number.className = 'aux-number';
+  number.textContent = String(st.n).padStart(2, '0');
+
+  const name = document.createElement('div');
+  name.className = 'aux-name';
+  name.textContent = label;
+  name.title = label;
+  strip.append(number, name);
+
+  if (section.fader) {
+    const sliderVal = dbToSlider(db);
+    const faderWrap = document.createElement('div');
+    faderWrap.className = 'aux-fader-wrap';
+    const fader = document.createElement('input');
+    fader.type = 'range';
+    fader.className = 'aux-fader';
+    fader.min = '0'; fader.max = '1'; fader.step = '0.001';
+    fader.value = String(sliderVal);
+    fader.style.setProperty('--val', sliderVal);
+    fader.setAttribute('aria-label', `${label} level`);
+    fader.setAttribute('aria-valuetext', `${formatDb(db)} dB`);
+    const dbEl = document.createElement('div');
+    dbEl.className = 'aux-db';
+    dbEl.textContent = formatDb(db);
+    const sendFader = () => send({ type: 'extra-fader', kind: section.kind, n: st.n, db: sliderToDb(parseFloat(fader.value)) });
+    const sendFaderThrottled = throttle(sendFader, 30);
+    fader.addEventListener('input', () => {
+      const newDb = sliderToDb(parseFloat(fader.value));
+      fader.style.setProperty('--val', fader.value);
+      dbEl.textContent = formatDb(newDb);
+      fader.setAttribute('aria-valuetext', `${formatDb(newDb)} dB`);
+      extraFaders[key] = newDb;
+      sendFaderThrottled();
+    });
+    fader.addEventListener('change', sendFader); // final position on release
+    fader.addEventListener('pointerdown', (e) => {
+      holdFader(fader);
+      try { fader.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    fader.addEventListener('pointerup',          () => releaseFader(fader));
+    fader.addEventListener('pointercancel',      () => releaseFader(fader));
+    fader.addEventListener('lostpointercapture', () => { if (fader._held) releaseFader(fader); });
+    fader._resync = () => { if (extraFaders[key] !== undefined) updateExtraFader(key, extraFaders[key]); };
+    faderWrap.appendChild(fader);
+    strip.append(faderWrap, dbEl);
+  }
+
+  const muteBtn = document.createElement('button');
+  muteBtn.className = 'aux-btn' + (muted ? ' active' : '');
+  muteBtn.textContent = 'M';
+  muteBtn.setAttribute('aria-label', `Mute ${label}`);
+  muteBtn.setAttribute('aria-pressed', String(muted));
+  muteBtn.addEventListener('click', () => {
+    send({ type: 'extra-mute', kind: section.kind, n: st.n, muted: !muteBtn.classList.contains('active') });
+  });
+  strip.append(muteBtn);
+  return strip;
+}
+
+function updateExtraFader(key, db) {
+  const sliderVal = dbToSlider(db);
+  document.querySelectorAll(`.extra-strip[data-key="${key}"]`).forEach(strip => {
+    const f = strip.querySelector('.aux-fader');
+    if (!f || isFaderHeld(f)) return;
+    f.value = sliderVal;
+    f.style.setProperty('--val', sliderVal);
+    f.setAttribute('aria-valuetext', `${formatDb(db)} dB`);
+    const dbEl = strip.querySelector('.aux-db');
+    if (dbEl) dbEl.textContent = formatDb(db);
+  });
+}
+
+function updateExtraMute(key, muted) {
+  document.querySelectorAll(`.extra-strip[data-key="${key}"]`).forEach(s => s.classList.toggle('muted', muted));
+  document.querySelectorAll(`.extra-strip[data-key="${key}"] .aux-btn`).forEach(b => { b.classList.toggle('active', muted); b.setAttribute('aria-pressed', String(muted)); });
+}
+
 function buildCGStrips() {
   const grid = document.getElementById('cgStrips');
   grid.innerHTML = '';
@@ -776,10 +905,12 @@ function switchTab(name) {
   document.getElementById('tabInputs').classList.toggle('tab-active', name === 'inputs');
   document.getElementById('tabCG').classList.toggle('tab-active', name === 'cg');
   document.getElementById('tabAux').classList.toggle('tab-active', name === 'aux');
+  document.getElementById('tabExtras').classList.toggle('tab-active', name === 'extras');
   document.getElementById('conSectionDescription').textContent = {
     inputs: 'Main channel faders, mutes, and solos.',
     cg: 'Control group faders, mutes, and solos.',
-    aux: 'Aux master output levels and mutes.'
+    aux: 'Aux master output levels and mutes.',
+    extras: 'FX returns and sends, groups, matrices, mains and mute groups.'
   }[name];
 }
 
@@ -796,6 +927,41 @@ for (const button of document.querySelectorAll('[data-console-density]')) button
 
 document.querySelectorAll('.con-tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+// ── The Console Controller's code ─────────────────────────────────────────
+function showConsoleLock(on) {
+  document.body.classList.toggle('con-locked', on);
+  document.getElementById('conLock').hidden = !on;
+  if (on) {
+    globalThis.jpmSplash?.done();
+    document.body.classList.remove('disconnected');
+    setTimeout(() => document.getElementById('conLockCode').focus(), 0);
+  }
+}
+document.getElementById('conLockForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('conLockCode');
+  const error = document.getElementById('conLockError');
+  const button = document.getElementById('conLockSubmit');
+  button.disabled = true;
+  error.textContent = '';
+  try {
+    const res = await fetch('/console-unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: input.value }), cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!data.ok) { error.textContent = data.error || 'That code isn’t right.'; input.select(); return; }
+    input.value = '';
+    showConsoleLock(false);
+    // The socket's cookies are read when it opens: a new one carries the code
+    const old = ws;
+    ws = null;
+    if (old) { try { old.close(); } catch (_) {} }
+    connect();
+  } catch (_) {
+    error.textContent = 'Can’t reach JPMixer right now. Check the connection.';
+  } finally {
+    button.disabled = false;
+  }
 });
 
 connect();

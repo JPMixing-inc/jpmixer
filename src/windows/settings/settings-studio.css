@@ -381,6 +381,9 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .companion-fields { display: grid; grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: 14px; }
 .companion-fields input { width: 100%; min-width: 0; min-height: 40px; }
 .companion-fields.is-off { opacity: .5; }
+/* Companion's Home page surfaces switch: under the address and grid, the width of the card */
+.companion-home-row { grid-column: 1 / -1; padding-bottom: 0; }
+.companion-fields .companion-home-row input.toggle { width: 36px; height: 20px; min-height: 0; }
 .companion-status { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--jp-edge); border-radius: 9px; background: var(--jp-surface); color: var(--jp-label); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .companion-status .dot { flex-shrink: 0; background: var(--jp-muted); }
 .companion-status .dot.on { background: #34c759; box-shadow: 0 0 6px rgba(52, 199, 89, .6); }

@@ -10,9 +10,13 @@
 // images reach the pages live and taps on the pages press the button in
 // Companion, the same as a Stream Deck.
 //
+// JPMixer can also ask for more surfaces (setExtras): one per Custom page with
+// Companion buttons, "JPMixer <page name>", each with its own grid. Their
+// roles are "ev-<page id>". With the Home page surfaces off (companionHome:
+// false) only those are registered: Companion for the custom pages alone.
+//
 // Protocol: https://companion.free/for-developers/Satellite-API — line-based
-// text over TCP (default port 16622). One connection carries all four
-// surfaces. What the pages need goes out through onEvent(role, event, data)
+// text over TCP (default port 16622). One connection carries every surface. What the pages need goes out through onEvent(role, event, data)
 // (snapshot, key, clear), and presses come in through press().
 
 const net = require('net');
@@ -33,7 +37,7 @@ const CAPS_WAIT_MS = 600;      // CAPS follows BEGIN on 1.10+; older servers nev
 const HOLD_MAX_MS = 20000;     // a press with no release (page closed mid-tap) is let go
 const PRESS_LIMIT = 30, PRESS_WINDOW_MS = 1000; // per device address
 
-let settings = { enabled: false, host: '', port: DEFAULT_PORT, columns: 8, rows: 4 };
+let settings = { enabled: false, home: true, host: '', port: DEFAULT_PORT, columns: 8, rows: 4 };
 let socket = null;
 let buffer = '';
 let retryTimer = null, pingTimer = null, capsTimer = null;
@@ -42,10 +46,17 @@ let server = { apiVersion: null, companionVersion: null, caps: {} };
 let state = 'off';             // off | connecting | connected | error
 let message = 'Companion buttons are off.';
 const surfaces = new Map();    // role -> { registered, locked, keys: Map(index -> key) }
+const extras = new Map();      // "ev-<id>" -> { label, columns, rows }: the Custom Pages' surfaces
+const EXTRA_RE = /^ev-[0-9a-f]{10}$/;
 const held = new Map();        // `${role}:${key}` -> timer
 let bitmapSize = 72;
 let onEvent = () => {};        // (role, event, data): to the pages, through JPMixer
 
+// The surfaces registered in Companion: the Home pages' (unless they're off) and the custom pages'
+const allRoles = () => [...(settings.home ? Object.keys(ROLES) : []), ...extras.keys()];
+const labelOf = (role) => (ROLES[role] || (extras.get(role) || {}).label || '');
+// A Home page's grid is Settings'; an Custom page's is its own
+const dims = (role) => (extras.has(role) ? extras.get(role) : settings);
 for (const role of Object.keys(ROLES)) surfaces.set(role, freshSurface());
 function freshSurface() { return { registered: false, locked: false, error: '', keys: new Map() }; }
 
@@ -59,14 +70,15 @@ const versionAtLeast = (v, want) => {
 // each surface's page. The computer's name keeps two JPMixers apart.
 const hostTag = () => os.hostname().replace(/\.local$/i, '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 24) || 'mac';
 const deviceId = (role) => `jpmixer-${role}`;
-const roleFromDevice = (id) => { const m = /^jpmixer-([a-z]+)$/.exec(String(id || '')); return m && ROLES[m[1]] ? m[1] : null; };
-const keyCount = () => settings.columns * settings.rows;
+const roleFromDevice = (id) => { const m = /^jpmixer-([a-z]+|ev-[0-9a-f]{10})$/.exec(String(id || '')); return m && ((settings.home && ROLES[m[1]]) || extras.has(m[1])) ? m[1] : null; };
+const keyCount = (role) => dims(role).columns * dims(role).rows;
 
 // ── Connection ──────────────────────────────────────────────────────────
 
 function applyConfig(cfg) {
   const next = {
     enabled: cfg.companionEnabled === true,
+    home: cfg.companionHome !== false, // older JPMixers don't send it: the Home pages, as before
     host: String(cfg.companionHost || '').trim(),
     port: clampInt(cfg.companionPort, [1, 65535], DEFAULT_PORT),
     columns: clampInt(cfg.companionColumns, LIMITS.columns, 8),
@@ -79,6 +91,7 @@ function applyConfig(cfg) {
     setStatus('off', settings.enabled ? 'Add the Companion computer’s address in Settings.' : 'Companion buttons are off.');
     return;
   }
+  // A new address, grid or set of surfaces: connected again, so Companion has just these
   if (changed || !socket) { disconnect(); connect(); }
 }
 
@@ -131,7 +144,7 @@ function stopTimers() {
   held.clear();
 }
 function resetSurfaces() {
-  for (const role of Object.keys(ROLES)) {
+  for (const role of [...Object.keys(ROLES), ...extras.keys()]) {
     surfaces.set(role, freshSurface());
     broadcast(role, 'snapshot', snapshot(role));
   }
@@ -238,23 +251,51 @@ function registerAll() {
   capsTimer = null;
   const png = (server.caps.formats || []).includes('png') && versionAtLeast(server.apiVersion, '1.12.0');
   bitmapSize = png ? 96 : 72;
-  // Before API 1.5.1 a surface could have at most 32 keys
-  const total = versionAtLeast(server.apiVersion, '1.5.1') ? keyCount() : Math.min(32, keyCount());
-  const columns = Math.min(settings.columns, total);
-  const tag = hostTag();
-  for (const [role, label] of Object.entries(ROLES)) {
-    const parts = [
-      'ADD-DEVICE', `DEVICEID=${deviceId(role)}`, `PRODUCT_NAME="JPMixer ${label}"`,
-      `KEYS_TOTAL=${total}`, `KEYS_PER_ROW=${columns}`,
-      `BITMAPS=${versionAtLeast(server.apiVersion, '1.5.0') ? bitmapSize : 'true'}`,
-      'COLORS=hex', 'TEXT=true', 'TEXT_STYLE=true',
-    ];
-    if (versionAtLeast(server.apiVersion, '1.7.0')) parts.push('BRIGHTNESS=false');
-    if (versionAtLeast(server.apiVersion, '1.10.0')) parts.push(`SERIAL=jpmixer:${tag}:${role}`);
-    if (png) parts.push('BITMAP_FORMAT=png');
-    send(parts.join(' '));
-  }
+  for (const role of allRoles()) register(role);
   updateConnectedStatus();
+}
+function register(role) {
+  const png = (server.caps.formats || []).includes('png') && versionAtLeast(server.apiVersion, '1.12.0');
+  // Before API 1.5.1 a surface could have at most 32 keys
+  const total = versionAtLeast(server.apiVersion, '1.5.1') ? keyCount(role) : Math.min(32, keyCount(role));
+  const parts = [
+    'ADD-DEVICE', `DEVICEID=${deviceId(role)}`, `PRODUCT_NAME="JPMixer ${labelOf(role).replace(/["\\\n\r]/g, ' ')}"`,
+    `KEYS_TOTAL=${total}`, `KEYS_PER_ROW=${Math.min(dims(role).columns, total)}`,
+    `BITMAPS=${versionAtLeast(server.apiVersion, '1.5.0') ? bitmapSize : 'true'}`,
+    'COLORS=hex', 'TEXT=true', 'TEXT_STYLE=true',
+  ];
+  if (versionAtLeast(server.apiVersion, '1.7.0')) parts.push('BRIGHTNESS=false');
+  if (versionAtLeast(server.apiVersion, '1.10.0')) parts.push(`SERIAL=jpmixer:${hostTag()}:${role}`);
+  if (png) parts.push('BITMAP_FORMAT=png');
+  send(parts.join(' '));
+}
+
+// The Custom Pages' surfaces: [{ role: "ev-<id>", label, columns, rows }].
+// Added, changed or removed in Companion while connected.
+function setExtras(list) {
+  const next = new Map();
+  for (const x of Array.isArray(list) ? list.slice(0, 20) : []) {
+    if (!x || !EXTRA_RE.test(String(x.role))) continue;
+    const columns = clampInt(x.columns, LIMITS.columns, 4), rows = clampInt(x.rows, LIMITS.rows, 2);
+    next.set(x.role, { label: String(x.label || 'Custom page').replace(/[\u0000-\u001f]/g, ' ').slice(0, 40), columns, rows });
+  }
+  const registered = !!(socket && server.apiVersion && !capsTimer);
+  for (const role of [...extras.keys()]) {
+    if (next.has(role)) continue;
+    extras.delete(role);
+    surfaces.delete(role);
+    if (registered) send(`REMOVE-DEVICE DEVICEID=${deviceId(role)}`);
+  }
+  for (const [role, want] of next) {
+    const had = extras.get(role);
+    if (had && had.label === want.label && had.columns === want.columns && had.rows === want.rows) continue;
+    if (had && registered) send(`REMOVE-DEVICE DEVICEID=${deviceId(role)}`);
+    extras.set(role, want);
+    surfaces.set(role, freshSurface());
+    broadcast(role, 'snapshot', snapshot(role));
+    if (registered) register(role);
+  }
+  if (registered) updateConnectedStatus(); // its status says whether there are any
 }
 
 function onKeyState(args) {
@@ -262,8 +303,8 @@ function onKeyState(args) {
   if (!role) return;
   let index = Number.NaN;
   if (/^\d+$/.test(args.KEY || '')) index = Number(args.KEY);
-  else if (/^\d+\/\d+$/.test(args.KEY || '')) { const [r, c] = args.KEY.split('/').map(Number); index = r * settings.columns + c; }
-  if (!Number.isInteger(index) || index < 0 || index >= keyCount()) return;
+  else if (/^\d+\/\d+$/.test(args.KEY || '')) { const [r, c] = args.KEY.split('/').map(Number); index = r * dims(role).columns + c; }
+  if (!Number.isInteger(index) || index < 0 || index >= keyCount(role)) return;
   const surface = surfaces.get(role);
   const prev = surface.keys.get(index) || {};
   const key = {
@@ -292,14 +333,15 @@ function decodeText(b64) {
 
 function updateConnectedStatus() {
   if (!socket) return;
-  const refused = [...surfaces.entries()].filter(([, s]) => s.error);
-  if (refused.length === Object.keys(ROLES).length) setStatus('error', `Companion refused the surfaces: ${refused[0][1].error}`);
-  else setStatus('connected', `Connected to Companion${server.companionVersion ? ' ' + server.companionVersion : ''} at ${settings.host}.`);
+  const mine = allRoles().map((role) => surfaces.get(role)).filter(Boolean);
+  const refused = mine.filter((s) => s.error);
+  if (mine.length && refused.length === mine.length) setStatus('error', `Companion refused the surfaces: ${refused[0].error}`);
+  else setStatus('connected', `Connected to Companion${server.companionVersion ? ' ' + server.companionVersion : ''} at ${settings.host}.${settings.home ? '' : extras.size ? ' Custom Pages only.' : ' Custom Pages only: no custom page has Companion buttons yet.'}`);
 }
 function setStatus(next, text) {
   const changed = next !== state || text !== message;
   state = next; message = text;
-  if (changed) for (const role of Object.keys(ROLES)) broadcast(role, 'snapshot', snapshot(role));
+  if (changed) for (const role of [...Object.keys(ROLES), ...extras.keys()]) broadcast(role, 'snapshot', snapshot(role));
 }
 
 // ── Presses from the pages ───────────────────────────────────────────────
@@ -307,7 +349,7 @@ function setStatus(next, text) {
 function press(role, index, pressed) {
   const surface = surfaces.get(role);
   if (!surface || !surface.registered || surface.locked) return false;
-  if (!Number.isInteger(index) || index < 0 || index >= keyCount()) return false;
+  if (!Number.isInteger(index) || index < 0 || index >= keyCount(role)) return false;
   const id = `${role}:${index}`;
   clearTimeout(held.get(id));
   held.delete(id);
@@ -322,7 +364,7 @@ function press(role, index, pressed) {
 // ── Pages ────────────────────────────────────────────────────────────────
 
 function snapshot(role) {
-  const surface = surfaces.get(role);
+  const surface = surfaces.get(role) || freshSurface();
   return {
     ok: true,
     enabled: settings.enabled && !!settings.host,
@@ -330,7 +372,7 @@ function snapshot(role) {
     registered: surface.registered,
     locked: surface.locked,
     error: surface.error,
-    columns: settings.columns, rows: settings.rows,
+    columns: dims(role).columns, rows: dims(role).rows,
     keys: [...surface.keys.values()],
   };
 }
@@ -346,5 +388,5 @@ function getStatus() {
 
 function stop() { settings = { ...settings, enabled: false }; disconnect(); }
 
-module.exports = { applyConfig, getStatus, snapshot, press, stop, ROLES, DEFAULT_PORT, LIMITS, _parse: parse,
+module.exports = { applyConfig, getStatus, snapshot, press, stop, setExtras, isRole: (role) => Object.hasOwn(ROLES, role) || extras.has(role), allRoles, ROLES, DEFAULT_PORT, LIMITS, _parse: parse,
   setEventListener: (fn) => { onEvent = typeof fn === 'function' ? fn : () => {}; } };

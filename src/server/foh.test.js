@@ -39,6 +39,7 @@ async function main() {
   const app = express();
   let connected = true;
   let deviceCount = 3;
+  require('./access').mountOneTimeLinks(app);
   mountFoh(app, { isConsoleConnected: () => connected, getConnectionCount: () => deviceCount });
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -296,7 +297,13 @@ async function main() {
     assert.equal(hasFohAccess(phone()), true, 'no code set: open to the network, as before');
     config.save({ ...config.getAll(), fohAccessCode: '4821' });
     assert.equal(hasFohAccess(phone()), false);
-    assert.equal(hasFohAccess({ socket: { remoteAddress: '127.0.0.1' }, headers: {} }), true, 'this computer never needs the code');
+    // The port 80 helper hands every phone over from this computer's own
+    // address: trusting the address let every phone in without the code
+    assert.equal(hasFohAccess({ socket: { remoteAddress: '127.0.0.1' }, headers: {} }), false, 'this computer\'s address alone doesn\'t open it');
+    const access = require('./access');
+    const own = `${access.LOCAL_COOKIE}=${access.localPass()}`;
+    assert.equal(hasFohAccess(phone(own)), true, 'JPMixer\'s own windows (this computer\'s pass) never need the code');
+    assert.equal(hasFohAccess(phone(`${access.LOCAL_COOKIE}=forged`)), false);
     const post = (body) => new Promise((resolve, reject) => {
       const req = http.request({ host: '127.0.0.1', port, path: '/foh-unlock', method: 'POST', headers: { 'Content-Type': 'application/json' } }, (res) => { let d = ''; res.on('data', c => (d += c)); res.on('end', () => resolve({ status: res.statusCode, cookie: res.headers['set-cookie'], body: JSON.parse(d) })); });
       req.on('error', reject); req.end(JSON.stringify(body));
@@ -318,6 +325,51 @@ async function main() {
     for (let i = 0; i < 9; i++) last = await post({ code: 'guess' + i });
     assert.equal(last.status, 429, 'guessing is limited');
     t('guessing the FOH code is rate-limited');
+
+    // A page opened in the browser from Settings: a one-time link gives it the pass
+    {
+      const access = require('./access');
+      const link = new URL(access.oneTimeLink(`http://127.0.0.1:${port}/foh.html?x=1`));
+      const open = (p) => new Promise((resolve, reject) => http.get({ host: '127.0.0.1', port, path: p }, (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location, cookie: res.headers['set-cookie'] })); }).on('error', reject));
+      const first = await open(link.pathname + link.search);
+      assert.equal(first.status, 302);
+      assert.equal(first.location, '/foh.html?x=1', 'and loads the page without it');
+      assert.equal(first.cookie[0].split(';')[0], `${access.LOCAL_COOKIE}=${access.localPass()}`);
+      const again = await open(link.pathname + link.search);
+      assert.equal(again.status, 302);
+      assert.equal(again.cookie, undefined, 'a one-time link works once');
+      const made = await open('/foh.html?jpm_pass=made-up');
+      assert.equal(made.cookie, undefined);
+      t('a browser opened from Settings gets this computer\'s pass once, from a one-time link');
+    }
+
+    // The Console Controller's code
+    {
+      const access = require('./access');
+      const sock = (cookie) => { const ws = { sent: [], send: (m) => ws.sent.push(JSON.parse(m)) }; access.noteSocket(ws, { headers: cookie ? { cookie } : {} }); return ws; };
+      config.save({ ...config.getAll(), consoleAccessCode: '' });
+      assert.equal(access.consoleMessageAllowed(sock(), { type: 'console-fader', ch: 1, db: 0 }), true, 'no code: as before');
+      config.save({ ...config.getAll(), consoleAccessCode: '2468' });
+      const phoneWs = sock();
+      assert.equal(access.consoleMessageAllowed(phoneWs, { type: 'console-fader', ch: 1, db: 0 }), false);
+      assert.deepEqual(phoneWs.sent, [{ type: 'console-locked' }], 'the page is told to ask for the code');
+      assert.equal(access.consoleMessageAllowed(phoneWs, { type: 'set-mute', aux: 1, ch: 1, muted: true }), true, 'a phone\'s own mix isn\'t the Console Controller');
+      assert.equal(access.consoleMessageAllowed(sock(`${access.LOCAL_COOKIE}=${access.localPass()}`), { type: 'cg-mute', cg: 1, muted: true }), true, 'JPMixer\'s own window');
+      assert.equal((await get(port, '/console-access')).needCode, true);
+      const unlock = (body) => new Promise((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port, path: '/console-unlock', method: 'POST', headers: { 'Content-Type': 'application/json' } }, (res) => { let d = ''; res.on('data', c => (d += c)); res.on('end', () => resolve({ status: res.statusCode, cookie: res.headers['set-cookie'], body: JSON.parse(d) })); });
+        req.on('error', reject); req.end(JSON.stringify(body));
+      });
+      assert.equal((await unlock({ code: '1357' })).status, 403);
+      const right = await unlock({ code: '2468' });
+      const cookie = right.cookie[0].split(';')[0];
+      assert.equal(access.consoleMessageAllowed(sock(cookie), { type: 'console-param', ch: 1 }), true, 'the right code opens it');
+      assert.equal(hasFohAccess(phone(cookie)), false, 'the console code isn\'t FOH Home\'s');
+      config.save({ ...config.getAll(), consoleAccessCode: '1111' });
+      assert.equal(access.consoleMessageAllowed(sock(cookie), { type: 'console-fader', ch: 1, db: 0 }), false, 'a new code locks devices out at once');
+      config.save({ ...config.getAll(), consoleAccessCode: '' });
+      t('the Console Controller needs its own code on other devices, checked on every message');
+    }
 
     const pages = (await get(port, '/home-pages')).pages;
     assert.deepEqual(pages.map(p => p.id), ['foh', 'propresenter', 'lighting', 'switcher']);

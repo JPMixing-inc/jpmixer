@@ -276,4 +276,4 @@ async function planningCenterForPlugins() {
   };
 }
 
-module.exports = { mountGreenRoom, planningCenterForPlugins, _resetLive: (all = true) => { liveCache = { at: 0, key: '', value: null, asked: 0 }; if (all) firstSeen = { key: '', at: 0 }; } };
+module.exports = { mountGreenRoom, planningCenterForPlugins, qrSvg, _resetLive: (all = true) => { liveCache = { at: 0, key: '', value: null, asked: 0 }; if (all) firstSeen = { key: '', at: 0 }; } };

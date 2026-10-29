@@ -11,7 +11,7 @@
     channels: ['Channels', 'Rename, group, show or hide channels. Drag rows to change their order.'],
     auxes: ['Aux mixes', 'Set mix names, colors, and what performers can do with each.'],
     wireless: ['Shure wireless', 'Battery and transmitter status from your Shure wireless receivers, and which mix each mic belongs to.'],
-    companion: ['Companion', 'Bitfocus Companion buttons on the Home pages.'],
+    companion: ['Companion', 'Bitfocus Companion buttons on the Home pages and custom pages.'],
     smaart: ['Smaart SPL', 'Live sound levels from Rational Acoustics Smaart on FOH Home and the Green Room.'],
     performers: ['Performers', 'Ear Scenes, what performers see on their phones, and their saved My Mixes.'],
     views: ['Pages', 'Every page JPMixer serves, with each Home page’s own setup.'],

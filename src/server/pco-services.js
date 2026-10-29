@@ -81,6 +81,9 @@ function altService(cfg = config.getAll()) {
   };
 }
 
+// A failure worth waiting out (no answer, too many requests): see pco-client.js
+const temporary = (e) => require('./pco-client').isTemporary(e);
+
 const localDay = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -97,18 +100,25 @@ async function planIsToday(pco, serviceTypeId, plan, creds, now) {
   try {
     const times = await pco.listPlanTimes(serviceTypeId, plan.id, creds);
     return times.some((pt) => [pt.startsAt, pt.endsAt].some((t) => t && localDay(new Date(t)) === today));
-  } catch { return false; }
+  } catch (e) {
+    if (temporary(e)) throw e; // no answer isn't "not today": see activeService
+    return false;
+  }
 }
 
 // { service, plan }: the service that runs today, and its plan. `pco` is
 // pco-client (or its shared cache); `cfg` can carry settings not saved yet
-// (Sync Now). A second service that can't be reached leaves the main one in
-// charge; the main one failing throws, as before there were two.
+// (Sync Now). A second service whose plan is gone (a real answer, like a 404)
+// leaves the main one in charge; the main one failing throws, as before there
+// were two. A hiccup (no answer, too many requests) throws too, so pages keep
+// what they show and the sync waits: falling back to the main service then
+// renamed the mixes to Sunday's team in the middle of the second service,
+// cleared team chat and could move phones to Sunday's mixes.
 async function activeService(pco, creds, cfg = config.getAll(), now = new Date()) {
   const main = mainService(cfg), alt = altService(cfg);
   const [mainPlan, altPlan] = await Promise.all([
     main.serviceTypeId ? pco.nextPlan(main.serviceTypeId, creds) : null,
-    alt ? pco.nextPlan(alt.serviceTypeId, creds).catch(() => null) : null,
+    alt ? pco.nextPlan(alt.serviceTypeId, creds).catch((e) => { if (temporary(e)) throw e; return null; }) : null,
   ]);
   if (alt && altPlan
     && await planIsToday(pco, alt.serviceTypeId, altPlan, creds, now)

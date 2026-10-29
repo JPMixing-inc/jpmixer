@@ -31,6 +31,18 @@
     <span class="con-connection" role="status"><span class="conn-dot" id="connDot"></span><span id="conConnectionLabel">Connecting</span></span>
   </header>
 
+  <!-- Shown when the Console Controller needs its code (Settings → Pages → Console Controller) -->
+  <section class="con-lock" id="conLock" hidden aria-labelledby="conLockTitle">
+    <form class="con-lock-card" id="conLockForm">
+      <p class="con-lock-eyebrow">CONSOLE CONTROLLER</p>
+      <h1 id="conLockTitle">Enter the access code</h1>
+      <p class="con-lock-sub">Ask the engineer for the code. This browser remembers it.</p>
+      <input id="conLockCode" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32" aria-label="Access code" required />
+      <button type="submit" id="conLockSubmit">Unlock</button>
+      <p class="con-lock-error" id="conLockError" role="alert"></p>
+    </form>
+  </section>
+
   <section class="con-toolbar" aria-label="Console display options">
     <div><h1>Console controller</h1><p id="conSectionDescription">Main channel faders, mutes, and solos.</p></div>
     <div class="con-density" role="group" aria-label="Display size"><button type="button" data-console-density="overview" aria-pressed="true">Overview</button><button type="button" data-console-density="roomy" aria-pressed="false">Roomy</button></div>
@@ -39,6 +51,7 @@
     <button class="con-tab tab-active" data-tab="inputs" aria-pressed="true">Inputs <span id="conInputCount">0</span></button>
     <button class="con-tab" data-tab="cg" aria-pressed="false">Control groups <span id="conGroupCount">0</span></button>
     <button class="con-tab" data-tab="aux" aria-pressed="false">Aux outputs <span id="conAuxCount">0</span></button>
+    <button class="con-tab" data-tab="extras" aria-pressed="false" hidden>More <span id="conExtraCount">0</span></button>
   </nav>
 
   <div class="con-touch-tools">
@@ -54,6 +67,9 @@
     </div>
     <div class="aux-section" id="tabAux">
       <div class="aux-strips-scroll" id="auxStrips"></div>
+    </div>
+    <div class="aux-section" id="tabExtras">
+      <div class="aux-strips-scroll" id="extraStrips"></div>
     </div>
   </div>
 

@@ -578,6 +578,34 @@ async function main() {
     t('a Live hiccup is a failure, not "nothing live", and "too many requests" backs every screen off');
   }
 
+  {
+    // A connection that stalls part-way through an answer gives up with the
+    // rest of the request, as a hiccup, instead of waiting minutes
+    const realFetch = global.fetch;
+    global.fetch = async (url, opts) => ({
+      ok: true, status: 200, statusText: 'OK',
+      text: () => new Promise((resolve, reject) => opts.signal.addEventListener('abort', () => reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })))),
+    });
+    pco._setRequestTimeout(200);
+    const started = Date.now();
+    const err = await pco.listServiceTypes(creds).catch((e) => e);
+    assert.ok(Date.now() - started < 2000, 'gives up at the time limit');
+    assert.equal(pco.isTemporary(err), true, 'as a hiccup: pages keep what they show');
+    assert.match(err.message, /didn't respond within/);
+    pco._setRequestTimeout(15000);
+    // No answer at all says why
+    global.fetch = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('getaddrinfo ENOTFOUND api.planningcenteronline.com'), { code: 'ENOTFOUND' }) }); };
+    const offline = await pco.listServiceTypes(creds).catch((e) => e);
+    assert.equal(pco.isTemporary(offline), true);
+    assert.match(offline.message, /couldn’t look up Planning Center’s address/);
+    assert.match(pco.requestStats().lastFailure.message, /no internet/, 'Settings → Performance says why');
+    global.fetch = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'CERT_HAS_EXPIRED' } }); };
+    assert.match((await pco.listServiceTypes(creds).catch((e) => e)).message, /date and time/);
+    global.fetch = realFetch;
+    pco.shared.clear();
+    t('a stalled answer gives up at the time limit, and no answer says why (no internet, firewall, the clock)');
+  }
+
   global.fetch = origFetch;
   mock.close();
 

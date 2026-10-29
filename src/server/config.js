@@ -48,6 +48,12 @@ const DEFAULTS = {
   // Both on by default until push is confirmed reliable on real hardware.
   dliveListenSendLevels: true,
   dlivePollSendLevels: true,
+  // A musician's mute: the send's own on/off (true), or its level to -inf and back (false)
+  dliveMuteBySendOff: true,
+  // Pan on the stereo mixes, through the protocol dLive's own apps use (TCP 51321)
+  dlivePan: true,
+  // How many FX returns (0-16) every mix has after the inputs, as channels 129 on
+  dliveFxReturns: 0,
   // KLANG (for dLive consoles) — only read when consoleType is 'klang'. The
   // dLive* fields above are reused for this mode's optional secondary
   // connection (channel names + Ear Scene sync) — see klang-server.js.
@@ -117,6 +123,7 @@ const DEFAULTS = {
   pcoSwitcherTeamId: '',
   // Optional code for FOH Home on other devices ('' = open). See foh.js.
   fohAccessCode: '',
+  consoleAccessCode: '', // the Console Controller's code (access.js); '' = none
   // Companion buttons on the Home pages: JPMixer connects to Companion as a
   // Satellite and registers one surface per Home page. See companion-satellite.js.
   // Shure wireless monitoring (read-only, off by default) — see shure-wireless.js.
@@ -124,6 +131,7 @@ const DEFAULTS = {
   wirelessEnabled: false,
   wirelessReceivers: [],
   companionEnabled: false,
+  companionHome: true, // the Home pages' surfaces; off: Companion for Custom Pages only
   companionHost: '',
   companionPort: 16622,
   companionColumns: 8,

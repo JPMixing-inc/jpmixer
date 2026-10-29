@@ -57,6 +57,58 @@
           }
         ]
       }
+    ],
+    "companion": [
+      {
+        "version": "1.0.0",
+        "files": [
+          {
+            "path": "companion.js",
+            "size": 15535,
+            "sha256": "fd722332fe005583288c18001768127a0f71220b9d5cb0ff55c58ad0bc5f65cc"
+          },
+          {
+            "path": "index.js",
+            "size": 2128,
+            "sha256": "0c9c2201f6c92b023ffa7c7d336464a3bd7a2a6a710406cf19d71f734a057f70"
+          },
+          {
+            "path": "plugin.json",
+            "size": 528,
+            "sha256": "bea2365ba5cf7c4be5cc2864edad0411ed8c7944c8546604bf73b7ce5bdb284d"
+          },
+          {
+            "path": "README.md",
+            "size": 659,
+            "sha256": "78a8e5ccbe2f17631b7957e07cc00c37476d1da1c5a0a6688189cbbdb2a0ea62"
+          }
+        ]
+      },
+      {
+        "version": "1.1.0",
+        "files": [
+          {
+            "path": "companion.js",
+            "size": 17608,
+            "sha256": "72209c348f7dd0a9603ad591631756fd5930074ef1645955875c6c0b812ede59"
+          },
+          {
+            "path": "index.js",
+            "size": 2405,
+            "sha256": "02b65f18d8a9cbc3462b408a0c06d9e82c66a1324257384dc11b6948e01e66a0"
+          },
+          {
+            "path": "plugin.json",
+            "size": 540,
+            "sha256": "4cc961cda51bae40a0d8245b73d799face4b22668dfc1e7bbb076d0434310996"
+          },
+          {
+            "path": "README.md",
+            "size": 659,
+            "sha256": "78a8e5ccbe2f17631b7957e07cc00c37476d1da1c5a0a6688189cbbdb2a0ea62"
+          }
+        ]
+      }
     ]
   }
 }

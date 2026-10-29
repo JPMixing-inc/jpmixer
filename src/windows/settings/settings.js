@@ -108,6 +108,7 @@ const fields = {
   autoBackupIntervalDays: { el: $('autoBackupInterval'), key: 'autoBackupIntervalDays', parse: Number },
   dliveBaseChannel: { el: $('dliveBaseChannel'), key: 'dliveBaseChannel', parse: Number },
   dliveMidiPort:    { el: $('dliveMidiPort'),    key: 'dliveMidiPort',    parse: Number },
+  dliveFxReturns:   { el: $('dliveFxReturns'),   key: 'dliveFxReturns',   parse: Number },
   dliveUsername:    { el: $('dliveUsername'),    key: 'dliveUsername',    parse: String },
   dlivePassword:    { el: $('dlivePassword'),    key: 'dlivePassword',    parse: String },
   klangIp:          { el: $('klangIp'),          key: 'klangIp',          parse: String },
@@ -156,7 +157,7 @@ function updateConsoleTypeFields() {
   $('dliveAuthRow').style.display   = ((isDlive || isKlang) && $('dliveTlsEnabled').checked) ? '' : 'none';
   $('dliveWarningText').textContent = isKlang
     ? 'When set, this must point at the same console — under Utility → Control → MIDI — that KLANG is paired with.'
-    : '⚠️ dLive support has been tested against dLive Director running offline, not yet a real MixRack. Aux send levels, mute, solo, scene recall, Ear Scenes, live names and the Console Controller (channel, aux and DCA faders, mutes and solos) work; per-send pan and EQ are not available over dLive’s MIDI control. To try it without a console, run dLive Director offline with System → Offline → “Enable Director Connections to MixRack IP Controllers” ticked, and use this computer’s address with Director’s MIDI channel.';
+    : '⚠️ dLive support has been tested against dLive Director running offline, not yet a real MixRack. Aux send levels, mute, solo, scene recall, Ear Scenes, live names, a mix’s EQ for its musicians, FX returns in the mixes, pan on the stereo mixes and the Console Controller (faders and mutes of channels, auxes, DCAs, FX, groups, matrices, mains and mute groups, and each channel’s preamp, high-pass and EQ) work. To try it without a console, run dLive Director offline with System → Offline → “Enable Director Connections to MixRack IP Controllers” ticked, and use this computer’s address with Director’s MIDI channel.';
   $('deskIpLabel').textContent = isKlang ? 'dLive Console IP Address (optional)' : isLv1 ? 'LV1 Computer IP Address' : 'Console IP Address';
   $('deskIp').placeholder = isLv1 ? 'Blank = find LV1 on the network' : '192.168.1.100';
 
@@ -757,9 +758,12 @@ document.querySelector('.tab[data-tab="wireless"]').addEventListener('click', ()
 function updateCompanionFields() {
   const on = $('companionEnabled').checked;
   for (const el of $('companionFields').querySelectorAll('input')) el.disabled = !on;
+  // The grid is the Home pages' (each custom page has its own)
+  for (const id of ['companionColumns', 'companionRows']) $(id).disabled = !on || !$('companionHome').checked;
   $('companionFields').classList.toggle('is-off', !on);
 }
 $('companionEnabled').addEventListener('change', updateCompanionFields);
+$('companionHome').addEventListener('change', updateCompanionFields);
 // Planning Center off: the rest of its tab greyed out (kept, not cleared)
 function updatePcoEnabled() {
   const on = $('pcoEnabled').checked;
@@ -1117,6 +1121,9 @@ function renderPluginTabs() {
     panel.id = 'tab-' + pluginTabId(p.id);
     panel.dataset.pluginPanel = p.id;
     panel.append(pluginCard(p, unsaved[p.id]));
+    // Custom Pages are set up right here, under its card (custom-pages.js)
+    const editor = p.id === 'custom-pages' && p.official && window.renderCustomPagesEditor ? window.renderCustomPagesEditor() : null;
+    if (editor) panel.append(editor);
     after.after(panel);
     after = panel;
     tab.addEventListener('click', () => {
@@ -1127,6 +1134,7 @@ function renderPluginTabs() {
       window.jpmShowTabTitle?.(tab);
       updateRestoreSelection();
       refreshPluginStatus();
+      if (editor) editor.refresh(); // the console's names and the pages as they are now
     });
   }
   // Back where it was, or to the list if that plugin has gone
@@ -1232,8 +1240,9 @@ function pluginCard(p, unsaved) {
   log.append(summary, lines);
   log.addEventListener('toggle', () => { if (log.open) refreshPluginLog(p.id, lines); });
   actions.append(log);
-  // A plugin with a page of its own: open it (it's also on the Home pages list)
-  if (m.page) {
+  // A plugin with a page of its own: open it (it's also on the Home pages list).
+  // Not for one kept off the list: it opens only from its own links
+  if (m.page && m.page.listed !== false) {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'btn btn-sm';
@@ -1784,6 +1793,24 @@ $('dliveBaseChannel').addEventListener('change', () => {
   const v = Math.max(0, Math.min(11, Number($('dliveBaseChannel').value) || 0));
   $('dliveBaseChannel').value = v;
 });
+$('dliveFxReturns').addEventListener('change', () => {
+  $('dliveFxReturns').value = Math.max(0, Math.min(16, Math.round(Number($('dliveFxReturns').value) || 0)));
+});
+// Find: ask the console at the address in the field which MIDI channel it's on (read-only)
+$('dliveFindChannel').addEventListener('click', async () => {
+  const button = $('dliveFindChannel'), status = $('dliveFindStatus');
+  button.disabled = true;
+  status.textContent = `Asking the console at ${$('deskIp').value.trim() || '…'}…`;
+  try {
+    const r = await window.jpm.dliveFindChannel({ host: $('deskIp').value, port: Number($('dliveMidiPort').value) || 0, tlsEnabled: $('dliveTlsEnabled').checked, username: $('dliveUsername').value, password: $('dlivePassword').value });
+    if (r && r.ok) {
+      const changed = Number($('dliveBaseChannel').value) !== r.baseChannel;
+      $('dliveBaseChannel').value = r.baseChannel;
+      status.textContent = `The console is on MIDI channels ${r.baseChannel + 1} to ${r.baseChannel + 5}: Base MIDI Channel ${r.baseChannel}.${changed ? ' Save & Apply to use it.' : ''}`;
+    } else status.textContent = (r && r.error) || 'The console didn’t answer.';
+  } catch (_) { status.textContent = 'The console didn’t answer.'; }
+  finally { button.disabled = false; }
+});
 $('dliveMidiPort').addEventListener('change', () => {
   const raw = Number($('dliveMidiPort').value) || 0;
   $('dliveMidiPort').value = (raw === 0) ? 0 : Math.max(1, Math.min(65535, raw));
@@ -1873,13 +1900,13 @@ function renderAuxes() {
   const list    = $('auxesList');
   list.innerHTML = '';
   const auxCount = parseInt($('auxes').value) || 16;
-  // dLive, KLANG and WING don't implement per-send EQ (their backends'
-  // buildConfig report eqEnabled: false for every aux regardless of this
-  // per-aux setting) — disable the toggle so it doesn't look like a live
-  // control that silently does nothing. LV1 has it: each mix's own EQ on LV1
-  // (a mix LV1 says has no EQ, such as an FX return, offers none).
+  // KLANG and WING don't implement per-send EQ (their backends' buildConfig
+  // report eqEnabled: false for every aux regardless of this per-aux
+  // setting) — disable the toggle so it doesn't look like a live control
+  // that silently does nothing. LV1 and dLive have it: each mix's own EQ on
+  // the console (a mix LV1 says has no EQ, such as an FX return, offers none).
   const consoleType = $('consoleType').value;
-  const eqDisabled = ['dlive', 'klang', 'wing'].includes(consoleType);
+  const eqDisabled = ['klang', 'wing'].includes(consoleType);
 
   // Column headings once, at the top of the list
   const head = document.createElement('div');
@@ -1897,7 +1924,7 @@ function renderAuxes() {
 
     const eqEnabled = ov.eqEnabled === true;
     const linkOnly  = ov.linkOnly === true;
-    const eqTitle = eqDisabled ? "Per-send EQ isn't available for this console yet" : consoleType === 'lv1' ? 'Performers can adjust this mix’s EQ on LV1 (monitor mixes; FX returns have none)' : 'Performers can adjust this mix’s EQ';
+    const eqTitle = eqDisabled ? "Per-send EQ isn't available for this console yet" : consoleType === 'lv1' ? 'Performers can adjust this mix’s EQ on LV1 (monitor mixes; FX returns have none)' : consoleType === 'dlive' ? 'Performers can adjust this mix’s PEQ, graphic EQ and compressor on the dLive' : 'Performers can adjust this mix’s EQ';
 
     const row = document.createElement('div');
     row.className = 'aux-row' + (enabled ? '' : ' is-off') + (linkOnly ? ' is-link' : '');
@@ -2501,7 +2528,9 @@ function applyConfig(cfg) {
   $('performerEarScenes').checked = cfg.performerEarScenes !== false;
   loadBranding(cfg);
   $('fohAccessCode').value = cfg.fohAccessCode || '';
+  $('consoleAccessCode').value = cfg.consoleAccessCode || '';
   $('companionEnabled').checked = cfg.companionEnabled === true;
+  $('companionHome').checked = cfg.companionHome !== false;
   updateCompanionFields();
   $('pcoEnabled').checked = cfg.pcoEnabled !== false;
   updatePcoEnabled();
@@ -2512,6 +2541,8 @@ function applyConfig(cfg) {
   $('dliveTlsEnabled').checked    = !!cfg.dliveTlsEnabled;
   $('dliveListenSendLevels').checked = cfg.dliveListenSendLevels !== false;
   $('dlivePollSendLevels').checked   = cfg.dlivePollSendLevels !== false;
+  $('dliveMuteBySendOff').checked    = cfg.dliveMuteBySendOff !== false;
+  $('dlivePan').checked              = cfg.dlivePan !== false;
   $('apiEnabled').checked = !!cfg.apiEnabled;
   updateApiFieldsVisibility();
   $('pcoIncludeUnconfirmed').checked = !!cfg.pcoIncludeUnconfirmed;
@@ -2604,6 +2635,7 @@ function collectConfig() {
   // Companion buttons: out-of-range numbers fall back to the defaults
   const companionInt = (v, lo, hi, d) => Number.isInteger(v) && v >= lo && v <= hi ? v : d;
   out.companionEnabled = $('companionEnabled').checked;
+  out.companionHome = $('companionHome').checked;
   out.pcoEnabled = $('pcoEnabled').checked;
   out.wirelessEnabled  = $('wirelessEnabled').checked;
   out.wirelessReceivers = wirelessReceivers.map(r => (r.id ? { ip: r.ip, id: r.id } : { ip: r.ip }));
@@ -2628,6 +2660,7 @@ function collectConfig() {
   out.brandLogo           = brandLogoFile;
   out.brandAccent         = brandAccent;
   out.fohAccessCode       = $('fohAccessCode').value.trim();
+  out.consoleAccessCode   = $('consoleAccessCode').value.trim();
   out.autoBackupEnabled   = $('autoBackupEnabled').checked;
   out.apiEnabled          = $('apiEnabled').checked;
   out.pcoServiceTypeId    = pcoServiceTypesLoaded ? ($('pcoServiceType').value || '') : pcoSavedServiceTypeId;
@@ -2648,6 +2681,9 @@ function collectConfig() {
   out.dliveTlsEnabled     = $('dliveTlsEnabled').checked;
   out.dliveListenSendLevels = $('dliveListenSendLevels').checked;
   out.dlivePollSendLevels   = $('dlivePollSendLevels').checked;
+  out.dliveMuteBySendOff    = $('dliveMuteBySendOff').checked;
+  out.dlivePan              = $('dlivePan').checked;
+  out.dliveFxReturns = Number.isInteger(out.dliveFxReturns) ? Math.max(0, Math.min(16, out.dliveFxReturns)) : 0;
   out.ipadConnections     = ipadConnections;
   out.channelGroups    = channelGroups;
   saveChannelOrder();

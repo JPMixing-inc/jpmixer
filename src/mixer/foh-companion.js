@@ -115,7 +115,8 @@
     const live = s.enabled && s.state === 'connected' && s.registered && !s.locked;
     grid.classList.toggle('is-offline', !live);
     note.hidden = live;
-    note.textContent = !s.enabled ? 'Companion buttons are off. Turn them on in JPMixer Settings → Plugins → Companion.'
+    note.textContent = s.homeOff ? s.message // on for Custom Pages only
+      : !s.enabled ? 'Companion buttons are off. Turn them on in JPMixer Settings → Plugins → Companion.'
       : s.locked ? 'This surface is locked in Companion.'
       : s.state === 'connected' && s.error ? `Companion refused this page’s surface: ${s.error}`
       : s.state === 'connected' && !s.registered ? 'Setting up this page’s buttons in Companion…'

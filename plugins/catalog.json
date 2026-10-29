@@ -4,8 +4,8 @@
     {
       "id": "companion",
       "name": "Companion buttons",
-      "version": "1.0.0",
-      "description": "Bitfocus Companion buttons on the Home pages, live: each Home page is a button surface in Companion, and taps press the button, the same as a Stream Deck.",
+      "version": "1.2.0",
+      "description": "Bitfocus Companion buttons on the Home pages and Custom Pages, live: each page is a button surface in Companion, and taps press the button, the same as a Stream Deck.",
       "author": "JPMixer",
       "permissions": [
         "integration"
@@ -15,23 +15,23 @@
       "files": [
         {
           "path": "companion.js",
-          "size": 15535,
-          "sha256": "fd722332fe005583288c18001768127a0f71220b9d5cb0ff55c58ad0bc5f65cc"
+          "size": 18408,
+          "sha256": "7a5bc92dd8a62aaeff46802d6cb8d55fa94f7b8ed7492460ff7dcc44452b40e2"
         },
         {
           "path": "index.js",
-          "size": 2128,
-          "sha256": "0c9c2201f6c92b023ffa7c7d336464a3bd7a2a6a710406cf19d71f734a057f70"
+          "size": 2464,
+          "sha256": "4b91244938c66598df2376e9e4d3413c867142e4581d10eac98952f980cb2e90"
         },
         {
           "path": "plugin.json",
-          "size": 528,
-          "sha256": "bea2365ba5cf7c4be5cc2864edad0411ed8c7944c8546604bf73b7ce5bdb284d"
+          "size": 534,
+          "sha256": "ea9fc201124a91d2b3d93c0638a8ba7748d530f03d02af076528cf3113d58a28"
         },
         {
           "path": "README.md",
-          "size": 659,
-          "sha256": "78a8e5ccbe2f17631b7957e07cc00c37476d1da1c5a0a6688189cbbdb2a0ea62"
+          "size": 962,
+          "sha256": "b528eeddeb0ff7872eb8698cce30ee45106a4265446afad138e352983a7f4652"
         }
       ]
     },
@@ -56,6 +56,58 @@
           "path": "plugin.json",
           "size": 580,
           "sha256": "b4536f4997dfedd644a53bef87bb246ba17541c3c581fb4e1d56fd9f93c7418d"
+        }
+      ]
+    },
+    {
+      "id": "custom-pages",
+      "name": "Custom Pages",
+      "version": "1.0.1",
+      "description": "Link-only pages for a youth night or an event: the channel and control group faders that group needs, each with its own highest level, plus mute buttons and Companion buttons if you want them.",
+      "author": "JPMixer",
+      "permissions": [
+        "page",
+        "faders",
+        "console",
+        "companion"
+      ],
+      "minJPMixer": "2.0.16",
+      "path": "custom-pages",
+      "files": [
+        {
+          "path": "index.js",
+          "size": 9951,
+          "sha256": "7723d6c36a7fa91eeccc9ce03c95c767b7022af2e0c65a6f6cff426a89507b70"
+        },
+        {
+          "path": "page/app.js",
+          "size": 15764,
+          "sha256": "ae9410d4b1805b440b9465c73f37ce254237c9c27c6dcf5bd16ee4e2dcfe6218"
+        },
+        {
+          "path": "page/index.html",
+          "size": 1206,
+          "sha256": "6f357cbc36737e14d5b00ba38209c3eb8b0792111f66ee8c1035debc436e722b"
+        },
+        {
+          "path": "page/style.css",
+          "size": 5915,
+          "sha256": "4b392421a85fb62de975d7a7c05616fed1fc2a1efb9f98e81c457b430857cc3a"
+        },
+        {
+          "path": "pages.js",
+          "size": 4240,
+          "sha256": "8ceb397f19cd89695488ac1ad73374043b975dadb24f347f8585a94233ec92ae"
+        },
+        {
+          "path": "plugin.json",
+          "size": 762,
+          "sha256": "b4a3a1344bd216100094c78a24ccee147e0c3f2116d07ec699ea3429154044b1"
+        },
+        {
+          "path": "README.md",
+          "size": 1648,
+          "sha256": "5361bdbd1098d04aff9f4a780d67a04559842618abec3c7e50ac7a0c0374c0e1"
         }
       ]
     },

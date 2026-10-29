@@ -30,7 +30,7 @@ function fakePco(plans, times = {}) {
   return {
     calls,
     nextPlan: async (type) => { calls.push(`plan:${type}`); if (plans[type] instanceof Error) throw plans[type]; return plans[type] || null; },
-    listPlanTimes: async (type, id) => { calls.push(`times:${type}`); return times[type] || []; },
+    listPlanTimes: async (type, id) => { calls.push(`times:${type}`); if (times[type] instanceof Error) throw times[type]; return times[type] || []; },
   };
 }
 
@@ -70,10 +70,22 @@ test('a main plan dated yesterday whose service time is today still comes first'
   assert.equal((await svc.activeService(pco, {}, base, WED)).service.which, 'main');
 });
 
-test('a second service Planning Center can’t reach leaves the main one running', async () => {
-  const pco = fakePco({ sun: { id: 's1', date: at(4, 9) }, wed: new Error('offline') });
+test('a second service whose plan Planning Center says is gone leaves the main one running', async () => {
+  const pco = fakePco({ sun: { id: 's1', date: at(4, 9) }, wed: Object.assign(new Error('Not found'), { status: 404 }) });
   const { service, plan } = await svc.activeService(pco, {}, base, WED);
   assert.equal(service.which, 'main'); assert.equal(plan.id, 's1');
+});
+
+test('a hiccup on the second service’s night isn’t taken as “not today”: it fails, so nothing switches to the main service', async () => {
+  // Falling back renamed the mixes to Sunday's team mid-service, cleared
+  // team chat and could move phones to Sunday's mixes
+  const hiccup = () => Object.assign(new Error('Couldn’t reach Planning Center'), { temporary: true });
+  // Its plan
+  await assert.rejects(svc.activeService(fakePco({ sun: { id: 's1', date: at(4, 9) }, wed: hiccup() }), {}, base, WED), /Couldn’t reach/);
+  // Its times (a plan dated tomorrow whose service may be tonight)
+  await assert.rejects(svc.activeService(fakePco({ sun: { id: 's1', date: at(4, 9) }, wed: { id: 'w1', date: at(1, 9) } }, { wed: hiccup() }), {}, base, WED), /Couldn’t reach/);
+  // The main plan's times, asked to see whether the main one is on too
+  await assert.rejects(svc.activeService(fakePco({ sun: { id: 's1', date: at(-1, 18) }, wed: { id: 'w1', date: at(0, 19) } }, { sun: hiccup() }), {}, base, WED), /Couldn’t reach/);
 });
 
 test('a Home page counts as set up when either service picks its role', () => {

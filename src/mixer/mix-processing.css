@@ -1,0 +1,25 @@
+/* A dLive mix's graphic EQ and compressor (mix-processing.js), in the EQ
+   panel's look (mixer.css .eq-panel) */
+body.geqOpen #geqPanel, body.compOpen #compPanel { display: flex; }
+.dyn-body { display: flex; flex-direction: column; gap: 12px; }
+.dyn-readout { min-height: 18px; color: var(--sub); font-size: 12px; font-variant-numeric: tabular-nums; }
+.dyn-note { margin: 0; color: var(--sub); font-size: 12px; line-height: 1.5; }
+.dyn-row { padding: 14px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+
+/* 28 bands side by side: the row scrolls sideways, each band moves up and down */
+.geq-bands {
+  display: flex; gap: 4px; overflow-x: auto; padding: 12px 8px 8px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+}
+.geq-band { flex: none; width: 34px; display: flex; flex-direction: column; align-items: center; gap: 6px; scroll-snap-align: start; }
+.geq-val { height: 14px; color: var(--text); font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.geq-freq { color: var(--sub); font-size: 9px; font-weight: 600; letter-spacing: .2px; }
+.geq-slider {
+  writing-mode: vertical-lr; direction: rtl; /* a vertical fader, +12 at the top */
+  width: 30px; height: min(46vh, 260px); margin: 0; padding: 0;
+  accent-color: rgb(var(--tint)); cursor: pointer; touch-action: pan-x; /* a sideways swipe scrolls the row */
+}
+@media (max-width: 520px) {
+  .geq-band { width: 30px; }
+}

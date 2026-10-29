@@ -510,3 +510,17 @@ body:not(.disconnected) .overlay { display: none; }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* The Console Controller's code (Settings → Pages → Console Controller) */
+body.con-locked > :not(.con-lock):not(.con-header):not(script), body.con-locked .con-snapshot-group { display: none !important; }
+.con-lock { display: grid; place-items: center; min-height: 70vh; padding: 16px; }
+.con-lock[hidden] { display: none; }
+.con-lock-card { width: min(380px, 100%); display: grid; gap: 14px; padding: 30px; border: 1px solid var(--jp-edge, #3a404b); border-radius: 16px; background: var(--jp-card, #1c1e23); }
+.con-lock-eyebrow { font-size: 11px; font-weight: 650; letter-spacing: 1.4px; color: var(--accent); }
+.con-lock-card h1 { font-size: 24px; font-weight: 650; letter-spacing: -.5px; color: var(--text); }
+.con-lock-sub { color: var(--jp-secondary, #8b92a5); font-size: 13px; line-height: 1.5; }
+.con-lock-card input { height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--jp-edge, #3a404b); background: var(--jp-deep, #111316); color: var(--text); font: inherit; font-size: 18px; letter-spacing: 3px; }
+.con-lock-card input:focus { outline: none; border-color: var(--accent); }
+.con-lock-card button { height: 46px; border: none; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-weight: 650; cursor: pointer; }
+.con-lock-card button:disabled { opacity: .6; cursor: wait; }
+.con-lock-error { min-height: 18px; color: var(--jp-accent-soft, #ff6b85); font-size: 13px; }

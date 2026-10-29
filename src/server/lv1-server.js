@@ -45,6 +45,7 @@ const { mountGreenRoom } = require('./greenroom');
 const { mountBranding } = require('./branding');
 const { mountPerformerAssignments } = require('./performer-assignments');
 const { mountFoh } = require('./foh');
+const access = require('./access');
 const P = require('./lv1-protocol');
 const { Lv1Client } = require('./lv1-client');
 const discovery = require('./lv1-discovery');
@@ -866,6 +867,32 @@ function sendConsoleState(ws) {
   add('cg', dcas.length, true);
   for (const m of out) { try { ws.send(JSON.stringify(m)); } catch (_) {} }
 }
+// Channel and control group faders and mutes for plugins (plugins.js
+// "faders", JPMixer's own plugins only): what the Console Controller shows,
+// and moved the way it moves them. kind 'ch' | 'cg'; a level is dB, -150 off.
+// (LV1 sends every track's state by itself, so there's nothing to ask for)
+const STRIP_KIND = { ch: 'input', cg: 'cg' };
+function getStrips() {
+  const out = { ch: {}, cg: {} };
+  for (const [kind, count] of [['ch', chCount()], ['cg', dcas.length]]) {
+    for (let n = 1; n <= count; n++) {
+      const tr = trackFor(STRIP_KIND[kind], n); if (!tr) continue;
+      const t = tracks.get(`${tr.type}:${tr.n}`); if (!t) continue;
+      out[kind][n] = { db: Number.isFinite(t.gain) ? t.gain : null, mute: !!t.mute };
+    }
+  }
+  return out;
+}
+function primeStrips() {}
+function setStrip(kind, nRaw, what, value) {
+  const n = parseInt(nRaw, 10);
+  if (!STRIP_KIND[kind] || !Number.isInteger(n) || !lv1 || !trackFor(STRIP_KIND[kind], n)) return false;
+  if (what === 'fader' && (typeof value !== 'number' || !Number.isFinite(value))) return false;
+  if (what !== 'fader' && what !== 'mute') return false;
+  consoleWrite(null, STRIP_KIND[kind], n, what, value);
+  return true;
+}
+
 // A Console Controller move: to LV1, and to the other pages showing it
 function consoleWrite(ws, strip, numRaw, kind, value) {
   const tr = trackFor(strip, parseInt(numRaw, 10));
@@ -929,6 +956,7 @@ function start(cfg) {
   resetState();
 
   const appExpress = express();
+  access.mountOneTimeLinks(appExpress); // a browser opened from Settings: this computer's pass
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
   mountGreenRoom(appExpress);
   mountBranding(appExpress);
@@ -954,7 +982,8 @@ function start(cfg) {
     broadcastDevicesUpdate();
   }, 25000);
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    access.noteSocket(ws, req);
     logEvent('client-connect', `total:${connections.length + 1}`);
     ws._lastPong = Date.now();
     ws.on('pong', () => { ws._lastPong = Date.now(); });
@@ -972,6 +1001,8 @@ function start(cfg) {
       try { msg = JSON.parse(raw); } catch (_) { return; }
 
       if (msg.type === 'pong') { ws._lastPong = Date.now(); return; }
+      // The Console Controller's messages need its code (Settings → Pages)
+      if (!access.consoleMessageAllowed(ws, msg)) return;
 
       if (msg.type === 'request-aux-levels') {
         // A mix LV1 hasn't reported yet (a phone back while a big show is
@@ -1265,5 +1296,5 @@ module.exports = { getConnectedDevicesInfo, pushDevicePresets, getControlGroups,
   isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,
   startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder,
-  fireSnapshot, setMute: sendMute, setSolo: sendSolo, setChannelLabel, setAuxLabel,
+  fireSnapshot, setMute: sendMute, setSolo: sendSolo, setChannelLabel, setAuxLabel, getStrips, primeStrips, setStrip,
 };

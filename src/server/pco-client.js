@@ -35,7 +35,7 @@ function authHeader(appId, secret) {
   return 'Basic ' + Buffer.from(`${String(appId ?? '').trim()}:${String(secret ?? '').trim()}`).toString('base64');
 }
 
-const REQUEST_TIMEOUT_MS = 15000;
+let REQUEST_TIMEOUT_MS = 15000; // tests shorten it (_setRequestTimeout)
 
 // For Settings → Performance: when each request went out (the last minute),
 // and the last one that failed. Never the address or the credentials.
@@ -57,14 +57,29 @@ function requestStats() {
   };
 }
 
+// Why a request got no answer, in plain words, from the network error's code:
+// "Couldn't reach Planning Center" alone didn't say whether the computer had
+// no internet, a firewall was in the way, or its clock was wrong
+function reachProblem(e) {
+  const code = (e && e.cause && e.cause.code) || (e && e.code) || '';
+  if (/ENOTFOUND|EAI_AGAIN/.test(code)) return 'this computer couldn’t look up Planning Center’s address (no internet, or its DNS isn’t answering)';
+  if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|ENETDOWN|UND_ERR_SOCKET/.test(code)) return 'the connection was refused or dropped (no internet, or a firewall)';
+  if (/CERT|SSL|TLS|SELF_SIGNED|UNABLE_TO_VERIFY/i.test(code)) return 'the secure connection failed (check this computer’s date and time, or a network filter)';
+  if (/TIMEOUT/i.test(code)) return 'the connection timed out';
+  return code ? `network error ${code}` : 'no answer from the network';
+}
+
 async function pcoFetch(pathOrUrl, creds) {
   noteRequest();
   const controller = new AbortController();
+  // The whole answer, not only its start: a connection that stalled part-way
+  // through used to wait about 5 minutes, and every screen sharing the request
+  // with it
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   // links.next (used by pcoFetchAll below) comes back as a full URL, not a
   // path — accept either so pagination doesn't need its own request logic.
   const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${BASE}${pathOrUrl}`;
-  let res;
+  let res, text;
   try {
     res = await fetch(url, {
       headers: {
@@ -74,21 +89,28 @@ async function pcoFetch(pathOrUrl, creds) {
       },
       signal: controller.signal,
     });
+    text = await res.text();
   } catch (e) {
-    noteFailure(null, e.name === 'AbortError' ? 'No answer in time' : 'Couldn’t reach Planning Center');
-    if (e.name === 'AbortError') {
+    if (e.name === 'AbortError' || controller.signal.aborted) {
+      noteFailure(null, 'No answer in time');
       const err = new Error(`Planning Center didn't respond within ${REQUEST_TIMEOUT_MS / 1000}s — check your network connection.`);
       err.status = null;
       err.body = null;
       err.temporary = true;
       throw err;
     }
-    e.temporary = true; // no answer at all: the network, or Planning Center down
-    throw e;
+    // No answer at all, or it broke off: the network, or Planning Center down
+    const why = reachProblem(e);
+    noteFailure(null, `Couldn’t reach Planning Center: ${why}`);
+    const err = new Error(`Couldn’t reach Planning Center: ${why}.`);
+    err.status = null;
+    err.body = null;
+    err.temporary = true;
+    err.cause = e;
+    throw err;
   } finally {
     clearTimeout(timer);
   }
-  const text = await res.text();
   if (!res.ok) {
     noteFailure(res.status, res.status === 429 ? 'Too many requests' : res.status === 401 ? 'Login refused' : `Error ${res.status}`);
     const err = new Error(`Planning Center request failed: ${res.status} ${res.statusText}`);
@@ -584,4 +606,4 @@ const shared = {
   clear: () => sharedCache.clear(), // tests
 };
 
-module.exports = { requestStats, isTemporary: temporary, listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };
+module.exports = { _setRequestTimeout: (ms) => { REQUEST_TIMEOUT_MS = ms; }, requestStats, isTemporary: temporary, listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };

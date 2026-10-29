@@ -215,3 +215,21 @@ test('a copy that comes with JPMixer that doesn’t match (line endings changed,
     await plugins.stopAll();
   }
 });
+
+test('turned on with an older copy of its plugin installed: it needs installing, and gets the one that comes with JPMixer', async () => {
+  // Companion buttons 1.0.0, as 2.0.15 installed it (it can't do custom pages)
+  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'jpmixer-companion-1.0.0-'));
+  const { execFileSync } = require('child_process');
+  const repo = path.join(__dirname, '..', '..');
+  for (const f of ['plugin.json', 'index.js', 'companion.js', 'README.md']) fs.writeFileSync(path.join(old, f), execFileSync('git', ['show', `5846045:plugins/companion/${f}`], { cwd: repo }));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(old, 'plugin.json'), 'utf8')).version, '1.0.0');
+  assert.equal((await plugins.install(old, { origin: 'catalog' })).ok, true);
+  fs.rmSync(old, { recursive: true, force: true });
+  assert.deepEqual([plugins.officialState('companion').version, plugins.officialState('companion').official], ['1.0.0', true]);
+  assert.equal(integrations.needsInstall('companion'), true, 'older than the copy that comes with JPMixer');
+  assert.deepEqual(await integrations.ensureInstalled('companion'), { ok: true, from: 'bundled' });
+  assert.equal(plugins.officialState('companion').version, plugins.bundledVersion('companion'));
+  assert.equal(integrations.needsInstall('companion'), false);
+  await plugins.stopAll();
+  await until(() => plugins._running.size === 0);
+});

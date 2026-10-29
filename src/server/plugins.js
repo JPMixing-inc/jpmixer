@@ -64,13 +64,16 @@ const PERMISSIONS = {
   planningCenter: 'See the plan’s title, what’s live and what’s next from Planning Center',
   page: 'Show a page of its own, listed with the Home pages',
   integration: 'Feed JPMixer’s own pages and Settings (official JPMixer plugins only)',
+  faders: 'Move the console’s channel and control group faders and mutes (official JPMixer plugins only)',
+  companion: 'Show Companion buttons through the Companion buttons plugin (official JPMixer plugins only)',
 };
 // Official JPMixer plugins: marked as JPMixer's own (and an integration can
 // feed JPMixer's pages), as long as their files are the ones installed from
 // the approved list (or from the copy that comes with JPMixer). An integration (Shure, Smaart, Companion) also has its
 // on/off and settings in JPMixer's config, in its own Settings tab
 // (integrations.js hands them over), not in plugins.json.
-const OFFICIAL = { patch: {}, shure: { integration: true }, smaart: { integration: true }, companion: { integration: true } };
+const OFFICIAL = { patch: {}, shure: { integration: true }, smaart: { integration: true }, companion: { integration: true }, 'custom-pages': { faders: true, companion: true } };
+const canFaders = (id) => !!(Object.hasOwn(OFFICIAL, id) && OFFICIAL[id].faders);
 const isIntegrationId = (id) => !!(Object.hasOwn(OFFICIAL, id) && OFFICIAL[id].integration);
 const FIELD_TYPES = new Set(['text', 'password', 'number', 'checkbox', 'select']);
 const COLORS = new Set(['green', 'yellow', 'red', 'blue', 'gray']);
@@ -79,7 +82,7 @@ const MAX_SETTINGS = 24, MAX_ROWS = 20, LOG_LINES = 200;
 const RESTART_DELAYS_MS = [2000, 5000, 15000, 30000, 60000];
 const CRASH_WINDOW_MS = 10 * 60 * 1000, MAX_CRASHES = 5;
 const STOP_GRACE_MS = 2000;
-const CONSOLE_PUSH_MS = 3000, PCO_PUSH_MS = 15000;
+const CONSOLE_PUSH_MS = 3000, PCO_PUSH_MS = 15000, FADERS_PUSH_MS = 300;
 
 const pluginsDir = () => path.join(app.getPath('userData'), 'plugins');
 const dataDir = (id) => path.join(app.getPath('userData'), 'plugin-data', id);
@@ -147,6 +150,8 @@ function readManifest(folder) {
   const unknown = asked.filter((p) => !Object.hasOwn(PERMISSIONS, p));
   if (unknown.length) return { ok: false, error: `Unknown permission: ${unknown.map(String).join(', ')}. This version of JPMixer knows ${Object.keys(PERMISSIONS).join(', ')}.` };
   if (asked.includes('integration') && !isIntegrationId(id)) return { ok: false, error: 'Only JPMixer’s own integrations can ask for "integration".' };
+  if (asked.includes('faders') && !canFaders(id)) return { ok: false, error: 'Only JPMixer’s own plugins can ask for "faders".' };
+  if (asked.includes('companion') && !(Object.hasOwn(OFFICIAL, id) && OFFICIAL[id].companion)) return { ok: false, error: 'Only JPMixer’s own plugins can ask for "companion".' };
   const settings = [];
   const keys = new Set();
   for (const f of (Array.isArray(raw.settings) ? raw.settings : []).slice(0, MAX_SETTINGS)) {
@@ -166,7 +171,8 @@ function readManifest(folder) {
     const pageEntry = path.resolve(folder, entryRel);
     if (!pageEntry.startsWith(path.resolve(folder) + path.sep) || !/\.html?$/i.test(pageEntry)) return { ok: false, error: '"page.entry" must be an .html file inside the plugin’s folder.' };
     if (!fs.existsSync(pageEntry)) return { ok: false, error: `${entryRel} (its page) is missing.` };
-    page = { title: text(raw.page && raw.page.title, 40) || name, entry: path.relative(folder, pageEntry).split(path.sep).join('/') };
+    // listed: false keeps it off the Home pages list (opened only from its links)
+    page = { title: text(raw.page && raw.page.title, 40) || name, entry: path.relative(folder, pageEntry).split(path.sep).join('/'), listed: !(raw.page && raw.page.listed === false) };
   }
   return {
     ok: true,
@@ -372,7 +378,7 @@ function startOne(entry) {
     id: manifest.id, entry, settings, fp: fingerprint(entry, settings), files: filesPrint(entry), live: false,
     official: isOfficial(entry, { fresh: true }), // checked as it starts: the code it runs is what it loaded then
     child: null, card: null, cardAt: null, status: { level: 'ok', text: 'Starting…' },
-    log: [], stopping: false, restartTimer: null, startedAt: Date.now(), lastPush: { console: '', planningCenter: '' },
+    log: [], stopping: false, restartTimer: null, startedAt: Date.now(), lastPush: { console: '', planningCenter: '', faders: '' },
   };
   running.set(manifest.id, run);
   // A new run of an integration: JPMixer forgets what the last one shared
@@ -478,9 +484,36 @@ async function onMessage(run, msg, addLog) {
     }
     case 'request': {
       const what = msg.what;
-      if (!['console', 'planningCenter'].includes(what) || !can(what)) { send(run, { type: 'reply', id: msg.id, error: `plugin.json doesn’t ask for the "${String(what)}" permission.` }); return; }
-      try { send(run, { type: 'reply', id: msg.id, result: await provide(what) }); }
+      if (!['console', 'planningCenter', 'faders'].includes(what) || !can(what)) { send(run, { type: 'reply', id: msg.id, error: `plugin.json doesn’t ask for the "${String(what)}" permission.` }); return; }
+      if (what === 'faders' && !run.official) { send(run, { type: 'reply', id: msg.id, error: 'Only an official copy of a JPMixer plugin can use the faders.' }); return; }
+      try { send(run, { type: 'reply', id: msg.id, result: what === 'faders' ? provideFaders(msg.want) : await provide(what) }); }
       catch (e) { send(run, { type: 'reply', id: msg.id, error: e.message || 'Not available right now.' }); }
+      return;
+    }
+    // Companion buttons through the Companion buttons plugin (jp.companion):
+    // JPMixer's own plugins only, with their approved files
+    case 'companion-call': {
+      const reply = (out) => send(run, { type: 'reply', id: msg.id, ...out });
+      if (!can('companion') || !(OFFICIAL[run.id] && OFFICIAL[run.id].companion) || !run.official) { reply({ error: 'Only an official copy of a JPMixer plugin can use Companion buttons.' }); return; }
+      if (!['surfaces', 'view', 'press', 'status'].includes(msg.op) || typeof providers.companion !== 'function') { reply({ error: 'Companion buttons aren’t available here.' }); return; }
+      try { reply({ result: JSON.parse(JSON.stringify((await providers.companion(msg.op, msg.body && typeof msg.body === 'object' ? msg.body : {})) ?? null)) }); }
+      catch (e) { reply({ error: e.message || 'Companion buttons aren’t available right now.' }); }
+      return;
+    }
+    // A fader or mute move (jp.faders.set): JPMixer's own plugins only, with
+    // their approved files; the plugin keeps its own limits (the level caps)
+    case 'fader-set': {
+      const reply = (out) => send(run, { type: 'reply', id: msg.id, ...out });
+      if (!can('faders') || !canFaders(run.id) || !run.official) { reply({ error: 'Only an official copy of a JPMixer plugin can move the faders.' }); return; }
+      const c = msg.change && typeof msg.change === 'object' ? msg.change : {};
+      const kind = c.kind === 'ch' || c.kind === 'cg' ? c.kind : null;
+      const n = Number.isInteger(c.number) ? c.number : NaN;
+      const what = c.what === 'fader' || c.what === 'mute' ? c.what : null;
+      if (!kind || !(n >= 1 && n <= 256) || !what) { reply({ error: 'jp.faders.set() needs { kind: "ch" | "cg", number, level } or { kind, number, muted }.' }); return; }
+      const value = what === 'fader' ? Number(c.value) : c.value === true;
+      if (what === 'fader' && !Number.isFinite(value)) { reply({ error: 'The level must be a number of dB.' }); return; }
+      try { reply({ result: !!(providers.setFader && providers.setFader(kind, n, what, value)) }); }
+      catch (e) { reply({ error: e.message || 'The console isn’t available right now.' }); }
       return;
     }
     default:
@@ -606,6 +639,25 @@ function updateWatchers(wanted) {
   }
 }
 
+// The faders: straight from the backend's memory (no Planning Center behind
+// it), so no shared cache. `want` [{ kind, n }]: strips to ask the console for
+function provideFaders(want) {
+  const fn = providers.faders;
+  if (typeof fn !== 'function') return { supported: false, connected: false, ch: {}, cg: {} };
+  return JSON.parse(JSON.stringify(fn(Array.isArray(want) ? want : null) || { supported: false, ch: {}, cg: {} }));
+}
+function pushFaders() {
+  const runs = [...running.values()].filter((r) => r.child && r.official && r.entry.manifest.permissions.includes('faders'));
+  if (!runs.length) return;
+  let value;
+  try { value = provideFaders(null); } catch (_) { return; }
+  const key = JSON.stringify(value);
+  for (const run of runs) {
+    if (run.lastPush.faders === key) continue;
+    if (send(run, { type: 'faders', data: value })) run.lastPush.faders = key;
+  }
+}
+
 // Sends the console's names / the plan to plugins that asked, when they change
 async function push(what) {
   const runs = [...running.values()].filter((r) => r.child && r.entry.manifest.permissions.includes(what));
@@ -620,13 +672,14 @@ async function push(what) {
 }
 
 function start(given = {}) {
-  providers = { console: given.console || null, planningCenter: given.planningCenter || null };
+  providers = { console: given.console || null, planningCenter: given.planningCenter || null, faders: given.faders || null, setFader: given.setFader || null, pageBase: given.pageBase || null, companion: given.companion || null };
   provided.clear();
   if (started) return apply();
   started = true;
   pushTimers = [
     setInterval(() => push('console'), CONSOLE_PUSH_MS),
     setInterval(() => push('planningCenter'), PCO_PUSH_MS),
+    setInterval(pushFaders, FADERS_PUSH_MS),
   ];
   for (const t of pushTimers) if (t.unref) t.unref();
   return apply();
@@ -760,7 +813,8 @@ function list() {
     return {
       ...base,
       manifest: e.manifest,
-      permissions: e.manifest.permissions.map((p) => ({ id: p, text: PERMISSIONS[p] })),
+      // A page kept off the Home pages list says so, not "listed with the Home pages"
+      permissions: e.manifest.permissions.map((p) => ({ id: p, text: p === 'page' && e.manifest.page && e.manifest.page.listed === false ? 'Show a page of its own, opened only from its links' : PERMISSIONS[p] })),
       settings: settingsFor(e.manifest),
       state: run ? (run.gaveUp ? 'crashed' : run.child ? 'running' : 'restarting') : base.enabled ? (base.official || !isIntegrationId(e.id) ? 'starting' : 'crashed') : 'off',
       // An integration that's on but whose files changed doesn't run: said so, not "starting"
@@ -922,18 +976,21 @@ const pageEntry = (id) => {
   const file = path.join(folder, ...entry.manifest.page.entry.split('/'));
   return { folder, dir: path.dirname(file), index: path.basename(file), title: entry.manifest.page.title };
 };
-// For the Home pages list: every plugin page that can be opened now
-function pages() {
+// For the Home pages list: every plugin page that can be opened now (with
+// { all: true }, also those kept off the list, for Settings' Open button)
+function pages({ all = false } = {}) {
   loadState();
   return scanSoon()
-    .filter((e) => e.manifest && e.manifest.page && e.manifest.permissions.includes('page') && wantsRun(e))
+    .filter((e) => e.manifest && e.manifest.page && e.manifest.permissions.includes('page') && wantsRun(e) && (all || e.manifest.page.listed !== false))
     .map((e) => ({ id: e.id, title: e.manifest.page.title, plugin: e.manifest.name, href: `/p/${e.id}/` }));
 }
 
 // A call from a plugin's page to the plugin's jp.page.handle(name, fn)
 const PAGE_CALL_TIMEOUT_MS = 10000;
 let pageCallId = 0;
-function callPage(id, name, body) {
+// `from`: { local } true when the page was opened on this computer, from
+// JPMixer or Settings (access.js), for a plugin's editing tools
+function callPage(id, name, body, from = { local: false }) {
   const run = running.get(id);
   if (!run || !run.child || !run.entry.manifest.permissions.includes('page')) return Promise.reject(Object.assign(new Error('The plugin isn’t running right now.'), { status: 503 }));
   run.pageCalls = run.pageCalls || new Map();
@@ -942,7 +999,7 @@ function callPage(id, name, body) {
     const callId = ++pageCallId;
     const timer = setTimeout(() => { run.pageCalls.delete(callId); reject(Object.assign(new Error('The plugin didn’t answer in time.'), { status: 504 })); }, PAGE_CALL_TIMEOUT_MS);
     run.pageCalls.set(callId, { resolve, reject, timer });
-    if (!send(run, { type: 'page-call', id: callId, name, body })) { clearTimeout(timer); run.pageCalls.delete(callId); reject(Object.assign(new Error('The plugin isn’t running right now.'), { status: 503 })); }
+    if (!send(run, { type: 'page-call', id: callId, name, body, from: { local: from.local === true, ...(from.local === true && from.base ? { base: text(from.base, 200) } : {}) } })) { clearTimeout(timer); run.pageCalls.delete(callId); reject(Object.assign(new Error('The plugin isn’t running right now.'), { status: 503 })); }
   });
 }
 
@@ -969,6 +1026,10 @@ function secret() {
   return pageSecret;
 }
 const pageToken = (id) => crypto.createHmac('sha256', secret()).update(`plugin-page:${id}`).digest('hex').slice(0, 40);
+// Written into the page only when it's opened on this computer (JPMixer's own
+// window, or a browser opened from Settings), and sent back with its calls:
+// a sandboxed page's calls carry no cookies, so this says where it was opened
+const localToken = (id) => crypto.createHmac('sha256', secret()).update(`plugin-page-local:${id}:${require('./access').localPass()}`).digest('hex').slice(0, 40);
 const sameToken = (a, b) => typeof a === 'string' && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 function mountPluginPages(app) {
   const express = require('express');
@@ -995,7 +1056,8 @@ function mountPluginPages(app) {
     if (/\.html?$/i.test(file)) {
       let html;
       try { html = fs.readFileSync(file, 'utf8'); } catch (_) { res.status(404).end(); return; }
-      const meta = `<meta name="jpmixer-token" content="${pageToken(id)}">`;
+      let meta = `<meta name="jpmixer-token" content="${pageToken(id)}">`;
+      if (require('./access').fromThisComputer(req)) meta += `\n<meta name="jpmixer-local" content="${localToken(id)}">`;
       // In its <head>; with none, after the doctype (before it would put the page in quirks mode)
       if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${meta}`);
       else if (/^\s*<!doctype[^>]*>/i.test(html)) html = html.replace(/^\s*<!doctype[^>]*>/i, (m) => `${m}\n${meta}`);
@@ -1013,7 +1075,7 @@ function mountPluginPages(app) {
     if (!allowOrigin(req)) { res.status(403).end(); return; }
     res.set('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.set('Access-Control-Allow-Methods', 'POST');
-    res.set('Access-Control-Allow-Headers', 'Content-Type, X-JPMixer-Plugin, X-JPMixer-Token');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, X-JPMixer-Plugin, X-JPMixer-Token, X-JPMixer-Local');
     res.set('Access-Control-Max-Age', '600');
     res.status(204).end();
   });
@@ -1024,7 +1086,11 @@ function mountPluginPages(app) {
     if (!ok) { res.status(403).json({ ok: false, error: 'Not allowed. Reload the page.' }); return; }
     if (req.headers.origin) res.set('Access-Control-Allow-Origin', req.headers.origin);
     if (!pageEntry(id)) { res.status(404).json({ ok: false, error: 'This plugin isn’t on.' }); return; }
-    try { res.json({ ok: true, result: await callPage(id, name, req.body === undefined ? null : req.body) }); }
+    const local = sameToken(req.headers['x-jpmixer-local'], localToken(id));
+    // Opened on this computer: also the address phones use (as Settings shows it)
+    const from = { local };
+    if (local && typeof providers.pageBase === 'function') { try { from.base = String((await providers.pageBase()) || ''); } catch (_) { /* left out */ } }
+    try { res.json({ ok: true, result: await callPage(id, name, req.body === undefined ? null : req.body, from) }); }
     catch (e) { res.status(e.status || (e.fromPlugin ? 400 : 500)).json({ ok: false, error: e.message || 'The plugin couldn’t do that.' }); }
   });
 }

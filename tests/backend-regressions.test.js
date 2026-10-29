@@ -29,6 +29,8 @@ function backend(family) {
     setSendPan(...args) { this.writes.push(['pan', ...args]); }
     setPan(...args) { this.writes.push(['pan', ...args]); }
     requestSendLevel() {}
+    setSendAssign(...args) { this.writes.push(['assign', ...args]); return true; }
+    requestSendAssign(...args) { this.writes.push(['ask-assign', ...args]); return true; }
     requestName() {}
     requestColour() {}
   }
@@ -49,7 +51,8 @@ function backend(family) {
     './console-names': { remembered: () => undefined }, // no names remembered: what the console sends now
     './scenes': { getAll: () => scenes, getScene: (key, aux) => scenes[key]?.[aux] },
     './wing-client': { WingClient: Client }, './klang-client': { KlangClient: Client },
-    './dlive-client': { DliveClient: Client }
+    './dlive-client': { DliveClient: Client },
+    './access': { mountOneTimeLinks() {}, noteSocket() {}, consoleMessageAllowed: () => true, fromThisComputer: () => true }, // no codes set
   };
   const sharedContext = vm.createContext({
     module: { exports: {} }, require: name => mocks[name] || require(name)
@@ -65,7 +68,8 @@ function backend(family) {
   vm.runInContext(read(`${family}-server.js`), context);
   const run = code => vm.runInContext(code, context);
   const drain = () => run('pacer.flush()');
-  run("start({serverPort:0,deskIp:'127.0.0.1',klangIp:'127.0.0.1',channels:2,auxes:1,sceneRecallEnabled:true})");
+  // dLive's level mute (dliveMuteBySendOff: false) here; its send-off mute has its own test below
+  run("start({serverPort:0,deskIp:'127.0.0.1',klangIp:'127.0.0.1',channels:2,auxes:1,sceneRecallEnabled:true,dliveMuteBySendOff:false,dlivePan:false})");
   function socket() {
     const ws = new EventEmitter();
     ws.readyState = 1;
@@ -392,6 +396,49 @@ for (const family of ['dlive', 'klang', 'wing']) {
     assert.equal(ws.messages.filter(m => m.config).at(-1).config.earScenes, false);
   });
 }
+
+test('dLive mute by send off: the send switched off and back, again after a reconnect, on again at stop', async () => {
+  const h = backend('dlive'), ws = h.socket();
+  h.run('serverCfg.dliveMuteBySendOff = true');
+  const offs = () => h.client.writes.filter(w => w[0] === 'assign' && w.at(-1) === false).length;
+  ws.sendMessage({ address: levelAddress(2), args: [-9] });
+  ws.sendMessage({ type: 'set-mute', aux: 1, ch: 2, muted: true });
+  h.run('while (primeQueue.length) primeQueue.shift()()'); // the paced questions, without waiting
+  assert.ok(h.client.writes.some(w => w[0] === 'ask-assign'), 'the console is asked whether the send is on');
+  h.client.emit('sendAssign', { midiCh: 0, ch: 1, sndMidiCh: 2, sndCh: 0, on: true });
+  h.drain();
+  assert.equal(offs(), 1, 'then it is switched off');
+  assert.ok(!h.client.writes.some(w => w[0] === 'level' && w.at(-1) === -Infinity), 'the level is left alone');
+  h.client.writes.length = 0;
+  h.client.emit('close');
+  h.client.emit('connect');
+  h.drain();
+  assert.equal(offs(), 1, 'a console that restarted gets it off again');
+  h.client.writes.length = 0;
+  await h.api.stop();
+  assert.deepEqual(h.client.writes.filter(w => w[0] === 'assign').map(w => w.at(-1)), [true], 'stopping switches it back on');
+});
+
+test('dLive mute by send off: a mute let go while its write is still queued ends with the send on', () => {
+  const h = backend('dlive'), ws = h.socket();
+  h.run('serverCfg.dliveMuteBySendOff = true');
+  h.client.emit('sendAssign', { midiCh: 0, ch: 1, sndMidiCh: 2, sndCh: 0, on: true }); // the console has it on
+  // Channel 1 soloed (channel 2 off), then let go, while writes may still be queued
+  const last = () => (h.client.writes.filter(w => w[0] === 'assign').at(-1) || []).at(-1);
+  ws.sendMessage({ type: 'set-solo', aux: 1, ch: 1, soloed: true });
+  ws.sendMessage({ type: 'set-solo', aux: 1, ch: 1, soloed: false });
+  h.drain();
+  assert.equal(last(), true, 'the send ends on');
+  // A mute, an unmute and a mute again in a row: it ends off
+  ws.sendMessage({ type: 'set-mute', aux: 1, ch: 2, muted: true });
+  ws.sendMessage({ type: 'set-mute', aux: 1, ch: 2, muted: false });
+  ws.sendMessage({ type: 'set-mute', aux: 1, ch: 2, muted: true });
+  h.drain();
+  assert.equal(last(), false, 'the send ends off');
+  ws.sendMessage({ type: 'set-mute', aux: 1, ch: 2, muted: false });
+  h.drain();
+  assert.equal(last(), true, 'and on again');
+});
 
 test('dLive re-sends every phone mute when the console reconnects', () => {
   const h = backend('dlive'), ws = h.socket();

@@ -295,6 +295,7 @@ function start(cfg) {
   Object.keys(soloState).forEach(k => delete soloState[k]);
 
   const appExpress = express();
+  require('./access').mountOneTimeLinks(appExpress); // a browser opened from Settings: this computer's pass
   appExpress.use(express.static(path.join(__dirname, '..', 'mixer')));
   mountGreenRoom(appExpress);
   mountBranding(appExpress);

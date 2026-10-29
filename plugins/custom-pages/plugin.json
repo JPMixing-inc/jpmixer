@@ -1,0 +1,14 @@
+{
+  "id": "custom-pages",
+  "name": "Custom Pages",
+  "version": "1.0.1",
+  "description": "Link-only pages for a youth night or an event: the channel and control group faders that group needs, each with its own highest level, plus mute buttons and Companion buttons if you want them.",
+  "author": "JPMixer",
+  "minJPMixer": "2.0.16",
+  "main": "index.js",
+  "permissions": ["page", "faders", "console", "companion"],
+  "page": { "title": "Custom Pages", "entry": "page/index.html", "listed": false },
+  "settings": [
+    { "key": "defaultMax", "label": "Highest level for a new fader (dB)", "type": "number", "default": 0, "min": -40, "max": 10, "help": "What a fader added to a page starts with. Each fader’s own can be changed under Pages, below." }
+  ]
+}

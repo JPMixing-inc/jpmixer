@@ -1,10 +1,11 @@
 'use strict';
 
 // Console Controller → channel panel: one input channel's gain, filters, EQ
-// and dynamics (DiGiCo), or its preamp, read-only, and EQ (LV1). The controls
-// and their ranges come from the server (src/server/digico-channel.js, and
-// lv1-server.js's channelDetail), so the page can only send what the server
-// allows. Values from the desk, the iPad app or another page update it live.
+// and dynamics (DiGiCo), its preamp, read-only, and EQ (LV1), or its preamp,
+// high-pass and EQ (dLive). The controls and their ranges come from the
+// server (src/server/digico-channel.js, and lv1-server.js's and
+// dlive-server.js's channelDetail), so the page can only send what the
+// server allows. Values from the desk, the iPad app or another page update it live.
 (() => {
   const SECTION_NAMES = { input: 'Input', eq: 'EQ', dynamics: 'Dynamics' };
   const BAND_NAMES = { 1: 'High', 2: 'High-mid', 3: 'Low-mid', 4: 'Low' }; // an SD's band 1 is the top band
@@ -348,7 +349,7 @@
     const t = (p, o) => has(p) ? toggle(p, o) : null;
     if (section === 'input') {
       add(
-        group('Preamp', has('Channel_Input/gain_mode') ? choice('Channel_Input/gain_mode') : null, row(t('Channel_Input/phantom', { confirm: true }), t('Channel_Input/phase')), s('Channel_Input/analog_gain'), s('Channel_Input/trim')),
+        group('Preamp', has('Channel_Input/gain_mode') ? choice('Channel_Input/gain_mode') : null, row(t('Channel_Input/phantom', { confirm: true }), t('Channel_Input/pad'), t('Channel_Input/phase')), s('Channel_Input/analog_gain'), s('Channel_Input/trim')),
         group('Pan', s('Panner/pan')),
         group('Filters', row(t('Filters/lo_filter_in')), s('Filters/lo_filter_freq', { label: 'High-pass frequency' }), row(t('Filters/hi_filter_in')), s('Filters/hi_filter_freq', { label: 'Low-pass frequency' })),
         group('Delay & inserts', row(t('Channel_Delay/delay_on'), t('Insert/insert_A_in'), t('Insert/insert_B_in')), s('Channel_Delay/delay', { label: 'Delay time' }))

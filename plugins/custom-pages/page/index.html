@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Custom page · JPMixer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">Custom page</h1>
+    <span class="conn" id="conn" role="status"><span class="dot" aria-hidden="true"></span><span id="connText">Connecting…</span></span>
+  </header>
+  <p class="banner" id="banner" role="status" hidden></p>
+
+  <!-- A link that doesn't open a page -->
+  <section class="message" id="message" hidden>
+    <h2 id="messageTitle"></h2>
+    <p id="messageText"></p>
+  </section>
+
+  <!-- The custom page: its faders, mutes and Companion buttons -->
+  <main class="event" id="event" hidden>
+    <div class="faders" id="faders"></div>
+    <section class="companion" id="companion" hidden aria-label="Companion buttons">
+      <h2>Buttons</h2>
+      <p class="companion-note" id="companionNote" hidden></p>
+      <div class="companion-grid" id="companionGrid"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

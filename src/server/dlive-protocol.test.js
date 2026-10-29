@@ -216,4 +216,43 @@ t('buildTlsAuthMessage: clamps profile to the documented 00-1F range', () => {
   assert.equal(P.buildTlsAuthMessage(-5, 'x')[0], 0x00);
 });
 
+// ── Preamps, PEQ and HPF (the V1.9 spec's sections and tables) ──────────
+t('PEQ frequency matches the spec\'s table (20 Hz 00, 100 Hz 1D, 1 kHz 47, 20 kHz 7F)', () => {
+  assert.deepEqual([20, 50, 100, 500, 1000, 10000, 20000].map(P.peqFreqToVv), [0x00, 0x10, 0x1D, 0x3B, 0x47, 0x72, 0x7F]);
+});
+t('PEQ frequency read back and written again stays the same step', () => {
+  for (let vv = 0; vv <= 0x7F; vv++) assert.equal(P.peqFreqToVv(P.vvToPeqFreq(vv)), vv);
+  for (let vv = 0; vv <= 0x7F; vv++) assert.equal(P.hpfFreqToVv(P.vvToHpfFreq(vv)), vv);
+});
+t('PEQ gain: 0 dB is Director\'s flat 40, ±15 dB the ends, a step from the spec\'s table', () => {
+  assert.deepEqual([-15, -10, -5, 0, 5, 10, 15].map(P.peqGainToVv), [0x01, 0x16, 0x2B, 0x40, 0x55, 0x6A, 0x7F]);
+  assert.equal(P.vvToPeqGain(0x40), 0);
+  for (let vv = 1; vv <= 0x7F; vv++) assert.equal(P.peqGainToVv(P.vvToPeqGain(vv)), vv);
+});
+t('PEQ width: Q from the spec\'s octave table, and back to the nearest step', () => {
+  assert.equal(P.vvToPeqQ(0x05).toFixed(3), '1.414'); // 1 octave
+  for (let vv = 0; vv <= 0x18; vv++) assert.equal(P.peqQToVv(P.vvToPeqQ(vv)), vv);
+});
+t('preamp gain: +5 to +60 dB on 00-7F', () => {
+  assert.equal(P.gainToGv(5), 0x00); assert.equal(P.gainToGv(60), 0x7F); assert.equal(P.gainToGv(100), 0x7F);
+  assert.equal(P.gvToGain(0x7F), 60);
+  assert.equal(P.gvToGain(0), 5);
+  for (let gv = 0; gv <= 0x7F; gv++) assert.equal(P.gainToGv(P.gvToGain(gv)), gv, 'a value read and written again: the same step');
+});
+t('socket preamp messages: gain is a pitch bend on the base channel, pad and 48V SysEx', () => {
+  assert.deepEqual(P.buildPreampGainSet(11, 0x26, 0x32), [0xEB, 0x26, 0x32]);
+  assert.deepEqual(P.buildPhantomSet(11, 0x40, true).slice(8), [0x0B, 0x0C, 0x40, 0x7F, 0xF7]);
+  assert.deepEqual(P.buildPadGet(0, 0x05).slice(8), [0x00, 0x07, 0x05, 0xF7]);
+});
+t('send on/off (Input to Group / Aux): set and get', () => {
+  const aux = P.coordinate(0, 'monoAux', 1);
+  assert.deepEqual(P.buildSendAssignSet(0, 0x02, aux, false).slice(8), [0x00, 0x0E, 0x02, 0x02, 0x00, 0x3F, 0xF7]);
+  assert.deepEqual(P.buildSendAssignGet(0, 0x02, aux).slice(8), [0x00, 0x05, 0x0F, 0x0E, 0x02, 0x02, 0x00, 0xF7]);
+});
+t('PEQ parameters: band 0 type 1A to band 3 gain 29', () => {
+  assert.equal(P.peqParam(0, 'type'), 0x1A); assert.equal(P.peqParam(3, 'gain'), 0x29);
+  assert.deepEqual(P.peqFromParam(0x21), { band: 1, field: 'gain' });
+  assert.equal(P.peqFromParam(0x30), null);
+});
+
 console.log(`\n${n} tests passed`);

@@ -51,12 +51,10 @@
 // FOH Home can need an access code (Settings → Pages → FOH Home). Without
 // it /foh-data answers 401 and the page asks for the code; POST /foh-unlock
 // with the right one sets a cookie derived from the code, so changing the
-// code signs every device out. Requests from this computer itself never
-// need it. Guesses are limited per device.
+// code signs every device out. JPMixer's own windows, and a browser opened
+// from Settings, never need it (access.js). Guesses are limited per device.
 
 const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
 const express = require('express');
 const config = require('./config');
 const pco = require('./pco-client').shared; // 20s shared cache — see pco-client.js
@@ -70,44 +68,9 @@ const ROLES = {
 };
 
 // ── FOH Home access code ──
-const COOKIE = 'jpm_foh';
-const accessCode = () => String(config.get('fohAccessCode') || '').trim();
-const cookieFor = (code) => crypto.createHmac('sha256', code).update('jpmixer-foh-home-v1').digest('hex').slice(0, 40);
-
-function ownAddresses() {
-  const out = new Set(['127.0.0.1', '::1']);
-  for (const list of Object.values(os.networkInterfaces())) for (const iface of list || []) out.add(iface.address);
-  return out;
-}
-const clientAddress = (req) => String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
-const fromThisComputer = (req) => ownAddresses().has(clientAddress(req));
-
-function readCookie(req, name) {
-  for (const part of String(req.headers.cookie || '').split(';')) {
-    const [k, ...v] = part.trim().split('=');
-    if (k === name) return decodeURIComponent(v.join('='));
-  }
-  return '';
-}
-function sameText(a, b) {
-  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
-  return x.length === y.length && crypto.timingSafeEqual(x, y);
-}
-function hasFohAccess(req) {
-  const code = accessCode();
-  return !code || fromThisComputer(req) || sameText(readCookie(req, COOKIE), cookieFor(code));
-}
-
-const UNLOCK_TRIES = 8, UNLOCK_WINDOW_MS = 5 * 60 * 1000;
-const unlockTries = new Map(); // address -> { count, resetAt }
-function tooManyTries(address) {
-  const now = Date.now();
-  if (unlockTries.size > 500) for (const [k, v] of unlockTries) if (v.resetAt < now) unlockTries.delete(k);
-  const entry = unlockTries.get(address);
-  if (!entry || entry.resetAt < now) { unlockTries.set(address, { count: 1, resetAt: now + UNLOCK_WINDOW_MS }); return false; }
-  entry.count++;
-  return entry.count > UNLOCK_TRIES;
-}
+const access = require('./access'); // the codes, and this computer's own pass
+const accessCode = () => access.codeOf('foh');
+const hasFohAccess = (req) => access.hasAccess(req, 'foh');
 
 function mountFoh(app, status) {
   require('./chat').mountChat(app); // the Home pages' Team chat card (chat.js)
@@ -158,15 +121,9 @@ function mountFoh(app, status) {
     if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true, role: { id: 'foh', label: ROLES.foh.label, page: ROLES.foh.page } }); return; }
     res.json(await roleData('foh', status));
   });
-  app.post('/foh-unlock', express.json({ limit: '2kb' }), (req, res) => {
-    const code = accessCode();
-    if (!code) { res.json({ ok: true }); return; }
-    if (tooManyTries(clientAddress(req))) { res.status(429).json({ ok: false, error: 'Too many tries. Wait a few minutes and try again.' }); return; }
-    if (!sameText(String(req.body?.code || '').trim(), code)) { res.status(403).json({ ok: false, error: 'That code isn’t right.' }); return; }
-    unlockTries.delete(clientAddress(req));
-    res.set('Set-Cookie', `${COOKIE}=${cookieFor(code)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000`);
-    res.json({ ok: true });
-  });
+  app.post('/foh-unlock', express.json({ limit: '2kb' }), access.unlock('foh'));
+  // The Console Controller's code (its page asks; the backends check each message)
+  access.mountConsoleAccess(app);
   // Saved layouts, per page and per scheduled team member (home-layouts.js).
   // A save is only taken for the person scheduled on that page right now, so
   // one page can't overwrite another person's layout; FOH Home also needs

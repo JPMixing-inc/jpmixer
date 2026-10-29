@@ -65,6 +65,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--jp-label); 
 .aux-fader::-moz-range-thumb { width: 18px; height: 28px; background: var(--jp-text); border: none; border-radius: 5px; }
 .aux-db { width: 52px; min-width: 52px; color: var(--jp-light); font-size: 12px; }
 .aux-btn { width: 40px; height: 40px; border-radius: 7px; background: var(--jp-surface); border-color: var(--jp-muted); color: var(--jp-label); font-size: 11px; font-weight: 600; }
+/* dLive's other strips (the More tab): a heading for each kind */
+.con-tab[hidden] { display: none; }
+.extra-heading { width: 100%; max-width: 1160px; margin: 14px auto 0; color: var(--jp-secondary); font-size: 11px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; }
+.extra-heading:first-child { margin-top: 0; }
+.extra-strip.no-fader .aux-name { flex: 1; width: auto; max-width: none; }
 body.con-roomy .ch-strip, body.con-roomy .cg-strip { width: 124px; min-width: 124px; padding: 14px 8px; gap: 10px; }
 body.con-roomy .ch-name { font-size: 13px; height: 38px; line-height: 17px; }
 body.con-roomy .ch-btn { width: 44px; height: 40px; }
@@ -97,6 +102,11 @@ body.con-roomy .ch-btn { width: 44px; height: 40px; }
   .aux-btn { grid-column: 4; grid-row: 1; }
   .aux-fader-wrap { grid-column: 1 / 4; grid-row: 2; }
   .aux-db { grid-column: 4; grid-row: 2; width: 44px; min-width: 0; }
+  .extra-strip { grid-template-columns: 24px minmax(0, 1fr) 44px; }
+  .extra-strip .aux-name { grid-column: 2; }
+  .extra-strip .aux-btn { grid-column: 3; }
+  .extra-strip .aux-fader-wrap { grid-column: 1 / 3; }
+  .extra-strip .aux-db { grid-column: 3; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation-duration: .01ms !important; } }
 

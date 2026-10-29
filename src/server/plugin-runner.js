@@ -11,13 +11,26 @@
 //   jp.status(text, level) the line under it in Settings ('ok' | 'warn' | 'error')
 //   jp.console.get()       Promise of the console's names; .onChange(fn)
 //   jp.planningCenter.get() Promise of the plan, live and next; .onChange(fn)
-//   jp.page.handle(name, fn)  answers its page's call `name` ("page" permission)
+//   jp.page.handle(name, fn)  answers its page's call `name` ("page" permission);
+//                          fn(body, { local, base }) — local: opened on this
+//                          computer (JPMixer, or a browser opened from Settings);
+//                          base then: the address phones use, as Settings shows it
 //   jp.onSettings(fn)      new settings without a restart (fn gets them; jp.settings follows)
 //   jp.onStop(fn)          runs before the plugin is stopped
 // Official plugins with the "integration" permission (Shure, Smaart,
 // Companion) also feed JPMixer's own pages:
 //   jp.integration.handle(name, fn)  answers JPMixer's own call `name`
 //   jp.integration.share(event, data) sends `event` to JPMixer (in batches, every 25 ms)
+// Official plugins with "faders" (Custom Pages) move the console's channel and
+// control group faders and mutes, as the Console Controller does:
+//   jp.faders.get(want)    Promise of { supported, type, connected, ch: { n: { db, mute } }, cg }
+//                          (want [{ kind, n }]: strips to ask the console for)
+//   jp.faders.onChange(fn) the same, when it changes
+//   jp.faders.set({ kind: 'ch' | 'cg', number, level })  or  { kind, number, muted }
+// and, with "companion", Companion buttons through the Companion buttons plugin:
+//   jp.companion.surfaces([{ id, name, columns, rows }])  one surface per page
+//   jp.companion.view(id, since)  its buttons changed since `since`, and how it's doing
+//   jp.companion.press(id, index, pressed)   jp.companion.status()
 // Anything it logs (console.log) shows in its log in Settings. An error it
 // doesn't catch stops it; plugins.js starts it again.
 
@@ -42,7 +55,7 @@ const pageHandlers = new Map(); // call name -> fn(body)
 const integrationHandlers = new Map(); // JPMixer's own call name -> fn(body)
 const settingsHandlers = [];
 let currentSettings = Object.freeze({});
-const listeners = { console: new Set(), planningCenter: new Set() };
+const listeners = { console: new Set(), planningCenter: new Set(), faders: new Set() };
 const pending = new Map();  // request id -> { resolve, reject, timer }
 let nextId = 1;
 let stopping = false;
@@ -51,12 +64,12 @@ function needs(permission, what) {
   if (!permissions.includes(permission)) throw new Error(`${what}: add "${permission}" to "permissions" in plugin.json.`);
 }
 
-function request(what) {
+function request(what, extra = {}, type = 'request') {
   return new Promise((resolve, reject) => {
     const id = nextId++;
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`JPMixer didn’t answer ${what}.get() in time.`)); }, 15000);
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`JPMixer didn’t answer ${what} in time.`)); }, 15000);
     pending.set(id, { resolve, reject, timer });
-    send({ type: 'request', id, what });
+    send({ type, id, what, ...extra });
   });
 }
 
@@ -120,6 +133,32 @@ function makeApi(info, settings) {
     console: Object.freeze(source('console', 'console', 'jp.console')),
     planningCenter: Object.freeze(source('planningCenter', 'planningCenter', 'jp.planningCenter')),
     onStop(fn) { if (typeof fn === 'function') stopHandlers.push(fn); },
+    companion: Object.freeze({
+      surfaces(list) { needs('companion', 'jp.companion.surfaces()'); return request('jp.companion', { op: 'surfaces', body: { list: JSON.parse(JSON.stringify(Array.isArray(list) ? list : [])) } }, 'companion-call'); },
+      view(id, since) { needs('companion', 'jp.companion.view()'); return request('jp.companion', { op: 'view', body: { id: String(id), since: Number(since) || 0 } }, 'companion-call'); },
+      press(id, index, pressed) { needs('companion', 'jp.companion.press()'); return request('jp.companion', { op: 'press', body: { id: String(id), index: Number(index), pressed: pressed === true } }, 'companion-call'); },
+      status() { needs('companion', 'jp.companion.status()'); return request('jp.companion', { op: 'status', body: {} }, 'companion-call'); },
+    }),
+    faders: Object.freeze({
+      get(want) {
+        needs('faders', 'jp.faders.get()');
+        const list = Array.isArray(want) ? want.slice(0, 64).map((w) => ({ kind: w && w.kind, n: w && w.n })) : undefined;
+        return request('faders', list ? { want: list } : {});
+      },
+      onChange(fn) {
+        needs('faders', 'jp.faders.onChange()');
+        if (typeof fn !== 'function') throw new TypeError('jp.faders.onChange() needs a function.');
+        listeners.faders.add(fn);
+        return () => listeners.faders.delete(fn);
+      },
+      set(change) {
+        needs('faders', 'jp.faders.set()');
+        const c = change && typeof change === 'object' ? change : {};
+        const what = c.level !== undefined ? 'fader' : c.muted !== undefined ? 'mute' : null;
+        if (!what) throw new TypeError('jp.faders.set() needs { kind, number, level } or { kind, number, muted }.');
+        return request('jp.faders.set()', { change: { kind: c.kind, number: c.number, what, value: what === 'fader' ? Number(c.level) : c.muted === true } }, 'fader-set');
+      },
+    }),
     integration: Object.freeze({
       handle(name, fn) {
         needs('integration', 'jp.integration.handle()');
@@ -204,7 +243,7 @@ process.on('message', (msg) => {
     if (msg.error) p.reject(new Error(msg.error)); else p.resolve(msg.result);
     return;
   }
-  if (msg.type === 'console' || msg.type === 'planningCenter') {
+  if (msg.type === 'console' || msg.type === 'planningCenter' || msg.type === 'faders') {
     for (const fn of listeners[msg.type]) {
       try { Promise.resolve(fn(msg.data)).catch(fail); } catch (e) { fail(e); }
     }
@@ -216,7 +255,8 @@ process.on('message', (msg) => {
     whenStarted().then(() => {
       const fn = pageHandlers.get(msg.name);
       if (!fn) throw Object.assign(new Error(`This plugin doesn’t answer "${String(msg.name)}".`), { quiet: true });
-      return fn(msg.body);
+      const local = !!(msg.from && msg.from.local === true);
+      return fn(msg.body, Object.freeze({ local, base: local && msg.from && typeof msg.from.base === 'string' ? msg.from.base : '' }));
     })
       .then((result) => { try { reply({ result: result === undefined ? null : JSON.parse(JSON.stringify(result)) }); } catch (e) { reply({ error: 'The plugin’s answer wasn’t JSON.' }); } })
       .catch((e) => { if (!(e && e.quiet)) console.error((e && e.stack) || e); reply({ error: (e && e.message) || String(e) }); });

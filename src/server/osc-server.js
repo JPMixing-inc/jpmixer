@@ -16,6 +16,7 @@ const { mountBranding } = require('./branding');
 const channelProcessing = require('./digico-channel');
 const { mountPerformerAssignments } = require('./performer-assignments');
 const { mountFoh } = require('./foh');
+const access = require('./access');
 
 let httpServer    = null;
 let wss           = null;
@@ -308,6 +309,54 @@ const auxMutes      = {}; // aux → bool
 const cgFaders      = {}; // cg  → dB
 const cgMutes       = {}; // cg  → bool
 const cgSolos       = {}; // cg  → bool
+
+// Channel and control group faders and mutes for plugins (plugins.js
+// "faders", JPMixer's own plugins only): what the Console Controller shows,
+// and moved the way it moves them. kind 'ch' | 'cg'; a level is dB, -150 off.
+const liveCount = (key, fallback) => (cache.has(key) ? cache.get(key).args[0] : fallback);
+const stripMax = (kind) => (kind === 'ch' ? liveCount('/Console/Input_Channels', serverCfg.channels || 48) : liveCount('/Console/Control_Groups', serverCfg.groups || 8));
+function getStrips() {
+  const out = { ch: {}, cg: {} };
+  for (const [kind, faders, mutes] of [['ch', consoleFaders, consoleMutes], ['cg', cgFaders, cgMutes]]) {
+    for (let n = 1; n <= stripMax(kind); n++) {
+      if (faders[n] === undefined && mutes[n] === undefined) continue;
+      out[kind][n] = { db: Number.isFinite(faders[n]) ? faders[n] : null, mute: mutes[n] === undefined ? null : !!mutes[n] };
+    }
+  }
+  return out;
+}
+// Asks the desk for the ones not known yet (through the paced queue)
+function primeStrips(list) {
+  const queries = [];
+  for (const { kind, n } of Array.isArray(list) ? list.slice(0, 64) : []) {
+    if (!['ch', 'cg'].includes(kind) || !Number.isInteger(n) || n < 1 || n > stripMax(kind)) continue;
+    const base = kind === 'ch' ? `/Input_Channels/${n}` : `/Control_Groups/${n}`;
+    if ((kind === 'ch' ? consoleFaders : cgFaders)[n] === undefined) queries.push(`${base}/fader/?`);
+    if ((kind === 'ch' ? consoleMutes : cgMutes)[n] === undefined) queries.push(`${base}/mute/?`);
+  }
+  if (queries.length) queueDeskQueries(queries);
+}
+function setStrip(kind, nRaw, what, value) {
+  const n = parseInt(nRaw, 10);
+  if (!['ch', 'cg'].includes(kind) || !Number.isInteger(n) || n < 1 || n > stripMax(kind)) return false;
+  const base = kind === 'ch' ? `/Input_Channels/${n}` : `/Control_Groups/${n}`;
+  if (what === 'fader') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+    const db = Math.max(-150, Math.min(10, value));
+    sendToDesk(`${base}/fader`, [db]);
+    (kind === 'ch' ? consoleFaders : cgFaders)[n] = db;
+    broadcastToClients({ address: `${base}/fader`, args: [db] });
+    return true;
+  }
+  if (what === 'mute') {
+    const val = value ? 1.0 : 0.0;
+    sendToDesk(`${base}/mute`, [val]);
+    (kind === 'ch' ? consoleMutes : cgMutes)[n] = !!value;
+    broadcastToClients({ address: `${base}/mute`, args: [val] });
+    return true;
+  }
+  return false;
+}
 
 function clearConsoleState() {
   for (const state of [consoleFaders, consoleMutes, consoleSolos, auxFaders, auxMutes, cgFaders, cgMutes, cgSolos]) {
@@ -1134,7 +1183,8 @@ function startWebSocketServer() {
     broadcastDevicesUpdate();
   }, 25000);
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    access.noteSocket(ws, req);
     logEvent('client-connect', `total:${connections.length + 1}`);
     ws._lastPong = Date.now();
     ws.on('pong', () => { ws._lastPong = Date.now(); }); // native pong — works even when iOS JS is suspended
@@ -1154,6 +1204,8 @@ function startWebSocketServer() {
         const msg = JSON.parse(raw);
 
         if (msg.type === 'pong') { ws._lastPong = Date.now(); return; }
+        // The Console Controller's messages need its code (Settings → Pages)
+        if (!access.consoleMessageAllowed(ws, msg)) return;
 
         // Mixer: dump cached levels (and pans) for one specific aux — cache
         // only, never queries the desk
@@ -1668,6 +1720,11 @@ function startDemoMode() {
     }
   }
 
+  // The console's own faders and mutes (the Console Controller, Custom Pages):
+  // channels around -10 to -3 dB, control groups at 0 dB, nothing muted
+  for (let ch = 1; ch <= chCount; ch++) { consoleFaders[ch] = Math.round(sliderToDb(Math.random() * 0.15 + 0.40) * 10) / 10; consoleMutes[ch] = false; consoleSolos[ch] = false; }
+  for (let cg = 1; cg <= (serverCfg.groups || 8); cg++) { cgFaders[cg] = 0; cgMutes[cg] = false; cgSolos[cg] = false; }
+
   currentSnapshotName = 'DEMO';
   loaded = true;
   deskAlive = true;
@@ -1717,6 +1774,7 @@ function start(cfg) {
   // The mixer pages keep express's default ETag revalidation — caching
   // mixer.js/index.html for days would leave phones on old code after an
   // update. Icons never change between releases, so phones may keep them a week.
+  access.mountOneTimeLinks(app); // a browser opened from Settings: this computer's pass
   app.use(express.static(path.join(__dirname, '..', 'mixer')));
   const ICON_CACHE = { maxAge: '7d' };
   app.use('/instrument-icons', express.static(path.join(__dirname, '..', '..', 'assets', 'Icons For instruments', '1-To-70-SVG-Files-MusicalInstrumentsBundle'), ICON_CACHE));
@@ -1728,9 +1786,9 @@ function start(cfg) {
 
   // Diagnostic endpoints — localhost only to keep rig topology off the venue network
   const diagOnly = (req, res, next) => {
-    const addr = req.socket.remoteAddress;
-    if (addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1') return next();
-    res.status(403).json({ error: 'Diagnostic endpoints are localhost-only' });
+    // This computer's pass, not its address: the port 80 helper connects from it
+    if (access.fromThisComputer(req)) return next();
+    res.status(403).json({ error: 'Diagnostic endpoints only open from JPMixer on this computer' });
   };
 
   // Shows selectively-cached OSC values
@@ -2157,4 +2215,4 @@ function pushDevicePresets(deviceId) {
 function getOscLog() { return oscLog; }
 function setOscTrafficCallback(cb) { onOscTraffic = cb; }
 
-module.exports = { getConnectedDevicesInfo, getControlGroups, getPhantom, start, stop, applyConfigLive, getIpadStatus, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel };
+module.exports = { getConnectedDevicesInfo, getControlGroups, getPhantom, start, stop, applyConfigLive, getIpadStatus, pushDevicePresets, getChannelNames, getAuxNames, getChannelCount, getAuxCount, isConsoleConnected, setConsoleStatusCallback, setConnectionCountCallback, getConnectionCount, setServerErrorCallback, getOscLog, setOscTrafficCallback, startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder, fireSnapshot, setMute, setSolo, setChannelLabel, setAuxLabel, getStrips, primeStrips, setStrip };

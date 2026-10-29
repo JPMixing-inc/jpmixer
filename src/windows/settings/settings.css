@@ -798,3 +798,38 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .osclog-empty { color: var(--sub); font-style: italic; }
 
 .osclog-record-row { margin-top: 10px; }
+
+/* Custom Pages' editor (custom-pages.js), in its plugin tab */
+.custom-pages { display: grid; gap: 12px; }
+.custom-pages-note:empty { display: none; }
+.custom-pages-note.is-error { color: var(--red); }
+.custom-pages-list { display: grid; gap: 14px; }
+.custom-pages-page { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.custom-pages-row { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
+.custom-pages-name { flex: 1; min-width: 200px; display: grid; gap: 4px; }
+.custom-pages-on { display: grid; gap: 4px; justify-items: start; }
+.custom-pages-link { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.04); }
+.custom-pages-qr { width: 112px; height: 112px; flex: none; border-radius: 8px; overflow: hidden; background: #fff; }
+.custom-pages-qr svg { width: 100%; height: 100%; display: block; }
+.custom-pages-link-info { flex: 1; min-width: 220px; display: grid; gap: 6px; }
+.custom-pages-link-info code { font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+.custom-pages-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.custom-pages-footer { justify-content: flex-end; margin-top: 4px; }
+.custom-pages-state { margin-right: auto; }
+.custom-pages-label { font-weight: 600; font-size: 13px; margin-top: 4px; }
+.custom-pages-faders { display: grid; gap: 8px; }
+.custom-pages-fader { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.custom-pages-fader select { flex: 1; min-width: 200px; }
+.custom-pages-fader input[type="number"] { width: 90px; }
+.custom-pages-options { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.custom-pages-grid { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* The selects' own width, so their labels aren't squeezed to a letter a line */
+.custom-pages-grid .sub { white-space: nowrap; }
+.custom-pages-grid select { width: auto; min-width: 64px; }
+.custom-pages-grid[hidden] { display: none; }
+.custom-pages-page > .btn { justify-self: start; }
+.custom-pages-options .toggle-label { display: inline-flex; align-items: center; gap: 8px; }
+
+/* dLive: Base MIDI Channel with its Find button */
+.dlive-find-row { display: flex; gap: 8px; align-items: center; }
+.dlive-find-row input { flex: 1; min-width: 0; }

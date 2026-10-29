@@ -170,14 +170,17 @@ function consoleNameOr(cfg, kind, n, live) {
   return require('./console-names').remembered(cfg && cfg.consoleType || 'digico', kind, n);
 }
 
-function buildChannelList(chCount, cfg, consoleName) {
+// `extra`: more channel numbers after 1..chCount (dLive's FX returns in the mixes, 129 on);
+// `skip(n)`: channels left out (a dLive stereo input's right half)
+function buildChannelList(chCount, cfg, consoleName, extra = [], skip = null) {
   const groups = cfg.channelGroups || [];
   const overrides = cfg.channelOverrides || {};
   const groupOrder = {};
   groups.forEach((g, i) => { groupOrder[String(g.id)] = i; });
 
   const raw = [];
-  for (let i = 1; i <= chCount; i++) {
+  for (const i of [...Array.from({ length: chCount }, (_, k) => k + 1), ...extra]) {
+    if (skip && skip(i)) continue;
     const ov = overrides[String(i)] || {};
     raw.push({
       channel: i,

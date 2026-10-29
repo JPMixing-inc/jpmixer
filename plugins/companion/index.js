@@ -8,8 +8,11 @@
 //   share 'status'   getStatus(), when it changes
 //   integration call 'press'    { role, key, pressed } → true if sent
 //   integration call 'snapshot' { role } → the surface now
-// Its settings are JPMixer's own (Settings → Pages → Companion buttons),
-// passed in as they are, and change without a restart.
+//   integration call 'extras'   { surfaces: [{ role: 'ev-<id>', label, columns, rows }] }
+//                               the Custom Pages plugin's surfaces (JPMixer passes them on)
+// Its settings are JPMixer's own (Settings → Plugins → Companion: the
+// address, whether the Home pages get surfaces, their grid), passed in as
+// they are, and change without a restart.
 
 const companion = require('./companion');
 
@@ -32,8 +35,9 @@ module.exports = (jp) => {
   jp.integration.handle('press', (body) => companion.press(String((body && body.role) || ''), Number(body && body.key), (body && body.pressed) === true));
   jp.integration.handle('snapshot', (body) => {
     const role = String((body && body.role) || '');
-    return Object.hasOwn(companion.ROLES, role) ? companion.snapshot(role) : null;
+    return companion.isRole(role) ? companion.snapshot(role) : null;
   });
+  jp.integration.handle('extras', (body) => { companion.setExtras(body && body.surfaces); return true; });
   jp.integration.handle('status', () => companion.getStatus());
 
   jp.onSettings((settings) => { companion.applyConfig(settings); shareStatus(); everySurface(); });

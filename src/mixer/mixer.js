@@ -888,6 +888,7 @@ function onMessage(e) {
     ws.send(JSON.stringify({ type: 'pong' }));
     return;
   }
+  if (globalThis.mixProcessing?.onMessage(json)) return; // its graphic EQ and compressor
 
   // Initial config packet from server
   if (json.config) {
@@ -1358,6 +1359,7 @@ function selectAux(auxChannel, requestValues, skipReset) {
   if (menuEarScenesParentItem) menuEarScenesParentItem.style.display = auxChannel !== null ? '' : 'none';
   const menuEqItem = document.getElementById('menuEqItem');
   if (menuEqItem) menuEqItem.style.display = (auxChannel !== null && opt.eqEnabled) ? '' : 'none';
+  globalThis.mixProcessing?.setAux(auxChannel, opt); // a dLive mix's graphic EQ and compressor (mix-processing.js)
 
   // Show pan toggle only for stereo auxes
   const panLabel = document.getElementById('panLabel');
@@ -1417,7 +1419,11 @@ function selectAux(auxChannel, requestValues, skipReset) {
 }
 
 function requestAuxValues(auxChannel) {
-  for (let i = 1; i <= channelConfig.length; i++) {
+  // By each channel's own number: a dLive's FX returns are 129 on, and a
+  // stereo input is its left half alone
+  for (const ch of channelConfig) {
+    const i = ch.channel;
+    if (!Number.isInteger(i)) continue;
     sendOSC(`/Input_Channels/${i}/Aux_Send/${auxChannel}/send_level/?`);
     if (selectedStereo) {
       sendOSC(`/Input_Channels/${i}/Aux_Send/${auxChannel}/send_pan/?`);

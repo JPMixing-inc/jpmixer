@@ -18,7 +18,7 @@ const BACKUP_VERSION = 2;
 // files get copied to USB sticks and other computers. Auto-backups keep
 // them: they sit next to config.json and are what recovers it if it breaks.
 // A restore without these keeps the credentials already on this Mac.
-const CREDENTIAL_KEYS = ['pcoAppId', 'pcoSecret', 'dlivePassword', 'apiToken', 'fohAccessCode', 'smaartPassword'];
+const CREDENTIAL_KEYS = ['pcoAppId', 'pcoSecret', 'dlivePassword', 'apiToken', 'fohAccessCode', 'consoleAccessCode', 'smaartPassword'];
 
 function buildBackupData({ includeCredentials = true } = {}) {
   const cfg = config.getAll();

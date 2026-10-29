@@ -1,13 +1,13 @@
 {
   "id": "companion",
   "name": "Companion buttons",
-  "version": "1.0.0",
-  "description": "Bitfocus Companion buttons on the Home pages, live: each Home page is a button surface in Companion, and taps press the button, the same as a Stream Deck.",
+  "version": "1.2.0",
+  "description": "Bitfocus Companion buttons on the Home pages and Custom Pages, live: each page is a button surface in Companion, and taps press the button, the same as a Stream Deck.",
   "author": "JPMixer",
   "minJPMixer": "2.0.14",
   "main": "index.js",
   "permissions": ["integration"],
   "settings": [
-    { "key": "companionHost", "label": "Companion computer’s address", "type": "text", "help": "Set in Settings → Pages → Companion buttons." }
+    { "key": "companionHost", "label": "Companion computer’s address", "type": "text", "help": "Set in Settings → Plugins → Companion." }
   ]
 }

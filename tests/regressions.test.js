@@ -93,6 +93,7 @@ function serverHarness() {
     './branding': { mountBranding() {} },
     './digico-channel': require('../src/server/digico-channel'),
     './foh': { mountFoh() {} },
+    './access': { mountOneTimeLinks() {}, noteSocket() {}, consoleMessageAllowed: () => true, fromThisComputer: () => true }, // no codes set
     './console-names': { remembered: () => undefined }, // no names remembered: what the console sends now
     './scenes': {
       getAll: () => scenes, getScene: (name, aux) => scenes[name]?.[aux],

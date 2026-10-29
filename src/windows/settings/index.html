@@ -213,19 +213,24 @@
         </div>
 
         <div class="settings-stack" id="dliveFieldsRow" style="display:none">
-          <div class="settings-notice sub" id="dliveWarningText">⚠️ dLive support has been tested against dLive Director running offline, not yet a real MixRack. Aux send levels, mute, solo, scene recall, Ear Scenes, live names and the Console Controller (channel, aux and DCA faders, mutes and solos) work; per-send pan and EQ are not available over dLive’s MIDI control. To try it without a console, run dLive Director offline with System → Offline → “Enable Director Connections to MixRack IP Controllers” ticked, and use this computer’s address with Director’s MIDI channel.</div>
+          <div class="settings-notice sub" id="dliveWarningText">⚠️ dLive support has been tested against dLive Director running offline, not yet a real MixRack. Aux send levels, mute, solo, scene recall, Ear Scenes, live names, a mix’s EQ for its musicians, FX returns in the mixes, pan on the stereo mixes and the Console Controller (faders and mutes of channels, auxes, DCAs, FX, groups, matrices, mains and mute groups, and each channel’s preamp, high-pass and EQ) work. To try it without a console, run dLive Director offline with System → Offline → “Enable Director Connections to MixRack IP Controllers” ticked, and use this computer’s address with Director’s MIDI channel.</div>
           <details class="settings-help"><summary>Enable MIDI control on the dLive console</summary><div class="settings-help-body"><div class="sub"><strong>On the console:</strong> Utility → Control → MIDI has its own On/Off/Secure Mode switch for MIDI/TCP — it must be turned on there before JPMixer (or anything else) can connect, the same way DiGiCo consoles need DiGiCo Pad enabled. Unlike DiGiCo Pad, though, dLive doesn't limit this to one connection at a time — JPMixer can run alongside Director, MixPad, and other control apps without conflict.</div></div></details>
           <div class="field-row two-col">
             <div>
               <label for="dliveBaseChannel">Base MIDI Channel</label>
-              <input type="number" id="dliveBaseChannel" min="0" max="11" />
+              <div class="dlive-find-row"><input type="number" id="dliveBaseChannel" min="0" max="11" /><button type="button" class="btn btn-sm" id="dliveFindChannel">Find</button></div>
             </div>
             <div>
               <label class="toggle-label" for="dliveTlsEnabled" style="display:block;margin-bottom:6px">Use TLS/SSL</label>
               <input type="checkbox" id="dliveTlsEnabled" class="toggle" />
             </div>
           </div>
-          <div class="sub">Base MIDI Channel must match the value set on the console under Utility → Control → MIDI (0-11, i.e. MIDI channel 1-12).</div>
+          <div class="sub" id="dliveFindStatus" role="status">Base MIDI Channel must match the value set on the console under Utility → Control → MIDI (0-11, i.e. MIDI channel 1-12). Find asks the console at the address above.</div>
+          <div class="field-row">
+            <label for="dliveFxReturns">FX returns in mixes</label>
+            <input type="number" id="dliveFxReturns" min="0" max="16" />
+          </div>
+          <div class="sub">How many of the console’s FX returns every mix has after the inputs, so a singer can have reverb in their ears (0-16). They’re named as on the console.</div>
           <div class="field-row">
             <label for="dliveMidiPort">MIDI/TCP Port Override</label>
             <input type="number" id="dliveMidiPort" min="0" max="65535" placeholder="Leave 0 for default (51325, or 51327 with TLS)" />
@@ -256,6 +261,20 @@
               <div class="sub">Actively re-requests each active mix's send levels in the background, in case live updates above aren't actually happening. Safe to leave on; turn off once you've confirmed live updates work to reduce console traffic.</div>
             </div>
             <input type="checkbox" id="dlivePollSendLevels" class="toggle" />
+          </div>
+          <div class="card-row">
+            <div>
+              <label class="toggle-label" for="dliveMuteBySendOff">Mute with the send’s on/off</label>
+              <div class="sub">A musician’s mute switches the send off on the console and its level stays as it was. Off: the send goes to −∞ and its level is put back after, as on DiGiCo. Leave on unless the console doesn’t take it.</div>
+            </div>
+            <input type="checkbox" id="dliveMuteBySendOff" class="toggle" />
+          </div>
+          <div class="card-row">
+            <div>
+              <label class="toggle-label" for="dlivePan">Pan on stereo mixes</label>
+              <div class="sub">dLive’s MIDI control has no pan for a send, so JPMixer pans the stereo mixes the way dLive’s own apps do (TCP port 51321). It finds each mix by itself and checks it against the levels MIDI reads; a mix that doesn’t check out has no pan. Turn off if a firmware update stops it working.</div>
+            </div>
+            <input type="checkbox" id="dlivePan" class="toggle" />
           </div>
           </div></details>
         </div>
@@ -438,7 +457,7 @@
             <div class="field-row pco-access-code">
               <label for="fohAccessCode">Access code</label>
               <input type="text" id="fohAccessCode" maxlength="32" autocomplete="off" spellcheck="false" placeholder="None — anyone on the network can open it" />
-              <p class="sub">Other devices enter this once to open FOH Home; this computer never needs it. Changing it signs every device out. Leave empty to turn it off.</p>
+              <p class="sub">Other devices enter this once to open FOH Home. JPMixer’s own windows, and pages opened from here, never need it. Changing it signs every device out. Leave empty to turn it off.</p>
             </div>
           </div>
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="fohViewUrl">—</span></div>
@@ -482,6 +501,14 @@
           <p class="sub view-directory-description">Main channel faders, mutes, solos, control groups, and aux outputs. Changes affect the console mix.</p>
           <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openConsoleBtn">Open Console Controller</button></div>
           <p class="sub view-directory-hint" id="consoleBtnHint" role="status">Start the server first to open.</p>
+          <div class="view-page-setup">
+            <p class="view-page-setup-title">Access</p>
+            <div class="field-row pco-access-code">
+              <label for="consoleAccessCode">Access code</label>
+              <input type="text" id="consoleAccessCode" maxlength="32" autocomplete="off" spellcheck="false" placeholder="None — anyone on the network can use it" />
+              <p class="sub">Other devices enter this once before they can move the console’s faders, mutes and solos here. JPMixer’s own windows never need it. Changing it signs every device out. Leave empty to turn it off.</p>
+            </div>
+          </div>
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="consoleUrl">—</span></div>
         </section>
         <section class="card view-directory-card" data-engineer-view="devices">
@@ -526,17 +553,18 @@
     <div class="tab-panel" id="tab-companion">
       <section class="card companion-card" id="companionCard">
         <div class="card-row space-between">
-          <div class="settings-heading"><h2>Companion buttons</h2><p class="sub">Put Bitfocus Companion buttons on the Home pages. JPMixer connects to Companion as a Satellite and adds one surface per page.</p></div>
-          <input type="checkbox" id="companionEnabled" class="toggle" aria-label="Show Companion buttons on the Home pages" />
+          <div class="settings-heading"><h2>Companion buttons</h2><p class="sub">Put Bitfocus Companion buttons on the Home pages and on custom pages. JPMixer connects to Companion as a Satellite and adds a surface for each page.</p></div>
+          <input type="checkbox" id="companionEnabled" class="toggle" aria-label="Companion buttons" />
         </div>
         <div class="companion-fields" id="companionFields">
           <div class="field-row companion-host"><label for="companionHost">Companion computer</label><input type="text" id="companionHost" placeholder="192.168.1.50, or 127.0.0.1 on this Mac" autocomplete="off" spellcheck="false" /></div>
           <div class="field-row"><label for="companionPort">Satellite port</label><input type="number" id="companionPort" min="1" max="65535" placeholder="16622" /></div>
           <div class="field-row"><label for="companionColumns">Buttons per row</label><input type="number" id="companionColumns" min="1" max="12" /></div>
           <div class="field-row"><label for="companionRows">Rows</label><input type="number" id="companionRows" min="1" max="8" /></div>
+          <div class="pco-setting-row companion-home-row"><div><label class="toggle-label" for="companionHome">Home page surfaces</label><p class="sub">A surface for each Home page: FOH, ProPresenter, Lighting and Switcher. Off, Companion is for custom pages only: each custom page with Companion buttons is still its own surface, set up under Plugins → Custom Pages.</p></div><input type="checkbox" id="companionHome" class="toggle" /></div>
         </div>
         <div class="companion-status" id="companionStatus" role="status"><span class="dot" id="companionDot"></span><span id="companionStatusText">Off</span></div>
-        <details class="settings-help"><summary>Setting it up in Companion</summary><div class="settings-help-body"><div class="sub">In Companion, open <strong>Surfaces</strong>. After Save &amp; Apply, four Satellite surfaces appear: <strong>JPMixer FOH Home</strong>, <strong>JPMixer ProPresenter Home</strong>, <strong>JPMixer Lighting Home</strong> and <strong>JPMixer Switcher Home</strong>. Give each one the page of buttons that station needs. Companion’s Satellite port is 16622 unless you changed it. Each Home page shows its buttons in a Companion card you can move and resize with Arrange page.</div></div></details>
+        <details class="settings-help"><summary>Setting it up in Companion</summary><div class="settings-help-body"><div class="sub">In Companion, open <strong>Surfaces</strong>. After Save &amp; Apply, a Satellite surface appears for each page: <strong>JPMixer FOH Home</strong>, <strong>JPMixer ProPresenter Home</strong>, <strong>JPMixer Lighting Home</strong> and <strong>JPMixer Switcher Home</strong> (unless Home page surfaces is off), and <strong>JPMixer</strong> and the page’s name for each custom page with Companion buttons. Give each one the page of buttons it needs. Companion’s Satellite port is 16622 unless you changed it. Each Home page shows its buttons in a Companion card you can move and resize with Arrange page.</div></div></details>
       </section>
     </div>
 
@@ -925,7 +953,7 @@
   </main>
 
   <footer>
-    <div class="footer-meta"><span class="version">v2.0.15</span><span>Changes apply when you save.</span></div>
+    <div class="footer-meta"><span class="version">v2.0.16</span><span>Changes apply when you save.</span></div>
     <button class="btn btn-primary" id="saveBtn">Save &amp; Apply</button>
   </footer>
 
@@ -934,6 +962,7 @@
     <div class="icon-grid"></div>
   </div>
 
+  <script src="custom-pages.js"></script>
   <script src="settings.js"></script>
   <script src="settings-studio.js"></script>
 </body>

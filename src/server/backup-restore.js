@@ -9,7 +9,7 @@ const homeLayoutsModule = () => require('./home-layouts'); // loaded when used
 const deviceStageModule = () => require('./device-stage');
 const consoleNamesModule = () => require('./console-names');
 const definitions = [
-  ['console', 'Console & network', 'Console type, addresses, ports, and channel/bus counts. Connection changes may restart the server.', ['consoleType','serverPort','deskIp','deskSendPort','deskListenPort','channels','auxes','groups','dliveBaseChannel','dliveTlsEnabled','dliveUsername','dlivePassword','dliveMidiPort','dliveListenSendLevels','dlivePollSendLevels','klangIp','klangPort','wingPort','lv1Port']],
+  ['console', 'Console & network', 'Console type, addresses, ports, and channel/bus counts. Connection changes may restart the server.', ['consoleType','serverPort','deskIp','deskSendPort','deskListenPort','channels','auxes','groups','dliveBaseChannel','dliveTlsEnabled','dliveUsername','dlivePassword','dliveMidiPort','dliveListenSendLevels','dlivePollSendLevels','dliveMuteBySendOff','dlivePan','dliveFxReturns','klangIp','klangPort','wingPort','lv1Port']],
   ['channels', 'Channel layout', 'Channel names, icons, order, visibility, and groups.', ['channelGroups','channelOverrides']],
   ['auxes', 'Aux layout & access', 'Mix names, colors, visibility, private links, and EQ access.', ['auxOverrides']],
   ['ipads', 'iPad relay connections', 'Configured OSC relay devices and ports.', ['ipadConnections']],
@@ -17,8 +17,8 @@ const definitions = [
   ['pco', 'Planning Center setup', 'Service, team, day, aux mappings, second service, room displays, and phone assignment.', ['pcoEnabled','pcoServiceTypeId','pcoTeamId','pcoDay','pcoPositionMapping','pcoAlt','pcoIncludeUnconfirmed','pcoGreenRoomHidden','greenRoomQr','greenRoomMics','pcoUpdateAuxNames','pcoFohPositionName','pcoFohTeamId','pcoProPresenterPositionName','pcoProPresenterTeamId','pcoLightingPositionName','pcoLightingTeamId','pcoSwitcherPositionName','pcoSwitcherTeamId','pcoPhoneAssignments']],
   ['pcoCredentials', 'Planning Center credentials', 'Application ID and Secret. Kept unless you explicitly select this option.', ['pcoAppId','pcoSecret']],
   ['branding', 'Branding', 'Accent color for the pages JPMixer serves. The logo image isn’t in backups; upload it again in Settings → Branding.', ['brandAccent']],
-  ['access', 'FOH Home access code', 'The code other devices enter to open FOH Home.', ['fohAccessCode']],
-  ['companion', 'Companion buttons', 'The Companion computer’s address, port and button grid for the Home pages.', ['companionEnabled','companionHost','companionPort','companionColumns','companionRows']],
+  ['access', 'Access codes', 'The codes other devices enter to open FOH Home and the Console Controller.', ['fohAccessCode','consoleAccessCode']],
+  ['companion', 'Companion buttons', 'The Companion computer’s address and port, and whether the Home pages get buttons and their grid.', ['companionEnabled','companionHome','companionHost','companionPort','companionColumns','companionRows']],
   ['wireless', 'Shure wireless', 'Whether JPMixer reads Shure wireless receivers, the ones it has seen, which to read, and which mix each mic belongs to.', ['wirelessEnabled','wirelessReceivers','wirelessKnown','wirelessAux']],
   ['smaart', 'Smaart SPL', 'The Smaart computer’s address, port, API password, and the readings on FOH Home’s SPL card and the Green Room.', ['smaartEnabled','smaartHost','smaartPort','smaartPassword','smaartMetric','smaartLiveMetric','smaartHiddenInputs','greenRoomSpl','greenRoomSplMetric','greenRoomSplInput']],
   ['api', 'Control API', 'API enablement, port, and access token.', ['apiEnabled','apiPort','apiToken']]
@@ -26,8 +26,8 @@ const definitions = [
 const types = {
   channelGroups:'array', ipadConnections:'array', pcoGreenRoomHidden:'array', smaartHiddenInputs:'array', wirelessReceivers:'array', wirelessKnown:'array', wirelessAux:'object', channelOverrides:'object', auxOverrides:'object', pcoPositionMapping:'object', pcoAlt:'object'
 };
-const booleans = new Set(['pcoEnabled','greenRoomMics','wirelessEnabled','greenRoomSpl','smaartEnabled','greenRoomQr','autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled']);
-const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,256],groups:[0,256],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],smaartPort:[1,65535],autoBackupIntervalDays:[1,365] };
+const booleans = new Set(['pcoEnabled','greenRoomMics','wirelessEnabled','greenRoomSpl','smaartEnabled','greenRoomQr','autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','dliveMuteBySendOff','dlivePan','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled','companionHome']);
+const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,256],groups:[0,256],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],dliveFxReturns:[0,16],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],smaartPort:[1,65535],autoBackupIntervalDays:[1,365] };
 function validateConfig(config) {
   if (!object(config)) throw new Error('Invalid configuration in this backup.');
   for (const key of definitions.flatMap(d => d[3])) {
@@ -124,7 +124,7 @@ function describe(data, filename) {
     const empty = id === 'pcoCredentials' && (!data.config.pcoAppId || !data.config.pcoSecret);
     // An export made without passwords and keys (see auto-backup.js) — say so,
     // rather than leave the missing credentials option unexplained
-    const keptNote = { console: ['dlivePassword', 'the dLive password'], api: ['apiToken', 'the access token'], access: ['fohAccessCode', 'the FOH Home code'], pco: ['pcoSecret', 'Planning Center credentials'], smaart: ['smaartPassword', 'the Smaart API password'] }[id];
+    const keptNote = { console: ['dlivePassword', 'the dLive password'], api: ['apiToken', 'the access token'], access: ['fohAccessCode', 'the access codes'], pco: ['pcoSecret', 'Planning Center credentials'], smaart: ['smaartPassword', 'the Smaart API password'] }[id];
     const kept = keptNote && !own(data.config, keptNote[0]) ? ` This backup doesn’t include ${keptNote[1]}, so what’s set on this Mac is kept.` : '';
     sections.push({ id,label,description: empty ? 'This file has empty credentials. Selecting this will clear the corresponding current credentials.' : description + kept });
   }
