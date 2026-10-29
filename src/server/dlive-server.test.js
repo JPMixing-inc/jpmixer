@@ -810,6 +810,77 @@ async function main() {
     ph11.close(); await server.stop(); midi.close(); privServer.close();
   }
 
+  // ── A mix that isn't where the layout says: found by its send levels ────
+  {
+    const DP = require('./dlive-private');
+    // On MIDI: mono aux 1, a stereo FX send and stereo aux 1, so the layout
+    // says place 3 for the stereo aux (the mono aux, then the FX send's two).
+    // On the app protocol it's at places 5 and 6 (both halves read the send)
+    const st1 = P.coordinate(0, 'stereoAux', 1), fx1 = P.coordinate(0, 'stereoFxSend', 1);
+    const names = [[P.coordinate(0, 'monoAux', 1), 'IEM'], [st1, 'BAND'], [fx1, 'VERB']];
+    let midiSock = null;
+    const midi = net.createServer((s) => {
+      midiSock = s;
+      const dec = new P.Decoder();
+      s.on('data', (d) => { for (const ev of dec.push([...d])) { if (ev.type !== 'sysex' || ev.bytes[8] !== 0x01) continue; const hit = names.find(([c]) => c.midiCh === ev.bytes[7] && c.ch === ev.bytes[9]); if (hit) s.write(Buffer.from(P.buildNameSet(hit[0].midiCh, hit[0].ch, hit[1]))); } });
+    });
+    await new Promise((r) => midi.listen(0, '127.0.0.1', r));
+    const values = new Map();
+    for (const [ch, db] of [[1, -10], [2, -4]]) for (const place of [5, 6]) values.set(DP.inputParam('level', ch, place), DP.dbToValue(db));
+    const handles = new Map(), sets = [];
+    const frameOf = (src, dst, type, payload = Buffer.alloc(0)) => { const h = Buffer.alloc(19); h[0] = 0xf1; h.writeUInt16BE(1, 1); h.writeUInt32BE(src, 3); h.writeUInt32BE(dst, 7); h.writeUInt32BE(type, 11); h.writeUInt32BE(payload.length, 15); return Buffer.concat([h, payload, Buffer.from([0xf8])]); };
+    const u16 = (v) => { const b = Buffer.alloc(2); b.writeUInt16BE(v); return b; };
+    const privServer = net.createServer((s) => {
+      let buf = Buffer.alloc(0);
+      s.on('data', (d) => {
+        buf = Buffer.concat([buf, d]);
+        for (;;) {
+          if (!buf.length) break;
+          const m = buf[0]; let n = null;
+          if (m === 0xf1 && buf.length >= 19) n = 20 + buf.readUInt32BE(15);
+          else if (m === 0xe0 && buf.length >= 3) n = 4 + buf.readUInt16BE(1);
+          if (n === null || buf.length < n) break;
+          const f = buf.subarray(0, n); buf = buf.subarray(n);
+          if (m !== 0xf1) continue;
+          const src = f.readUInt32BE(3), dst = f.readUInt32BE(7), type = f.readUInt32BE(11), payload = f.subarray(19, n - 1);
+          if (type === 4) { const mm = /Number (\d\d)/.exec(payload.toString('latin1')); const b = Buffer.alloc(4); if (mm) b.writeUInt32BE(0x2d + Number(mm[1])); s.write(frameOf(1, 0, mm ? 2 : 3, mm ? b : Buffer.alloc(0))); }
+          else if (type === 6) handles.set(payload.readUInt32BE(2), payload.readUInt16BE(12));
+          // Every input mono (01 in the high byte), pans in the middle
+          else if (type === 8) { const param = handles.get(dst); if (param !== undefined) s.write(frameOf(dst, src, 0x1000, u16(values.get(param) ?? (param >= 0x12b0 && param < 0x12b8 ? 0x0125 : param >= 0x1b00 ? 37 : 0)))); }
+          else sets.push({ param: type, value: payload.readUInt16BE(0) });
+        }
+      });
+    });
+    await new Promise((r) => privServer.listen(0, '127.0.0.1', r));
+    const origCC = net.createConnection;
+    net.createConnection = (opts, cb) => origCC.call(net, { ...opts, port: opts.port === DP.PORT ? privServer.address().port : midi.address().port }, cb);
+    server.start({ serverPort: 18209, deskIp: '127.0.0.1', channels: 4, auxes: 2, dliveBaseChannel: 0, dlivePollSendLevels: false });
+    const ph = new WebSocket('ws://127.0.0.1:18209'); const seen = [];
+    ph.on('message', (m) => seen.push(JSON.parse(m)));
+    await new Promise((resolve) => ph.once('open', resolve));
+    const waitFor = async (check, ms = 6000) => { const end = Date.now() + ms; while (!check() && Date.now() < end) await new Promise((r) => setTimeout(r, 50)); return check(); };
+    const lastCfg = () => (seen.filter(j => j.config).at(-1) || {}).config;
+    assert.ok(await waitFor(() => lastCfg() && lastCfg().aux.map(x => x.label).join() === 'IEM,BAND'), 'the layout is read');
+    await new Promise((r) => setTimeout(r, 600)); // the link comes up
+    // Its sends over MIDI; channel 3's is switched off, its level still up (and off on the app protocol)
+    for (const [ch, db] of [[1, -10], [2, -4], [3, -8]]) { const c = P.coordinate(0, 'input', ch); midiSock.write(Buffer.from(P.buildSendLevelSet(c.midiCh, c.ch, st1, P.dbToLv(db)))); }
+    const in3 = P.coordinate(0, 'input', 3);
+    midiSock.write(Buffer.from(P.buildSendAssignSet(in3.midiCh, in3.ch, st1, false)));
+    await new Promise((r) => setTimeout(r, 300));
+    ph.send(JSON.stringify({ type: 'set-active-aux', aux: 2 }));
+    // The layout counts the mono aux and the FX send: the mix is first checked at place 3
+    assert.ok(await waitFor(() => [...handles.values()].includes(DP.inputParam('level', 4, 3))), 'checked first after the mono aux and the FX send');
+    assert.ok(![...handles.values()].includes(DP.inputParam('level', 4, 1)), 'not straight after the mono aux');
+    // Place 3 disagrees (rechecked after 2.5 s), the search reads every place, and place 5 checks out
+    assert.ok(await waitFor(() => lastCfg().aux[1].stereo === true, 12000), 'the mix gets pan at the place its levels are found at');
+    ph.send(JSON.stringify({ address: '/Input_Channels/1/Aux_Send/2/send_pan', args: [0] }));
+    assert.ok(await waitFor(() => sets.some(x => x.param === DP.inputParam('pan', 1, 5) && x.value === 0)), 'a pan goes to place 5');
+    assert.ok(!sets.some(x => x.param === DP.inputParam('pan', 1, 3)), 'never to the place the layout guessed');
+    console.log('ok - pan on a mix that isn\'t where the layout says: found by its levels, a send switched off saying nothing');
+    net.createConnection = origCC;
+    ph.close(); await server.stop(); midi.close(); privServer.close();
+  }
+
   // ── Finding the console's base MIDI channel ─────────────────────────────
   {
     const { findBaseChannel } = require('./dlive-client');

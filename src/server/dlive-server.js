@@ -182,7 +182,7 @@ function sourceFor(baseN, midiCh, ch) {
 // ones. A console that answers none (older firmware) keeps the old mapping,
 // aux N = mono aux N, with Settings' Auxes count.
 let mixMap = null;    // [{ stereo, n }] by JPMixer aux - 1, or null
-let mixProbe = null;  // { mono: Map n->name, stereo: Map n->name, groups: { mono, stereo } } while asking
+let mixProbe = null;  // { mono: Map n->name, stereo: Map n->name, groups: { mono, stereo }, fx: { mono, stereo } } while asking
 const auxCountNow = () => mixMap ? mixMap.length : (serverCfg.auxes || 16);
 let busLayout = null; // { firstMonoAux, firstStereoAux }: where the auxes start in the console's list of mixes
 function auxCoord(baseN, aux) {
@@ -557,9 +557,10 @@ function writeChannelParam(ws, ch, path, raw) {
 // protocol dLive's own apps use (dlive-private.js). Everything about it is
 // found by itself, as with the rest of the console: which mixes are stereo
 // (the mix layout), and where each one is in the console's list of mixes,
-// which every show lays out its own way: the groups, then the mono auxes,
-// then the stereo ones, two places each (seen on Director 2.12 with 10
-// groups, 2 mono and 24 stereo auxes). Each mix's place is checked: its send
+// which every show lays out its own way: the groups, the mono auxes, the
+// FX sends, then the stereo auxes, a stereo mix taking two places (seen on
+// Director 2.12 with 10 groups, 2 mono and 24 stereo auxes, and on a
+// MixRack with stereo groups and FX sends). Each mix's place is checked: its send
 // levels there must be the ones MIDI reads. A mix whose levels disagree
 // gets no pan, and a console that doesn't answer this protocol (an older
 // or newer firmware) gets none at all. Inputs only; FX returns have none.
@@ -574,6 +575,9 @@ const panLink = {
   privLevel: new Map(),        // "ch:aux" -> dB, as this protocol has it
   wrote: new Map(),            // "ch:aux" -> when JPMixer last set its pan
   stereoIn: new Map(),         // input -> true when it's half of a stereo pair (read on connect)
+  placeOf: new Map(),          // aux -> the place it's subscribed and checked at
+  searched: new Set(),         // auxes looked for at every place (findPlace), once each
+  scan: new Map(),             // "ch:place" -> dB, the levels findPlace reads
 };
 // The right half of a stereo input: the console keeps the pair's sends and
 // pans on the left one (the odd channel), and phones show the pair as it
@@ -581,8 +585,9 @@ const isRightHalf = (ch) => ch % 2 === 0 && panLink.stereoIn.get(ch) === true &&
 const panChannel = (ch) => (isRightHalf(ch) ? ch - 1 : ch);
 const panWanted = () => serverCfg.dlivePan !== false;
 // A mix's place in the console's list of mixes (a stereo mix takes two: its
-// left one), or null
+// left one), or null: the one it's checked at, or else the layout's guess
 function mixPlace(aux) {
+  if (panLink.placeOf.has(aux)) return panLink.placeOf.get(aux);
   const m = mixMap && mixMap[aux - 1];
   if (!m || !busLayout) return null;
   const i = m.stereo ? busLayout.firstStereoAux + 2 * m.rank : busLayout.firstMonoAux + m.rank;
@@ -621,6 +626,7 @@ async function subscribeMix(auxRaw) {
   if (!placeOk(aux) || panLink.mixes.has(aux)) return;
   panLink.mixes.add(aux);
   const idx = mixPlace(aux);
+  panLink.placeOf.set(aux, idx);
   const kinds = panMixIndex(aux) !== null ? ['pan', 'level'] : ['level'];
   for (let ch = 1; ch <= inputCount(); ch++) {
     const obj = await panObject(ch);
@@ -648,6 +654,9 @@ function checkPanPlace(ch, aux, again = false) {
   if (isRightHalf(ch) || !panLink.privLevel.has(key) || !levelCache.has(key)) return; // a pair's right half has no sends of its own
   // A send muted by its level: MIDI's cache keeps the level to put back, the console has it off
   if (!muteBySendOff() && isSilenced(aux, ch)) return;
+  // A send switched off: MIDI still reads its level, and this protocol may
+  // or may not (Director's does), so it says nothing
+  if (assignCache.get(key) === false) return;
   const a = panLink.privLevel.get(key), b = levelCache.get(key);
   const aOff = sendOff(a), bOff = sendOff(b);
   const c = panLink.checked.get(aux) || { bad: 0, pending: 0, matched: new Map() };
@@ -657,7 +666,7 @@ function checkPanPlace(ch, aux, again = false) {
     const was = placeProven(aux);
     c.matched.set(ch, Math.round(b * 2) / 2);
     if (!was && placeProven(aux)) {
-      logEvent('pan-layout', `mix ${aux}: its place checks out (${[...c.matched].map(([n, v]) => `ch ${n} ${v} dB`).join(', ')})`);
+      logEvent('pan-layout', `mix ${aux}: place ${mixPlace(aux) + 1} checks out (${[...c.matched].map(([n, v]) => `ch ${n} ${v} dB`).join(', ')})`);
       scheduleLayoutPush();
       // The pans read while it was being proven
       if (panAvailable(aux)) for (const [k, v] of panCache) { const [pc, pa] = k.split(':').map(Number); if (pa === aux) broadcastToClients({ address: `/Input_Channels/${pc}/Aux_Send/${aux}/send_pan`, args: [v] }); }
@@ -673,7 +682,7 @@ function checkPanPlace(ch, aux, again = false) {
     c.pending++;
     if (wasProven) scheduleLayoutPush();
     const input = sourceCoord(moduleBaseN, ch), snd = auxCoord(moduleBaseN, aux);
-    if (input && snd) requestSendLevel(ch, aux, input, snd);
+    if (input && snd) { requestSendLevel(ch, aux, input, snd); if (client) client.requestSendAssign(input, snd); }
     panRechecks.set(key, setTimeout(() => {
       panRechecks.delete(key);
       c.pending = Math.max(0, c.pending - 1);
@@ -684,14 +693,73 @@ function checkPanPlace(ch, aux, again = false) {
   }
   c.matched.delete(ch);
   if (c.bad++ === 0) {
-    logEvent('pan-layout', `mix ${aux}: channel ${ch}'s send is ${bOff ? 'off' : b.toFixed(1) + ' dB'} over MIDI but ${aOff ? 'off' : a.toFixed(1) + ' dB'} at its place — no pan, graphic EQ or compressor on this mix until JPMixer reconnects`);
+    logEvent('pan-layout', `mix ${aux}: channel ${ch}'s send is ${bOff ? 'off' : b.toFixed(1) + ' dB'} over MIDI but ${aOff ? 'off' : a.toFixed(1) + ' dB'} at place ${mixPlace(aux) + 1} — looking for the mix at the other places`);
     pushLayout();
+    findPlace(aux, mixPlace(aux));
   }
+}
+// ── A mix whose place didn't check out, found by its send levels ────────
+// The layout's guess (groups, then mono auxes, then stereo) is how
+// Director lays out a show, but a console can have more before the auxes.
+// Up to 3 of the mix's sends, at different levels, are read at every
+// place; the one place where all of them have the levels MIDI reads (both
+// halves, on a stereo mix) is the mix's, and it's checked there again send
+// by send like any other. No place, or more than one, and the mix gets no
+// pan, graphic EQ or compressor. Once per mix until the link reconnects.
+const SCAN_SENDS = 3;
+async function findPlace(aux, failedAt) {
+  const m = mixMap && mixMap[aux - 1];
+  if (!m || panLink.searched.has(aux) || !panLink.client || !panLink.ready) return;
+  panLink.searched.add(aux);
+  const link = panLink.client;
+  const midiDb = (ch) => levelCache.get(levelKey(ch, aux));
+  const picks = [], levels = new Set();
+  for (const ch of mixChannels()) {
+    if (picks.length >= SCAN_SENDS || ch > inputCount()) continue; // FX returns have no place here
+    const db = midiDb(ch), r = Math.round(db);
+    if (db === undefined || sendOff(db) || levels.has(r) || assignCache.get(levelKey(ch, aux)) === false || (!muteBySendOff() && isSilenced(aux, ch))) continue;
+    levels.add(r); picks.push(ch);
+  }
+  const give = (why) => logEvent('pan-layout', `mix ${aux}: ${why} — no pan, graphic EQ or compressor on this mix until JPMixer reconnects`);
+  if (picks.length < 2) { give('too few of its sends are up at different levels to look for it'); return; }
+  for (const ch of picks) {
+    const obj = await panObject(ch);
+    if (obj === null || panLink.client !== link || !panLink.ready) return;
+    for (let p = 0; p < 64; p++) {
+      const key = `scan:${ch}:${p}`;
+      if (panLink.subs.has(key)) continue;
+      const handle = link.subscribe(obj, DP.inputParam('level', ch, p));
+      if (handle === null) continue;
+      panLink.subs.set(key, { obj, handle });
+      panLink.byHandle.set(handle, { what: 'scan', ch, aux: p });
+    }
+  }
+  const read = () => picks.every((ch) => Array.from({ length: 64 }, (_, p) => p).every((p) => panLink.scan.has(`${ch}:${p}`)));
+  for (let i = 0; i < 50 && !read(); i++) await new Promise((r) => setTimeout(r, 100));
+  if (panLink.client !== link || !panLink.ready || !panLink.searched.has(aux)) return; // forgotten meanwhile
+  const fits = (ch, p) => { const a = panLink.scan.get(`${ch}:${p}`), b = midiDb(ch); return a !== undefined && b !== undefined && !sendOff(a) && Math.abs(a - b) <= 1; };
+  const places = [];
+  for (let p = 0; p < (m.stereo ? 63 : 64); p++) if (picks.every((ch) => fits(ch, p) && (!m.stereo || fits(ch, p + 1)))) places.push(p);
+  if (places.length === 1 && places[0] === failedAt) { give(`its other sends fit place ${failedAt + 1}, so it's that one send that disagrees`); return; }
+  if (places.length !== 1) { give(places.length ? `${places.length} places fit its sends` : 'no place fits its sends'); return; }
+  logEvent('pan-layout', `mix ${aux}: found at place ${places[0] + 1} (the layout said ${failedAt + 1}); checking it there`);
+  moveMix(aux, places[0]);
+}
+// A mix to its found place: what was read and checked at the old one goes
+function moveMix(aux, place) {
+  const ofAux = (key) => key.split(':').pop() === String(aux);
+  for (const [key, t] of [...panRechecks]) if (ofAux(key)) { clearTimeout(t); panRechecks.delete(key); }
+  for (const [key, sub] of [...panLink.subs]) if ((key.startsWith('pan:') || key.startsWith('level:')) && ofAux(key)) { panLink.subs.delete(key); panLink.byHandle.delete(sub.handle); }
+  for (const map of [panLink.privLevel, panCache]) for (const key of [...map.keys()]) if (ofAux(key)) map.delete(key);
+  panLink.checked.delete(aux); panLink.mixes.delete(aux); procs.delete(aux);
+  panLink.placeOf.set(aux, place);
+  subscribeMix(aux);
 }
 function onPanValue({ handle, value, bytes }) {
   const sub = panLink.byHandle.get(handle);
   if (!sub) return;
   if (sub.what === 'geq' || sub.what === 'comp') { onProcValue(sub, value); return; }
+  if (sub.what === 'scan') { panLink.scan.set(`${sub.ch}:${sub.aux}`, DP.levelToDb(value)); return; }
   if (sub.what === 'stereo') {
     const was = panLink.stereoIn.get(sub.ch);
     panLink.stereoIn.set(sub.ch, DP.isStereoValue(value, bytes));
@@ -888,6 +956,7 @@ function forgetPlaces() {
   for (const [h, sub] of [...panLink.byHandle]) if (sub.what === 'geq' || sub.what === 'comp') panLink.byHandle.delete(h);
   panLink.mixes.clear();
   panLink.privLevel.clear();
+  panLink.placeOf.clear(); panLink.searched.clear(); panLink.scan.clear();
   panCache.clear();
 }
 function resetPanLink() {
@@ -1421,11 +1490,12 @@ let mixProbeTimer = null, mixProbeFinishTimer = null;
 function startMixProbe(baseN, again = false) {
   clearInterval(mixProbeTimer);
   clearTimeout(mixProbeFinishTimer); mixProbeFinishTimer = null;
-  const probe = mixProbe = { mono: new Map(), stereo: new Map(), groups: { mono: new Set(), stereo: new Set() }, again };
-  // The groups too: they come first in the console's list of mixes, which
-  // the pan on a stereo mix needs (see panMixIndex)
+  const probe = mixProbe = { mono: new Map(), stereo: new Map(), groups: { mono: new Set(), stereo: new Set() }, fx: { mono: new Set(), stereo: new Set() }, again };
+  // The groups and FX sends too: they come before the auxes in the
+  // console's list of mixes, which the pan on a stereo mix needs (see mixPlace)
   const slots = [...Array.from({ length: 62 }, (_, i) => P.coordinate(baseN, 'monoAux', i + 1)), ...Array.from({ length: 31 }, (_, i) => P.coordinate(baseN, 'stereoAux', i + 1)),
-    ...Array.from({ length: 62 }, (_, i) => P.coordinate(baseN, 'monoGroup', i + 1)), ...Array.from({ length: 31 }, (_, i) => P.coordinate(baseN, 'stereoGroup', i + 1))];
+    ...Array.from({ length: 62 }, (_, i) => P.coordinate(baseN, 'monoGroup', i + 1)), ...Array.from({ length: 31 }, (_, i) => P.coordinate(baseN, 'stereoGroup', i + 1)),
+    ...Array.from({ length: 16 }, (_, i) => P.coordinate(baseN, 'monoFxSend', i + 1)), ...Array.from({ length: 16 }, (_, i) => P.coordinate(baseN, 'stereoFxSend', i + 1))];
   mixProbeTimer = setInterval(() => {
     const c = slots.shift();
     if (c) { if (client) client.requestName(c); return; }
@@ -1463,12 +1533,17 @@ function finishMixProbe(baseN) {
       levelCache.clear(); assignCache.clear(); assignWrites.clear(); levelWrites.clear();
     }
     mixMap = next;
-    // Where the stereo mixes start in the console's list of mixes: after
-    // every group (a stereo one takes two places) and the mono auxes
+    // Where the auxes are in the console's list of mixes (a stereo mix takes
+    // two places): the groups, the mono auxes, the FX sends, then the stereo
+    // auxes. Measured on a MixRack whose show has 4 stereo groups, 2 mono
+    // auxes, 4 stereo FX sends and 15 stereo auxes (2026-10-29); where mono
+    // FX sends go isn't known (with the stereo ones is a guess). A mix that
+    // isn't there is looked for (findPlace)
     const groups = probe.groups.mono.size + 2 * probe.groups.stereo.size;
-    busLayout = { firstMonoAux: groups, firstStereoAux: groups + mono.length };
+    const fx = probe.fx.mono.size + 2 * probe.fx.stereo.size;
+    busLayout = { firstMonoAux: groups, firstStereoAux: groups + mono.length + fx };
     forgetPlaces(); // every mix's place is proven again on this layout
-    logEvent('mix-layout', `${mono.length} mono + ${stereo.length} stereo aux mixes (${probe.groups.mono.size} mono + ${probe.groups.stereo.size} stereo groups before them)`);
+    logEvent('mix-layout', `${mono.length} mono + ${stereo.length} stereo aux mixes (${probe.groups.mono.size} mono + ${probe.groups.stereo.size} stereo groups, ${probe.fx.mono.size} mono + ${probe.fx.stereo.size} stereo FX sends; mono auxes from place ${busLayout.firstMonoAux + 1}, stereo from ${busLayout.firstStereoAux + 1})`);
     mixMap.forEach((m, i) => {
       nameCache.set(`aux:${i + 1}`, (m.stereo ? probe.stereo : probe.mono).get(m.n));
       const c = auxCoord(baseN, i + 1);
@@ -1962,6 +2037,7 @@ function start(cfg) {
       if (label !== x.label) { x.label = label; broadcastToClients({ address: `/Extra/${kind}/${n}/name`, args: [label] }); }
     }
     if (mixProbe && ev.midiCh === baseN + 1) (ev.ch >= 0x40 ? mixProbe.groups.stereo : mixProbe.groups.mono).add(ev.ch);
+    if (mixProbe && ev.midiCh === baseN + 4 && ev.ch < 0x20) (ev.ch >= 0x10 ? mixProbe.fx.stereo : mixProbe.fx.mono).add(ev.ch);
     if (ev.midiCh === baseN + 4 && ev.ch >= 0x20 && ev.ch < 0x30) {
       // An FX return: a channel in the mixes when Settings puts it there
       const n = FX_BASE + ev.ch - 0x20 + 1, key = `input:${n}`;
