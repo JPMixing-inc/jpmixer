@@ -1,5 +1,8 @@
 /* A dLive mix's graphic EQ and compressor (mix-processing.js), in the EQ
    panel's look (mixer.css .eq-panel) */
+/* They share the EQ panel's look (.eq-panel), not its trigger: the
+   Equalizer's body.eqOpen must open only its own panel */
+body.eqOpen .dyn-panel { display: none; }
 body.geqOpen #geqPanel, body.compOpen #compPanel { display: flex; }
 .dyn-body { display: flex; flex-direction: column; gap: 12px; }
 .dyn-readout { min-height: 18px; color: var(--sub); font-size: 12px; font-variant-numeric: tabular-nums; }

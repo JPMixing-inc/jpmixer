@@ -940,3 +940,13 @@ test('DiGiCo: a silent desk is probed, marked disconnected, and re-silenced when
   h.clock.advance(100);
   assert(desk().some(a => /^\/Input_Channels\/\d+\/Aux_Send\/1\/send_level\/\?$/.test(a)), 'and the open mix is refreshed from the desk');
 });
+
+test('the phone\'s Equalizer opens only its own panel, not the graphic EQ and compressor that share its look', () => {
+  // 2.0.16: mix-processing.js's panels are .eq-panel too, and mixer.css's
+  // `body.eqOpen .eq-panel` showed all three, the compressor on top
+  const css = read('src/mixer/mix-processing.css');
+  const js = read('src/mixer/mix-processing.js');
+  assert.match(js, /el\('div', 'eq-panel dyn-panel'\)/, 'the panels are .dyn-panel');
+  assert.match(css, /body\.eqOpen \.dyn-panel\s*\{\s*display:\s*none;?\s*\}/, 'hidden while the Equalizer is open');
+  assert.match(css, /body\.geqOpen #geqPanel, body\.compOpen #compPanel \{ display: flex; \}/, 'each shown by its own class (an id outranks .dyn-panel)');
+});
