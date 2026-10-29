@@ -196,7 +196,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 <header class="cover">
   <div class="wrap">
     <div>
-      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.15 · OCTOBER 2026</span></div>
+      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.16 · OCTOBER 2026</span></div>
       <h1 style="margin-top:34px">JPMixer User Manual</h1>
       <p class="lede">Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.</p>
       <dl class="cover-facts">
@@ -408,11 +408,19 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   <ol class="steps">
     <li>On the surface, open <span class="ui">Utility → Control → MIDI</span> and turn <strong>MIDI/TCP</strong> on. Nothing can connect until it is.</li>
     <li>Note the <strong>Main MIDI Channels</strong> shown there. JPMixer’s <span class="ui">Base MIDI Channel</span> (0 to 11) must match: channel 1 is <code>0</code>, channel 12 is <code>11</code>.</li>
-    <li>In JPMixer, enter the <strong>MixRack’s</strong> IP address (not the surface’s) and the Base MIDI Channel.</li>
+    <li>In JPMixer, enter the <strong>MixRack’s</strong> IP address (not the surface’s), then click <span class="ui">Find</span> next to Base MIDI Channel: JPMixer asks the console which MIDI channels it’s on and fills it in. It only reads names; nothing on the console changes.</li>
     <li>Turn on <span class="ui">Use TLS/SSL</span> and enter the username and password only if MIDI/TCP is in Secure Mode on the console.</li>
     <li>Leave <span class="ui">MIDI/TCP Port Override</span> at <code>0</code>. If the console doesn’t answer, try <code>51328</code>.</li>
   </ol>
-  <p>The dLive MixRack accepts many connections at once, so JPMixer runs alongside Director, MixPad and other remotes. JPMixer reads channel and mix names, finds which mono and stereo aux mixes the show has, and runs the Console Controller for inputs, aux masters and DCAs. Leave <span class="ui">Listen for live send-level updates</span> and <span class="ui">Poll send levels as a backup</span> on.</p>
+  <p>The dLive MixRack accepts many connections at once, so JPMixer runs alongside Director, MixPad and other remotes. JPMixer reads channel and mix names, finds which mono and stereo aux mixes the show has, and runs the Console Controller. Leave <span class="ui">Listen for live send-level updates</span> and <span class="ui">Poll send levels as a backup</span> on.</p>
+  <ul>
+    <li><strong>Mutes use the send’s own on/off.</strong> A musician’s mute switches that send off on the console, and its level stays as it was, so nothing has to be put back. A send the console already has off stays off when it’s unmuted. If the engineer switches a muted send on, JPMixer switches it off again and keeps it on for the unmute. If your console doesn’t take it, turn off <span class="ui">Mute with the send’s on/off</span> under Advanced send-level updates: mutes then take the send to −∞ and put its level back, as on DiGiCo.</li>
+    <li><strong>Pan on stereo mixes.</strong> dLive’s MIDI control has no pan for a send, so JPMixer pans the stereo mixes the way dLive’s own apps (dLive4You) do. It finds everything by itself: which mixes are mono and which stereo, and where each one sits in the show’s bus layout, however many there are. It checks each stereo mix against the send levels MIDI reads; a mix that doesn’t check out has no pan, and the rest of JPMixer works as usual. Mono mixes have no pan. <span class="ui">Pan on stereo mixes</span> is under Advanced send-level updates; turn it off if a dLive firmware update stops it working.</li>
+    <li><strong>Stereo inputs</strong> show as one channel, named as the left one: dLive links the pair, so a move on either is a move on both.</li>
+    <li><strong>FX returns in mixes.</strong> Set <span class="ui">FX returns in mixes</span> (0 to 16) and every mix gets that many of the console’s FX returns after the inputs, named as on the console, so a singer can have reverb in their ears. They’re channels 129 on, so their levels never land on an input.</li>
+    <li><strong>A mix’s EQ, graphic EQ and compressor.</strong> Turn on <span class="ui">EQ</span> for a mix under Settings → Aux mixes and its musicians can shape the mix’s own 4-band PEQ on the console from their phone. With <span class="ui">Pan on stereo mixes</span> on, the phone’s mix menu also has <span class="ui">Graphic EQ</span> (the mix’s 28 bands, ±12 dB, in/out and Flat) and <span class="ui">Compressor</span> (in/out and threshold; ratio, attack and release stay as set on the console), the way dLive’s own app offers them, on mono and stereo mixes alike.</li>
+    <li><strong>The Console Controller</strong> has a <span class="ui">More</span> tab with the show’s FX returns, FX sends, groups, matrices and mains (faders and mutes) and the 8 mute groups. Each input’s <span class="ui">EQ</span> button opens its panel: its high-pass filter and 4-band PEQ, and its preamp’s gain, pad and 48V.</li>
+  </ul>
   <div class="callout tip"><b>Tip</b><p>No dLive to practise on? dLive Director running offline answers JPMixer like a real MixRack. In Director, turn on System → Offline → Enable Director Connections to MixRack IP Controllers, and point JPMixer at the Director computer.</p></div>
 
   <h3>KLANG (with a dLive)</h3>
@@ -558,9 +566,10 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
   <figure class="shot bleed"><img src="img/console.png" alt="Console Controller with sixteen input channel strips"><figcaption><b>Fig. 9.2</b>Console Controller, Inputs. Channel 14 is muted.</figcaption></figure>
   <p>The console’s main faders, mutes and solos for <span class="ui">Inputs</span>, <span class="ui">Control groups</span> (DCAs) and <span class="ui">Aux outputs</span>, from a browser. <span class="ui">Overview</span> fits more strips on screen; <span class="ui">Roomy</span> gives each strip more space. It works on DiGiCo, dLive and LV1.</p>
   <p>On DiGiCo, each strip’s <span class="ui">EQ</span> button opens the <strong>channel processing panel</strong>: input gain, 48V, phase, delay and pan; a 4-band EQ graph you can drag, with high-pass and low-pass filters; and compressor and gate.</p>
+  <p>On dLive, each strip’s <span class="ui">EQ</span> button opens that channel’s panel. <span class="ui">EQ</span> is the channel’s high-pass filter and 4-band PEQ: drag a band’s dot, or choose a band and set its gain, frequency and Q. A lowest band set as a shelf or high-pass, or a highest band as a shelf or low-pass, is drawn that way; its type is set on the console. <span class="ui">Input</span> has the preamp’s gain, pad and 48V (48V asks you to tap twice). dLive sets a preamp by its socket, and the console can’t say which socket a channel is on, so JPMixer takes it from <strong>Patch</strong>: import the dLive show there (Settings → Plugins → Patch). A channel Patch doesn’t know has no preamp controls, so 48V never goes to the wrong mic. The panel says which socket it is, and which other channels it feeds.</p>
   <p>On LV1, each strip’s <span class="ui">EQ</span> button opens that channel’s panel, updating live as LV1 changes. <span class="ui">EQ</span> is the channel’s own 4-band EQ on LV1: drag a band’s dot, or choose a band and set its gain, frequency and Q or switch it off, and the change goes straight to LV1. A band LV1 has as a shelf or a Hi-Pass or Low-Pass filter is drawn that way; its shape is set on LV1. <span class="ui">Input</span> shows the <strong>preamp</strong>: whether its gain comes from the stage box preamp or is Local, the gain, 48V, phase and trim. The preamp is read-only, so nobody switches 48V by accident; change it on LV1. A stereo channel shows its left side.</p>
   <figure class="shot bleed"><img src="img/console-eq.png" alt="The channel processing panel open on the Kick channel, showing the EQ graph"><figcaption><b>Fig. 9.3</b>The channel processing panel (DiGiCo): Input, EQ and Dynamics.</figcaption></figure>
-  <div class="callout warn"><b>Important</b><p>The Console Controller changes the main mix. Anyone on the network who opens it can move the console’s faders, so keep production Wi-Fi private.</p></div>
+  <div class="callout warn"><b>Important</b><p>The Console Controller changes the main mix. Give it an <strong>Access code</strong> (Settings → Pages → Console Controller) so only devices that enter it can move the console’s faders, and keep production Wi-Fi private.</p></div>
 
   <h3>Devices on stage</h3>
   <figure class="shot bleed"><img src="img/devices.png" alt="Devices on stage: seven device cards on a stage plan"><figcaption><b>Fig. 9.4</b>Devices on stage. Each card is a connected phone or iPad and the mix it’s on.</figcaption></figure>
@@ -656,11 +665,11 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 
   <div class="callout note"><b>Note</b><p>Companion buttons, Smaart SPL and Shure wireless are each a plugin of their own: install only the ones you use. To add one, open <span class="ui">Settings → Plugins</span> and click <span class="ui">Install</span> on it under <span class="ui">Find plugins</span>. Each comes with JPMixer, so it installs even with no internet. Its tab then appears under Plugins in the sidebar. If you used one before 2.0.14, it was moved over by itself, with its settings. Removing one turns it off and keeps its settings, for if you install it again.</p></div>
   <h3>Companion buttons</h3>
-  <p>JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds one button surface per Home page.</p>
+  <p>JPMixer connects to Bitfocus Companion (3.0 or newer) as a Satellite and adds one button surface per Home page, and one for each custom page with Companion buttons.</p>
   <ol class="steps">
     <li>In Companion, allow Satellite connections (TCP port <code>16622</code> by default).</li>
     <li>In JPMixer, install <strong>Companion buttons</strong> from <span class="ui">Find plugins</span> (see the note above).</li>
-    <li>Open <span class="ui">Settings → Plugins → Companion</span>, turn it on, enter the Companion computer’s address (<code>127.0.0.1</code> if it is this computer) and choose the grid (8 × 4 by default). Click <span class="ui">Save &amp; Apply</span>; the status should say Connected.</li>
+    <li>Open <span class="ui">Settings → Plugins → Companion</span>, turn it on, enter the Companion computer’s address (<code>127.0.0.1</code> if it is this computer) and choose the Home pages’ grid (8 × 4 by default). If only custom pages need Companion, turn off <span class="ui">Home page surfaces</span>. Click <span class="ui">Save &amp; Apply</span>; the status should say Connected.</li>
     <li>In Companion → Surfaces, give each JPMixer surface (JPMixer FOH Home, JPMixer ProPresenter Home, and so on) the page of buttons that station needs.</li>
   </ol>
   <p>The Companion card shows the buttons live with Companion’s own images. Tap to press, hold to hold. One tap presses once on phones and iPads, even a tap that slides a little. On a phone, a swipe that starts on a button scrolls the page without pressing it. JPMixer reconnects by itself if Companion restarts, and the card reconnects when a phone wakes up.</p>
@@ -708,10 +717,26 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
     <li>In its settings, <span class="ui">Lock the patch</span> makes it view-only during a service, and <span class="ui">Show a patch summary on FOH Home</span> adds a card with how much is patched.</li>
   </ul>
 
-  <h3>The Pages tab and FOH access code</h3>
+  <h3>The Custom Pages plugin</h3>
+  <p><strong>Custom Pages</strong> makes link-only pages for a youth night, a women’s event or anything else that runs its own sound. Each page has just the faders that group needs, and every fader has its own highest level, so nobody on the page can push it past that. It works on DiGiCo, dLive and LV1.</p>
+  <ol>
+    <li>Install <span class="ui">Custom Pages</span> from Find plugins and turn it on.</li>
+    <li>Open its tab under Plugins. The pages are set up there, under <span class="ui">Pages</span>.</li>
+    <li>Click <span class="ui">New page</span>, name it, and <span class="ui">Add fader</span> for each channel or control group the group needs. Give each one its highest level, in dB.</li>
+    <li>Tick <span class="ui">Mute buttons</span> to give each fader a mute. Tick <span class="ui">Companion buttons</span> for a card of Companion buttons; they go through the Companion buttons plugin, so set that up first. Each page is then its own surface in Companion, “JPMixer” and its name, to give a page of buttons in Companion → Surfaces.</li>
+    <li>Click <span class="ui">Save page</span>. Share the page’s link or QR code.</li>
+  </ol>
+  <ul>
+    <li>Anyone with the link can move only that page’s faders. A fader stops at its highest level. If the engineer has it above that on the desk, the page can bring it down but not back up.</li>
+    <li><span class="ui">New link</span> stops the old link and QR code working straight away. A page that’s off shows that it isn’t available.</li>
+    <li>Custom Pages aren’t on the Home pages list: they open only from their links.</li>
+  </ul>
+
+  <h3>The Pages tab and access codes</h3>
   <figure class="shot"><img src="img/settings-pages.png" alt="The Pages tab: Home page picker, FOH Home with access code, and the other Home pages"><figcaption><b>Fig. 11.5</b>Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</figcaption></figure>
-  <p>Settings → Pages lists every page JPMixer serves with its direct link. FOH Home can have an <strong>Access code</strong>: other devices enter it once, the JPMixer computer never needs it, and changing it signs every device out. Leave it empty to turn it off.</p>
-  <div class="callout warn"><b>Important</b><p>Only FOH Home can have a code. Anyone on the same network can open the other Home pages, chat and press their Companion buttons, so keep production Wi-Fi separate from guest Wi-Fi.</p></div>
+  <p>Settings → Pages lists every page JPMixer serves with its direct link. FOH Home and the Console Controller can each have an <strong>Access code</strong>: other devices enter it once, and changing it signs every device out. JPMixer’s own windows, and pages opened from Settings, never need it. Leave it empty to turn it off.</p>
+  <p>Up to 2.0.15, a device using the address without a port (the Port 80 helper, which the QR codes use) wasn’t asked for the FOH Home code. From 2.0.16 every other device is asked.</p>
+  <div class="callout warn"><b>Important</b><p>Only FOH Home and the Console Controller can have a code. Anyone on the same network can open the other Home pages, chat and press their Companion buttons, so keep production Wi-Fi separate from guest Wi-Fi.</p></div>
 </section>
 
 <!-- ═════════ 12 ═════════ -->
@@ -840,7 +865,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
     <tbody>
       <tr><td>The menu bar dot is red; Console says Not connected</td><td>Check the console’s IP address, that it is on the same network as this computer, and its remote setting: DiGiCo Pad external control, dLive MIDI/TCP on, or LV1’s MyMon / MyFOH remote. On a Mac, check JPMixer is allowed Local Network access in System Settings → Privacy &amp; Security.</td></tr>
       <tr><td>Phones can’t open the address</td><td>Confirm the phone is on the production network, not guest Wi-Fi or mobile data. Check the address on the Get started tab, and that the server is running (the menu says Running on port …). On Windows, allow JPMixer through the firewall.</td></tr>
-      <tr><td>dLive connects but nothing responds</td><td>Check the Base MIDI Channel matches the console’s Main MIDI Channels. Then try <code>51328</code> as the MIDI/TCP Port Override.</td></tr>
+      <tr><td>dLive connects but nothing responds</td><td>Click <span class="ui">Find</span> next to Base MIDI Channel, then Save &amp; Apply. If it still doesn’t answer, try <code>51328</code> as the MIDI/TCP Port Override.</td></tr>
       <tr><td>LV1 stays Offline</td><td>Switch on LV1’s MyMon / MyFOH remote. If LV1 is on a different network, enter its computer’s IP address and allow up to half a minute.</td></tr>
       <tr><td>KLANG levels move but nothing is heard</td><td>Check the audio patch from the console to the KLANG processor. For pan, set the mix to Stereo mode in KLANG:app.</td></tr>
       <tr><td>A channel or mix is missing</td><td>Check its Show switch on the Channels or Aux mixes tab, and the counts under Console → Channels &amp; mixes. A Link only mix opens only from its direct link.</td></tr>
@@ -901,14 +926,14 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
     <thead><tr><th>Feature</th><th>DiGiCo</th><th>dLive</th><th>KLANG</th><th>WING</th><th>LV1</th></tr></thead>
     <tbody>
       <tr><td>Levels, mute and solo</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-      <tr><td>Per-send pan</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Stereo mode</td><td class="yes">Yes</td><td class="yes">Stereo mixes</td></tr>
+      <tr><td>Per-send pan</td><td class="yes">Yes</td><td class="yes">Stereo mixes</td><td class="yes">Stereo mode</td><td class="yes">Yes</td><td class="yes">Stereo mixes</td></tr>
       <tr><td>Names from the console</td><td class="yes">Channels, mixes</td><td class="yes">Channels, mixes</td><td class="yes">Channels*</td><td class="yes">Channels</td><td class="yes">Channels, mixes</td></tr>
       <tr><td>Counts from the console</td><td class="yes">Yes</td><td class="yes">Mixes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
       <tr><td>My Mixes and Devices</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
       <tr><td>Ear Scenes</td><td class="yes">By snapshot name</td><td class="yes">By scene number</td><td class="yes">By scene number</td><td class="no">No</td><td class="yes">By scene name</td></tr>
-      <tr><td>Built-in aux EQ</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="yes">Monitor mixes</td></tr>
-      <tr><td>Console Controller</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
-      <tr><td>Channel processing panel</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="yes">EQ, and the preamp read-only</td></tr>
+      <tr><td>Built-in aux EQ</td><td class="yes">Yes</td><td class="yes">Yes (PEQ)</td><td class="no">No</td><td class="no">No</td><td class="yes">Monitor mixes</td></tr>
+      <tr><td>Console Controller</td><td class="yes">Yes</td><td class="yes">Yes, with FX, groups, matrices, mains and mute groups</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+      <tr><td>Channel processing panel</td><td class="yes">Yes</td><td class="yes">High-pass, PEQ, and the preamp from Patch</td><td class="no">No</td><td class="no">No</td><td class="yes">EQ, and the preamp read-only</td></tr>
     </tbody>
   </table></div>
   <p style="font-size:14px;color:var(--ink-3)">* KLANG mode reads channel names from the paired dLive, when its address is entered. DiGiCo is in regular use. dLive has been tested against dLive Director, LV1 against an LV1 show, and KLANG and WING against their published protocols; try each on your own console before a service.</p>
@@ -934,7 +959,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 </section>
 
       <footer class="end">
-        <p style="max-width:none">JPMixer User Manual · Version 2.0.15 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
+        <p style="max-width:none">JPMixer User Manual · Version 2.0.16 · October 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
         <p style="max-width:none;font-size:12px">JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer / MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. All trademarks belong to their owners.</p>
       </footer>
     </div>

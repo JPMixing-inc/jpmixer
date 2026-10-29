@@ -60,7 +60,7 @@
 |---|---|
 | **[User Manual](docs/MANUAL.md)** | The whole app, chapter by chapter, with screenshots. Start here. |
 | **[Musician Guide](docs/MUSICIAN-GUIDE.md)** | For the band: the phone screen, part by part, and how to mix, save and recall your own mix. Short and phone-friendly. |
-| **[Plugins](docs/plugins/README.md)** | A page for each plugin, with pictures and how to set it up: Patch, Shure wireless, Smaart SPL, Companion buttons and Console check. |
+| **[Plugins](docs/plugins/README.md)** | A page for each plugin, with pictures and how to set it up: Patch, Shure wireless, Smaart SPL, Companion buttons, Custom Pages and Console check. |
 | [Musician Guide, designed copy](docs/musician/index.html) | The same guide as a web page made for phones. |
 | [User Manual, designed copy](docs/manual/index.html) | The same manual as a web page to read offline or print. Download the repository and open `docs/manual/index.html`. |
 | [Release notes](https://github.com/JPMixing-inc/jpmixer/releases) | What changed in each version. |
@@ -81,17 +81,22 @@
 
 <a id="new-in-2-0-15"></a>
 
-## 🆕 New in 2.0.15
+## 🆕 New in 2.0.16
 
 | | |
 |---|---|
-| 🎛️ **LV1 EQ** | Performers adjust their monitor mix's own 4-band EQ on LV1 from their phone, and the Console Controller's channel panel shows each input's EQ, which can be changed. A change on LV1 shows on the phones within a second. |
-| 🔌 **dLive in Patch** | Import a dLive show, inputs and outputs, onto CDM MixRacks, a DX168 and the S7000. Dante and other network devices are drawn as a tile for each channel. |
-| 🧩 **One switch per plugin** | The Allow plugins switch is gone: each plugin's own switch turns it on or off. |
-| 🛟 **More reliable mutes and faders** | An unmute made while the console was offline now reaches it, two quick flicks no longer jump a fader to 0 dB, and each fader follows only its own finger. |
+| 🎚️ **Much more for dLive** | Pan on the stereo mixes, each mix's graphic EQ and compressor for its musicians, FX returns in the mixes, stereo inputs shown as one channel, and mutes that use the send's own on/off. All found by itself on any show. |
+| 🎛️ **dLive Console Controller** | Each channel's preamp (gain, pad and 48V, on the socket your Patch import says), high-pass and EQ, and a More tab with the FX returns and sends, groups, matrices, mains and mute groups. |
+| 📄 **Custom Pages** | Link-only pages for a youth night or an event: just the faders that group needs, each with its own highest level, plus mutes and Companion buttons. |
+| 🔐 **Access codes that hold** | The FOH Home code now applies to every device, and the Console Controller can have its own code. |
 
 <details>
-<summary><b>Earlier releases: 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+<summary><b>Earlier releases: 2.0.15, 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.15
+- **LV1 EQ**: performers adjust their monitor mix's own EQ on LV1, and the Console Controller's channel panel shows each input's EQ.
+- **dLive in Patch**: import a dLive show onto CDM MixRacks, a DX168 and the S7000.
+- **One switch per plugin**, and **more reliable mutes and faders**.
 
 ### 2.0.14
 - **Choose your integrations**: Shure wireless, Smaart SPL and Companion buttons are plugins of their own, each installed from Find plugins and moved over by itself, with its settings.
@@ -241,7 +246,7 @@ Every monitor mix side by side, grouped the same way as the phones. Trim a whole
 
 ### Console Controller and channel processing
 
-The console's own faders, mutes and solos for inputs, control groups or DCAs, and aux outputs, from any browser (DiGiCo, dLive and LV1). On DiGiCo, each channel opens a **processing panel**: gain, 48V, filters, a draggable 4-band EQ and dynamics. On LV1, each channel opens its own 4-band **EQ**, which can be changed from the panel, and its **preamp** as LV1 has it, live: Preamp or Local gain, the gain, 48V, phase and trim (read-only; change them on LV1).
+The console's own faders, mutes and solos for inputs, control groups or DCAs, and aux outputs, from any browser (DiGiCo, dLive and LV1). On DiGiCo, each channel opens a **processing panel**: gain, 48V, filters, a draggable 4-band EQ and dynamics. On LV1, each channel opens its own 4-band **EQ**, which can be changed from the panel, and its **preamp** as LV1 has it, live: Preamp or Local gain, the gain, 48V, phase and trim (read-only; change them on LV1). On dLive, each channel opens its high-pass and 4-band PEQ, and its preamp's gain, pad and 48V on the socket Patch says it's on; a **More** tab has the FX returns and sends, groups, matrices, mains and mute groups.
 
 <p align="center"><img src="docs/manual/img/console-eq.png" alt="Console Controller with the channel processing panel open" width="880" /></p>
 
@@ -291,6 +296,7 @@ Install only what you use, from **Settings → Plugins → Find plugins**. Each 
 | <a href="docs/plugins/shure.md"><img src="docs/plugins/img/shure-card.png" width="150" alt="Shure wireless" /></a> | **[Shure wireless](docs/plugins/shure.md)** | Each wireless mic's battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room. QLX-D, ULX-D, SLX-D and Axient Digital. Only reads. |
 | <a href="docs/plugins/smaart.md"><img src="docs/plugins/img/smaart-card.png" width="150" alt="Smaart SPL" /></a> | **[Smaart SPL](docs/plugins/smaart.md)** | Live sound levels from Rational Acoustics Smaart on FOH Home and the Green Room, in Smaart's own colors. Only reads. |
 | <a href="docs/plugins/companion.md"><img src="docs/plugins/img/companion-card.png" width="150" alt="Companion buttons" /></a> | **[Companion buttons](docs/plugins/companion.md)** | Bitfocus Companion buttons on each Home page, live. Tap to press, hold to hold. |
+| <a href="docs/plugins/custom-pages.md"><img src="docs/plugins/img/custom-pages-phone.png" width="150" alt="Custom Pages" /></a> | **[Custom Pages](docs/plugins/custom-pages.md)** | Link-only pages for a youth night or an event: just the faders that group needs, each with its own highest level, plus mutes and Companion buttons if you want them. |
 | <a href="docs/plugins/console-check.md"><img src="docs/plugins/img/console-check-card.png" width="150" alt="Console check" /></a> | **[Console check](docs/plugins/console-check.md)** | Whether the console is connected, on FOH Home. The example to start from if you're making a plugin of your own. |
 
 <p align="center"><img src="docs/plugins/img/patch-stage-box.png" alt="Patch: a stage box with every socket named and patched" width="880" /></p>
@@ -337,13 +343,13 @@ Every feature is explained step by step in the **[User Manual](docs/MANUAL.md)**
 |---|:---:|:---:|:---:|:---:|:---:|
 | **Connection** | OSC (DiGiCo Pad) | MIDI over TCP/IP | OSC to the KLANG processor | OSC, UDP 2223 | MyMon remote, TCP |
 | **Levels, mute & solo** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Per-send pan** | ✅ | — | ✅ stereo mode | ✅ | ✅ stereo mixes |
+| **Per-send pan** | ✅ | ✅ stereo mixes | ✅ stereo mode | ✅ | ✅ stereo mixes |
 | **Names from the console** | ✅ channels, mixes | ✅ channels, mixes | channels* | channels | ✅ channels, mixes |
 | **Counts from the console** | ✅ | mixes | — | — | ✅ |
 | **Ear Scenes** | ✅ by snapshot name | ✅ by scene number | ✅ by scene number | — | ✅ by scene name |
-| **Built-in aux EQ** | ✅ | — | — | — | ✅ monitor mixes |
+| **Built-in aux EQ** | ✅ | ✅ PEQ | — | — | ✅ monitor mixes |
 | **Console Controller** | ✅ | ✅ | — | — | ✅ |
-| **Channel processing panel** | ✅ | — | — | — | — |
+| **Channel processing panel** | ✅ | ✅ high-pass, PEQ, preamp | — | — | ✅ EQ, preamp read-only |
 | **Tested on** | Live services | dLive Director | Protocol only | Protocol only | An LV1 show |
 
 <sub>* From the paired dLive, when its address is entered. Setup for each console: [Connecting your console](docs/MANUAL.md#4-connecting-your-console).</sub>
@@ -357,7 +363,7 @@ Each console runs as its own backend; choosing one never touches another’s con
 JPMixer runs a web server and a WebSocket bridge inside an Electron app.
 
 - **A musician’s fader move** goes to JPMixer over WebSocket, which sends it to the console and shows it on every other screen. The console link is OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP to a KLANG processor, OSC/UDP for WING, or LV1’s MyMon remote (OSC over TCP).
-- **Mute and solo** on DiGiCo and dLive work by driving the send to −∞ and restoring it afterwards. KLANG, WING and LV1 have a real per-send mute.
+- **Mute and solo** on DiGiCo work by driving the send to −∞ and restoring it afterwards. dLive switches the send's own on/off (its level stays on the console), as KLANG, WING and LV1 do with their real per-send mute.
 - **Kind to the console:** background queries are paced. A performer’s own moves, mutes and solos go out immediately.
 - **Locked down:** a phone can only touch its own mix’s sends and EQ. A server-side allowlist blocks everything else.
 - **Names stay in JPMixer:** your own names and Planning Center’s performer names are JPMixer labels. The console’s names are never changed, and Planning Center is only read.

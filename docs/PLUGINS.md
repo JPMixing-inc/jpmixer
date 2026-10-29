@@ -134,6 +134,7 @@ Installing copies the plugin there. You can also put a plugin's folder there you
 | `permissions` | What the plugin uses from JPMixer (see below). |
 | `card.title` | The card's heading on FOH Home. Defaults to `name`. |
 | `page.title`, `page.entry` | With the `page` permission: the page's name on the Home pages list (defaults to `name`), and its HTML file inside the folder (defaults to `page/index.html`). |
+| `page.listed` | `false` keeps the page off the Home pages list: it opens from its link, or from its tab in Settings. JPMixer 2.0.16 and later. |
 | `minJPMixer` | The oldest JPMixer version it works with, like `"2.1.0"`. Find plugins won't offer it to older versions. |
 | `settings` | **Required: at least one field**, up to 24. They make the plugin's own tab under Plugins in Settings, and reach the plugin as `jp.settings`. |
 
@@ -151,6 +152,8 @@ The person turning the plugin on sees this list before it's turned on.
 A plugin that uses something it didn't ask for gets an error.
 
 `integration` is JPMixer's own: it lets the official Shure, Smaart and Companion plugins feed JPMixer's pages and Settings. Another plugin that asks for it isn't loaded.
+
+`faders` and `companion` are JPMixer's own too: they let the official Custom Pages plugin move the console's channel and control group faders and mutes (on DiGiCo, dLive and LV1), and show Companion buttons through the Companion buttons plugin, only while its files are the approved ones. Another plugin that asks for either isn't loaded.
 
 ### Settings fields
 
@@ -196,7 +199,7 @@ module.exports = async (jp) => {
 | `jp.console.onChange(fn)` | Calls `fn(state)` when that changes. JPMixer checks about every 3 seconds. |
 | `jp.planningCenter.get()` | A promise of the plan (see below) |
 | `jp.planningCenter.onChange(fn)` | Calls `fn(plan)` when that changes. JPMixer checks about every 15 seconds. |
-| `jp.page.handle(name, fn)` | Answers its page's call `name` with whatever `fn(body)` returns (or a promise of it). See "A page of its own". |
+| `jp.page.handle(name, fn)` | Answers its page's call `name` with whatever `fn(body, from)` returns (or a promise of it). `from.local` is `true` when the page was opened on the JPMixer computer (from JPMixer, or from its tab in Settings), and then `from.base` is the address phones use, as Settings shows it. Use it for anything only the engineer should do. JPMixer 2.0.16 and later; earlier versions pass only `body`. See "A page of its own". |
 | `jp.onSettings(fn)` | Takes new settings without a restart: when they change in Settings, JPMixer calls `fn(settings)` (and `jp.settings` has them) instead of stopping and starting the plugin. Without it, a settings change restarts the plugin. JPMixer 2.0.14 and later. |
 | `jp.onStop(fn)` | Runs `fn` before the plugin is stopped, for closing connections. It has about a second and a half. |
 

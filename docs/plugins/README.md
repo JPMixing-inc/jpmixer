@@ -9,7 +9,8 @@ Plugins marked **JPMixer Original** are JPMixer's own, as long as their files ar
 | <img src="img/patch-foh-card.png" width="160" alt="" /> | **[Patch](patch.md)** · JPMixer Original | Patch screens for your stage boxes, drawn to scale. Import an LV1 or DiGiCo session or a dLive show, and see 48V at a glance. |
 | <img src="img/shure-card.png" width="160" alt="" /> | **[Shure wireless](shure.md)** · JPMixer Original | Each wireless mic's battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room. |
 | <img src="img/smaart-card.png" width="160" alt="" /> | **[Smaart SPL](smaart.md)** · JPMixer Original | Live sound levels from Smaart on FOH Home and the Green Room. |
-| <img src="img/companion-card.png" width="160" alt="" /> | **[Companion buttons](companion.md)** · JPMixer Original | Bitfocus Companion buttons on each Home page, live. Tap to press. |
+| <img src="img/companion-card.png" width="160" alt="" /> | **[Companion buttons](companion.md)** · JPMixer Original | Bitfocus Companion buttons on each Home page and custom page, live. Tap to press. |
+| <img src="img/custom-pages-phone.png" width="160" alt="" /> | **[Custom Pages](custom-pages.md)** · JPMixer Original | Link-only pages for a youth night or an event: just the faders that group needs, each with its own highest level, plus mutes and Companion buttons if you want them. |
 | <img src="img/console-check-card.png" width="160" alt="" /> | **[Console check](console-check.md)** · Example | Whether the console is connected, on FOH Home. The example for making your own. |
 
 Planning Center isn't a plugin: it's built into JPMixer. It's listed with the plugins in Settings, and it can be turned off in its tab.
