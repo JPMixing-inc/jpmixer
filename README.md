@@ -81,7 +81,9 @@
 
 <a id="new-in-2-0-15"></a>
 
-## 🆕 New in 2.0.16
+## 🆕 New in 2.0.16 and 2.0.17
+
+2.0.17 fixes the phone's **Equalizer**, which opened the new compressor panel on top of the EQ on every console, and dLive pan on a show with FX sends: JPMixer now counts them, and finds a mix by its send levels if it isn't where expected.
 
 | | |
 |---|---|

@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.16 · October 2026**
+**Version 2.0.17 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -208,7 +208,7 @@ DiGiCo gives JPMixer the most: live names and counts, per-send pan, the built-in
 The dLive MixRack accepts many connections at once, so JPMixer runs alongside Director, MixPad and other remotes. JPMixer reads channel and mix names, finds which mono and stereo aux mixes the show has, and runs the Console Controller. Leave **Listen for live send-level updates** and **Poll send levels as a backup** on.
 
 - **Mutes use the send’s own on/off.** A musician’s mute switches that send off on the console, and its level stays as it was, so nothing has to be put back. A send the console already has off stays off when it’s unmuted. If the engineer switches a muted send on, JPMixer switches it off again and keeps it on for the unmute. If your console doesn’t take it, turn off **Mute with the send’s on/off** under Advanced send-level updates: mutes then take the send to −∞ and put its level back, as on DiGiCo.
-- **Pan on stereo mixes.** dLive’s MIDI control has no pan for a send, so JPMixer pans the stereo mixes the way dLive’s own apps (dLive4You) do. It finds everything by itself: which mixes are mono and which stereo, and where each one sits in the show’s bus layout, however many there are. It checks each stereo mix against the send levels MIDI reads; a mix that doesn’t check out has no pan, and the rest of JPMixer works as usual. Mono mixes have no pan. **Pan on stereo mixes** is under Advanced send-level updates; turn it off if a dLive firmware update stops it working.
+- **Pan on stereo mixes.** dLive’s MIDI control has no pan for a send, so JPMixer pans the stereo mixes the way dLive’s own apps (dLive4You) do. It finds everything by itself: which mixes are mono and which stereo, and where each one sits in the show’s bus layout, however many there are. It checks each stereo mix against the send levels MIDI reads, and looks for a mix by those levels if it isn’t where the bus layout says; a mix that still doesn’t check out has no pan, and the rest of JPMixer works as usual. Mono mixes have no pan. **Pan on stereo mixes** is under Advanced send-level updates; turn it off if a dLive firmware update stops it working.
 - **Stereo inputs** show as one channel, named as the left one: dLive links the pair, so a move on either is a move on both.
 - **FX returns in mixes.** Set **FX returns in mixes** (0 to 16) and every mix gets that many of the console’s FX returns after the inputs, named as on the console, so a singer can have reverb in their ears. They’re channels 129 on, so their levels never land on an input.
 - **A mix’s EQ, graphic EQ and compressor.** Turn on **EQ** for a mix under Settings → Aux mixes and its musicians can shape the mix’s own 4-band PEQ on the console from their phone. With **Pan on stereo mixes** on, the phone’s mix menu also has **Graphic EQ** (the mix’s 28 bands, ±12 dB, in/out and Flat) and **Compressor** (in/out and threshold; ratio, attack and release stay as set on the console), the way dLive’s own app offers them, on mono and stereo mixes alike.
