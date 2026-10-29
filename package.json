@@ -1,6 +1,6 @@
 {
   "name": "jpmixer",
-  "version": "2.0.15",
+  "version": "2.0.16",
   "description": "JPMixer — browser-based monitor mixes and production Home pages for DiGiCo, dLive, KLANG and WING consoles",
   "main": "main.js",
   "scripts": {
@@ -42,7 +42,8 @@
           "patch/**/*",
           "smaart/**/*",
           "shure/**/*",
-          "companion/**/*"
+          "companion/**/*",
+          "custom-pages/**/*"
         ]
       }
     ],
