@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.17 · October 2026**
+**Version 2.0.18 · October 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -81,7 +81,7 @@ JPMixer runs on a Mac or Windows computer next to your console. It talks to the 
 | **Musicians and singers** | The mix page on their phone | Their own in-ear or wedge mix: level, mute, solo and pan for each channel, saved mixes, and Ear Scenes that follow the console’s snapshots. |
 | **Monitor engineer** | Monitor Engineer, Devices | Every mix side by side, who is connected to which mix, and a map of the devices on stage. |
 | **FOH engineer** | FOH Home, Console Controller | A personal Home page with the live service item and team, and the console’s main faders, mutes and solos from a browser. |
-| **Production team** | ProPresenter, Lighting and Switcher Home | A page per station welcoming whoever is scheduled, with the order of service, team chat and Companion buttons. |
+| **Production team** | ProPresenter, Lighting, Switcher and Producer Home, and pages you add for other roles | A page per station welcoming whoever is scheduled, with the order of service, team chat and Companion buttons. |
 | **Green room** | Green Room display | Who is serving today, with photos and roles, on a TV or iPad. |
 
 ### What JPMixer never does
@@ -282,9 +282,9 @@ The button at the bottom of the tab resets the Channels tab: it clears every gro
 
 ## 6. Aux mixes
 
-Settings → Aux mixes lists every monitor mix on the console. For each one you choose its button color, an optional name of your own, which channels it opens to, and what performers can do with it.
+Settings → Aux mixes lists every monitor mix on the console. For each one you choose its button color, an optional name of your own, which channels it shows and opens to, and what performers can do with it.
 
-<p align="center"><img src="manual/img/settings-auxes.png" alt="The Aux mixes tab with name boxes, color swatches, Opens to group pills and switches"></p>
+<p align="center"><img src="manual/img/settings-auxes.png" alt="The Aux mixes tab with name boxes, color swatches, Opens to group pills, the Channels list and switches"></p>
 
 <p align="center"><sub>Fig. 6.1 · Settings → Aux mixes. Here, Planning Center has put each performer’s name on their mix.</sub></p>
 
@@ -293,6 +293,7 @@ Settings → Aux mixes lists every monitor mix on the console. For each one you 
 | **Color** | The color of the mix’s button in the performer mix picker and its stripe on the engineer pages. |
 | **Name** | The console’s name shows faded in the box. Type a name to use your own instead (in JPMixer only); leave it empty for the console’s. |
 | **Opens to** | The channel groups a phone starts on when it opens this mix, for example Drums and Playback for the drummer. Performers can still tap All. Pick **All channels** to show everything. |
+| **Channels** | **All channels (the main list)** by default: the Channels tab’s list, as every mix shows it. Choose **Only the channels I pick** to give this mix its own short list, for example click, guide and the vocals for a Lighting mix. Its phones show only those channels, including ones hidden from the main list. |
 | **Show** | Lists the mix in the performer mix picker. Turn off mixes that aren’t monitor mixes, such as a recording feed. |
 | **EQ** | Lets performers adjust this mix’s EQ from their phone: the built-in 8-band EQ on a DiGiCo, or the mix’s own 4-band EQ on LV1 (monitor mixes; LV1’s aux buses, such as FX returns, have none). On LV1 it’s the same EQ as on the console, so a change on either shows on both. |
 | **Link only** | Hides the mix from the picker; it opens only from its direct link. Useful for a pastor’s wedge or a mix one person should have. |
@@ -347,12 +348,11 @@ Ear Scenes follow snapshot names on DiGiCo, scene numbers on dLive and KLANG, an
 
 ### Saved mixes
 
-Saved Mixes lists every device that has saved a My Mix, with the performer’s name, the mix it’s on, when it last saved and whether it is connected now.
+Pick a performer from the **Performer** list to see their saved mixes. Each phone or browser that has saved a My Mix is listed with the performer’s name, the mix it’s on, how many mixes it has and whether it’s connected now. Named performers come first; phones without a name are under **No name yet**.
 
-- **Set Name** labels a device with the performer’s name, so it is easy to find later.
-- **Copy** or **Copy all mixes**, then **Paste** on another device, copies mixes across. Connected performers receive them straight away; others when they next connect.
-- **Merge into…** combines two devices that belong to the same person, for example an old phone and a new one.
+- **Copy** or **Copy all**, then pick another performer and **Paste**, copies mixes across. Connected performers receive them straight away; others when they next connect.
 - **Delete** removes one saved mix.
+- Under **More**, **Set Name** labels a phone with the performer’s name, so it is easy to find later, and **Merge into…** combines two phones that belong to the same person, for example an old phone and a new one.
 
 **Back up & recover My Mixes** keeps a separate copy of every performer’s saved mixes. To recover them, load the backup on the Backup & restore tab and choose only My Mixes ([Chapter 15](#15-backup-and-restore)).
 
@@ -409,63 +409,76 @@ Every connected phone and iPad, the mix it is on, and its latest activity. Click
 
 Connect Planning Center Services and JPMixer follows your schedule: each mix is named after who is on it, performers’ phones can open their own mix, and the Green Room and Home pages welcome whoever is serving.
 
-<p align="center"><img src="manual/img/settings-pco.png" alt="The Planning Center tab: connection, service and team, and the start of the mapping"></p>
+<p align="center"><img src="manual/img/settings-pco.png" alt="The Planning Center tab: step 1, Connect, showing Connected, and step 2, Your service"></p>
 
-<p align="center"><sub>Fig. 10.1 · Settings → Planning Center. The buttons along the top jump to each section.</sub></p>
+<p align="center"><sub>Fig. 10.1 · Settings → Planning Center. The tab is five numbered steps, each needing the one before.</sub></p>
 
 Planning Center is optional. **Use Planning Center**, at the top of the tab, turns it on or off; it’s on unless you turn it off. Turned off, JPMixer doesn’t contact Planning Center, and the Home pages, Green Room schedule and anything else that needs it say so. Everything set up on the tab is kept for when it’s turned back on.
 
-### Connect
+### 1. Connect
 
 1. Sign in at `api.planningcenteronline.com/personal_access_tokens` and create a personal access token.
-2. Enter its **Application ID** and **Secret** under **Connection**.
-3. Under **Service & team**, click **Refresh service types** and choose the Service Type you plan your services under.
-4. Choose a **Team**, such as Worship, to narrow the position list and the Green Room to that team, or leave it on All Teams.
-5. Leave **Service day** on **Automatic — closest service time** unless you need one day.
+2. Enter its **Application ID** and **Secret**.
+3. Click **Connect**. The line beside it says **Connected**, or what’s wrong in plain words, such as details Planning Center didn’t accept.
+
+From then on everything loads by itself: when Settings opens, and when you pick a service type. **Reload from Planning Center** fetches the lists again, for a position or team you just added in Planning Center.
 
 > [!NOTE]
 > **Credentials**
 >
 > The Application ID and Secret are saved on this computer, like the console password. Anyone with them can read your Planning Center account, so treat them like a password. Backups leave them out unless you choose otherwise.
 
-**Include unconfirmed team members** also uses people who haven’t accepted yet. People who declined are never used.
+### 2. Your service
 
-### Position → aux mapping
+Choose the **Service type** you plan your services under (with only one, it’s chosen for you), and the **Team** your band is on, such as Worship. The team narrows step 3’s list and the Green Room to that team; **All teams** shows everyone.
 
-<p align="center"><img src="manual/img/settings-pco-mapping.png" alt="The mapping table: each worship team position mapped to a mix"></p>
+Under **More options**:
 
-<p align="center"><sub>Fig. 10.2 · Each team position mapped to a mix. Hide from Green Room keeps a position off the Green Room display.</sub></p>
+| Setting | What it does |
+|---|---|
+| **Service day** | Leave it on **Automatic** unless you need one day. Automatic follows the service that’s on now, or the next one. |
+| **Include people who haven’t confirmed** | Also uses people who haven’t accepted yet. People who declined are never used. |
 
-Click **Refresh positions** and choose a mix for each position the band plays from. Positions without a mix are skipped and listed after a sync. **Hide from Green Room** keeps a position off the Green Room display only.
+### 3. Mixes
 
-### Syncing names
+<p align="center"><img src="manual/img/settings-pco-mapping.png" alt="Step 3, Mixes: each worship team position with its mix"></p>
 
-<p align="center"><img src="manual/img/settings-pco-sync.png" alt="Sync aux names: the two switches, the schedule note and Sync Now"></p>
+<p align="center"><sub>Fig. 10.2 · Each position with its mix. Hide from Green Room keeps a position off the Green Room display.</sub></p>
 
-<p align="center"><sub>Fig. 10.3 · Sync aux names.</sub></p>
+Choose a mix for each position the band plays from, and leave the rest on **No mix**. Positions without a mix are skipped and listed after a sync. **Hide from Green Room** keeps a position off the Green Room display only.
 
-With **Show performer names on aux mixes** on, each mix is named after who is scheduled on it, such as “Keys - Priya Nair”, on the mix picker, the engineer pages and in Settings. JPMixer syncs by itself:
+### 4. Home pages
+
+Choose who each production Home page welcomes: one list per page, with every position grouped by team, for example Audio Engineer FOH under Production for FOH Home. **Add a Home page** adds one for another role, with its own name. See [Chapter 11](#11-production-home-pages).
+
+### 5. Names on mixes and phones
+
+<p align="center"><img src="manual/img/settings-pco-sync.png" alt="Steps 4 and 5: a role for each Home page, the two switches and Sync now"></p>
+
+<p align="center"><sub>Fig. 10.3 · Steps 4 and 5: who each Home page welcomes, and names on mixes and phones.</sub></p>
+
+With **Show performer names on mixes** on, each mix is named after who is scheduled on it, such as “Keys - Priya Nair”, on the mix picker, the engineer pages and in Settings. JPMixer syncs by itself:
 
 - 10 seconds after JPMixer opens,
 - after a Save & Apply that changes Planning Center settings,
 - and every 5 minutes while it runs.
 
-A mix nobody is scheduled on goes back to its own name. **Sync Now** syncs straight away and lists what it updated. Turn the switch off to use Planning Center only for the Green Room and Home pages; saving with it off takes every performer name back off. A name you typed yourself is always left alone.
+A mix nobody is scheduled on goes back to its own name. **Sync now** syncs straight away and lists what it updated. Turn the switch off to use Planning Center only for the Green Room and Home pages; saving with it off takes every performer name back off. A name you typed yourself is always left alone.
 
-**Assign phones by Planning Center performer**: performers choose their name once, and their phone opens their mapped mix. Their My Mixes follow their Planning Center identity, so they come back on a new phone.
+**Assign phones by performer**: performers choose their name once, and their phone opens their mix. Their My Mixes follow their Planning Center identity, so they come back on a new phone.
 
 > [!NOTE]
 > **Several services a weekend**
 >
-> JPMixer uses the plan closest to now, whether it is running or next. With Saturday and Sunday services in one plan, the Automatic service day follows whichever service time is nearest.
+> JPMixer uses the plan closest to now, whether it is running or next. With Saturday and Sunday services in one plan, the Automatic service day follows the service that’s on now, or the next one.
 
 ### Second service (optional)
 
-For a Wednesday night, a youth night or another event planned under its own Service Type with its own teams. Only the switch shows until you turn on **Use a second service**.
+For a Wednesday night, a youth night or another event planned under its own Service Type with its own teams. It’s folded away at the bottom of the tab; open it and turn on **Use a second service**.
 
-<p align="center"><img src="manual/img/settings-pco-alt.png" alt="Second service settings: service type, team, mapping and Home page roles"></p>
+<p align="center"><img src="manual/img/settings-pco-alt.png" alt="Second service settings: service type, team, mixes and Home pages"></p>
 
-<p align="center"><sub>Fig. 10.4 · A second service with its own team, one extra mapping and its own FOH and ProPresenter roles.</sub></p>
+<p align="center"><sub>Fig. 10.4 · A second service with its own team, one extra mix and its own FOH and ProPresenter roles.</sub></p>
 
 **How it decides:** the main service always comes first. On a day when the second service has a plan and the main one doesn’t, the second service runs everything: mix names, phones, the Green Room and the Home pages. The switch covers the whole day, midnight to midnight, and the first sync of the next day puts the main service back. If both have a plan the same day, the main one wins.
 
@@ -473,20 +486,16 @@ For a Wednesday night, a youth night or another event planned under its own Serv
 |---|---|
 | **Service type** | The Service Type the event is planned under. |
 | **Team** | Whose people the Green Room and the Home pages’ team card show on that day. |
-| **Position → aux mapping** | Positions start on **Same as main service (Aux N)**, so a position named the same as Sunday’s uses the same mix. Pick a different mix, or **Not on a mix**. |
-| **Home pages** | A team and role for each Home page that day. **Same as main service** looks for the main service’s role name in that plan. |
+| **Mixes** | Positions start on **Same as main service (Aux N)**, so a position named the same as Sunday’s uses the same mix. Pick a different mix, or **Not on a mix**. |
+| **Home pages** | Who each Home page welcomes that day. **Same as main service** looks for the main service’s role name in that plan. |
 
-Include unconfirmed and Hide from Green Room are shared with the main service.
-
-### Production team Home pages
-
-Under **Production team Home pages**, choose the Team and Role each Home page welcomes, for example Production → Audio Engineer FOH for FOH Home. See [Chapter 11](#11-production-home-pages).
+Include people who haven’t confirmed and Hide from Green Room are shared with the main service.
 
 ---
 
 ## 11. Production Home pages
 
-FOH, ProPresenter, Lighting and Switcher each get a Home page for that station’s screen. It welcomes whoever Planning Center has scheduled in that role and shows the live service item, the team, the order of service, team chat and Companion buttons.
+FOH, ProPresenter, Lighting, Switcher and Producer each get a Home page for that station’s screen, and you can add one for any other role, such as Stage Manager or Camera. It welcomes whoever Planning Center has scheduled in that role and shows the live service item, the team, the order of service, team chat and Companion buttons.
 
 ### Production View Select
 
@@ -510,13 +519,17 @@ Give the whole production team one link, `http://192.168.1.20/home.html`. It lis
 - **Team chat** and **Companion** buttons (below), and on FOH Home, quick links to the engineer tools.
 - The header shows the console connection and how many devices are connected.
 
-### ProPresenter, Lighting and Switcher Home
+### ProPresenter, Lighting, Switcher and Producer Home
 
 <p align="center"><img src="manual/img/role-propresenter.png" alt="ProPresenter Home with team chat messages between stations"></p>
 
 <p align="center"><sub>Fig. 11.3 · ProPresenter Home, with team chat between the stations.</sub></p>
 
 The same page for each station, welcoming whoever is in that station’s role, without FOH’s console status and engineer links.
+
+### Home pages for other roles
+
+Add a Home page for any other serving role under Settings → Planning Center → **Home pages**: click **Add a Home page**, type its name (Stage Manager, say) and pick who it welcomes, then **Save & Apply**. It works like ProPresenter Home: its own link (shown on the Pages tab), the Production View Select card, team chat under its own name, layouts saved for each person, its own Companion surface (*JPMixer Stage Manager Home*) and a role on the second service. Renaming it keeps its link, layouts and Companion page. **Remove** takes it away after the next Save & Apply. Up to 12 can be added.
 
 ### Arrange the page for each person
 
@@ -527,7 +540,7 @@ A station they have never saved starts from their layout on another station. Unt
 
 ### Team chat
 
-Messages go to all four stations live. Each shows who sent it and from which station. The chat clears itself when Planning Center moves on to the next service, for example from Saturday night’s plan to Sunday morning’s, and it starts empty whenever JPMixer opens.
+Messages go to every Home page live. Each shows who sent it and from which station. The chat clears itself when Planning Center moves on to the next service, for example from Saturday night’s plan to Sunday morning’s, and it starts empty whenever JPMixer opens.
 
 > [!NOTE]
 > Companion buttons, Smaart SPL and Shure wireless are each a plugin of their own: install only the ones you use. To add one, open **Settings → Plugins** and click **Install** on it under **Find plugins**. Each comes with JPMixer, so it installs even with no internet. Its tab then appears under Plugins in the sidebar. If you used one before 2.0.14, it was moved over by itself, with its settings. Removing one turns it off and keeps its settings, for if you install it again.
@@ -640,7 +653,7 @@ A full-screen, read-only display for a TV or iPad in the green room: who is serv
 - **SPL:** with Smaart SPL set up ([Chapter 11](#11-production-home-pages)), turn on **Show SPL from Smaart** under Settings → Pages → Green Room to show a live sound level beside the clock, in Smaart’s colors and marked *Over the limit* when one of Smaart’s alarms trips. Choose its own **Reading** and **Input** there; Automatic uses LAeq 10 and the first input FOH Home’s SPL card shows.
 - **Now and Up next:** while someone runs the service in Planning Center Live, a strip shows the live item and the next one, with their key and length, and the time left on the live item (red when it runs over), with a bar along the bottom that fills as it goes. It follows Live within about 15 seconds and disappears when Live isn’t running.
 - **Service starts in:** under the clock, a countdown to the next service time in Planning Center, from 12 hours before. It hides while a service is on.
-- It shows the team chosen under Planning Center → Service & team (or everyone), minus any position marked Hide from Green Room. Someone serving more than one role shows once, with each role under their name.
+- It shows the team chosen under Planning Center → Your service (or everyone), minus any position marked Hide from Green Room. Someone serving more than one role shows once, with each role under their name.
 - No code is needed. It is information only, not a control surface.
 
 ---
@@ -771,8 +784,8 @@ The most common problems and what to check first.
 | LV1 stays Offline | Switch on LV1’s MyMon / MyFOH remote. If LV1 is on a different network, enter its computer’s IP address and allow up to half a minute. |
 | KLANG levels move but nothing is heard | Check the audio patch from the console to the KLANG processor. For pan, set the mix to Stereo mode in KLANG:app. |
 | A channel or mix is missing | Check its Show switch on the Channels or Aux mixes tab, and the counts under Console → Channels & mixes. A Link only mix opens only from its direct link. |
-| Performer names don’t appear on mixes | Check Show performer names on aux mixes is on, positions are mapped, and the people are confirmed (or Include unconfirmed is on). Click Sync Now to see what was applied and which positions are unmapped. |
-| A Home page says nobody is scheduled | Check the page’s Team and Role under Planning Center → Production team Home pages, and that the person has accepted. With a second service, check its Home page roles too. |
+| Performer names don’t appear on mixes | Check Show performer names on mixes is on, positions are mapped, and the people are confirmed (or Include people who haven’t confirmed is on). Click Sync Now to see what was applied and which positions are unmapped. |
+| A Home page says nobody is scheduled | Check the page’s role under Planning Center → Home pages, and that the person has accepted. With a second service, check its Home page roles too. |
 | Ear Scenes don’t recall | Check Recall Ear Scenes when the console changes snapshot is on (Performers tab). On DiGiCo, the snapshot name must match exactly; a renamed snapshot needs its Ear Scenes saved again. |
 | A performer’s saved mixes are gone | Make sure they use the same address as before (with or without `:8080`). On the phone, use Find My Mixes…, or on the Performers tab, copy or merge from their old device. |
 | Faders feel slow through Port 80 | If Get started says the Port 80 helper is outdated, click Use Port 80 to update it. |
@@ -792,6 +805,8 @@ Replace `192.168.1.20` with your JPMixer computer’s address from the Get start
 | ProPresenter Home | `/propresenter.html` | Lyrics and slides |
 | Lighting Home | `/lighting.html` | Lighting operator |
 | Switcher Home | `/switcher.html` | Video director |
+| Producer Home | `/producer.html` | Service producer |
+| A Home page you add | `/hp-…html` (on the Pages tab) | The role you pick |
 | Green Room | `/greenroom.html` | Green room screen |
 | Monitor Engineer | `/monitor.html` | Monitor engineer |
 | Console Controller | `/console.html` | FOH engineer |

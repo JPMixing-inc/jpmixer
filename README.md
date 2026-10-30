@@ -81,7 +81,20 @@
 
 <a id="new-in-2-0-15"></a>
 
-## 🆕 New in 2.0.16 and 2.0.17
+## 🆕 New in 2.0.18
+
+| | |
+|---|---|
+| 🏠 **Producer Home, and Home pages for any role** | A Producer Home page, and pages you add for any other serving role (Stage Manager, Camera…), each with its own link, team chat, saved layouts and Companion surface. |
+| 🎚️ **A mix with its own channels** | Give one mix a short channel list of its own, such as click, guide and vocals for a Lighting mix. Every other mix keeps the main list. |
+| 🧭 **Simpler Planning Center and Performers tabs** | Planning Center is five numbered steps with one Connect button, and Saved Mixes shows one performer at a time. |
+| ⚡ **dLive loads faster** | A mix's faders arrive in under a second, stereo mixes say STEREO straight away, and PAN is ready before anyone opens a mix. |
+| 🛡️ **Stability for every console** | From a review of the whole app: LV1 mutes that hold during a recall, DiGiCo snapshots that stop the last Ear Scene, and a role name two Planning Center teams share now finds the right person. |
+
+<details>
+<summary><b>Earlier releases: 2.0.17, 2.0.16, 2.0.15, 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.16 and 2.0.17
 
 2.0.17 fixes the phone's **Equalizer**, which opened the new compressor panel on top of the EQ on every console, and dLive pan on a show with FX sends: JPMixer now counts them, and finds a mix by its send levels if it isn't where expected.
 
@@ -91,9 +104,6 @@
 | 🎛️ **dLive Console Controller** | Each channel's preamp (gain, pad and 48V, on the socket your Patch import says), high-pass and EQ, and a More tab with the FX returns and sends, groups, matrices, mains and mute groups. |
 | 📄 **Custom Pages** | Link-only pages for a youth night or an event: just the faders that group needs, each with its own highest level, plus mutes and Companion buttons. |
 | 🔐 **Access codes that hold** | The FOH Home code now applies to every device, and the Console Controller can have its own code. |
-
-<details>
-<summary><b>Earlier releases: 2.0.15, 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
 
 ### 2.0.15
 - **LV1 EQ**: performers adjust their monitor mix's own EQ on LV1, and the Console Controller's channel panel shows each input's EQ.
@@ -149,7 +159,7 @@
 - **Steadier Monitor Engineer faders** and plain-text update notes.
 
 ### 2.0
-- **Production Home pages** for FOH, ProPresenter, Lighting and Switcher, with **Companion buttons** and **team chat**.
+- **Production Home pages** for FOH, ProPresenter, Lighting, Switcher and Producer, plus pages you add for any other role, with **Companion buttons** and **team chat**.
 - **Channel processing** from a browser (DiGiCo), a **phone-first mixer** with group chips, **your branding**, **in-app updates** and stronger connections.
 
 See the [release notes](https://github.com/JPMixing-inc/jpmixer/releases) for every change.
@@ -264,7 +274,7 @@ Every connected phone and iPad, the mix it's on and its latest activity, placed 
 
 ### A Home page for every station
 
-FOH, ProPresenter, Lighting and Switcher each get a page that welcomes whoever Planning Center scheduled in that role, with the live service item, the team, the order of service and the next few plans. Arrange the cards and **save a layout per person**; it follows them to any device. FOH Home can sit behind an access code.
+FOH, ProPresenter, Lighting, Switcher and Producer each get a page, and you can add one for any other role. Each welcomes whoever Planning Center scheduled in that role, with the live service item, the team, the order of service and the next few plans. Arrange the cards and **save a layout per person**; it follows them to any device. FOH Home can sit behind an access code.
 
 <p align="center"><img src="docs/manual/img/foh-home.png" alt="FOH Home: welcome, live item with time left, team, order of service, Planning Center, team chat, SPL and wireless" width="880" /></p>
 
