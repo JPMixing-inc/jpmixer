@@ -11,7 +11,7 @@
   const grid = document.getElementById('fhCompanionGrid');
   const note = document.getElementById('fhCompanionStatus');
   if (!card || !grid || !note) return;
-  const ROLE = (location.pathname.match(/\/(propresenter|lighting|switcher)\.html$/) || [])[1] || 'foh';
+  const ROLE = (location.pathname.match(/\/(propresenter|lighting|switcher|producer|hp-[0-9a-f]{10})\.html$/) || [])[1] || 'foh';
   let columns = 8, rows = 4;
   const keys = new Map();      // index -> button element
   const imageCache = new Map(); // rgb base64 -> data URL (Companion often re-sends the same image)

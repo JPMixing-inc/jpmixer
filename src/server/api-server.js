@@ -156,6 +156,12 @@ function applyConfig(cfg) {
   const port = Number.isInteger(cfg.apiPort) && cfg.apiPort > 0 && cfg.apiPort <= 65535 ? cfg.apiPort : 9096;
 
   if (!shouldRun) { stop(); return; }
+  // The phones' port (or port 80's helper): taken by the API first at the
+  // next launch, no phone could connect. The API stays off instead.
+  if (port === cfg.serverPort || port === 80) {
+    console.error(`[JPMixer/API] not started: port ${port} is the phones' port — pick another in Settings`);
+    stop(); return;
+  }
   if (httpServer && httpServer.__jpmPort === port) return; // already running on the right port
   stop();
 

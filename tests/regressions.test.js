@@ -950,3 +950,91 @@ test('the phone\'s Equalizer opens only its own panel, not the graphic EQ and co
   assert.match(css, /body\.eqOpen \.dyn-panel\s*\{\s*display:\s*none;?\s*\}/, 'hidden while the Equalizer is open');
   assert.match(css, /body\.geqOpen #geqPanel, body\.compOpen #compPanel \{ display: flex; \}/, 'each shown by its own class (an id outranks .dyn-panel)');
 });
+
+test('a dLive stereo mix is labelled stereo at once, and its PAN toggle waits for the server\'s pan flag', () => {
+  // 2.0.17 and before: dLive's `stereo` was its pan check, so every stereo
+  // mix said MONO until a phone opened it and its place checked out
+  const server = read('src/server/dlive-server.js');
+  assert.match(server, /stereo: {4}!!\(mixMap && mixMap\[i - 1\] && mixMap\[i - 1\]\.stereo\),\n {6}pan: {7}panAvailable\(i\),/, 'stereo from the console\'s layout, pan from the check');
+  const mixer = read('src/mixer/mixer.js');
+  assert.match(mixer, /selectedPan = opt\.pan === undefined \? selectedStereo : !!opt\.pan;/, 'other consoles send no pan: their stereo mixes pan as before');
+  assert.match(mixer, /panLabel\.style\.display = selectedPan \? 'flex' : 'none';/, 'the PAN toggle follows pan');
+  assert.match(mixer, /if \(selectedPan\) \{\n\s*sendOSC\(`\/Input_Channels\/\$\{i\}\/Aux_Send\/\$\{auxChannel\}\/send_pan\/\?`\);/, 'pans are asked for only with pan');
+  assert.match(mixer, /AUX \$\{String\(opt\.channel\)\.padStart\(2, '0'\)\} · \$\{opt\.stereo \? 'STEREO' : 'MONO'\}/, 'the label still reads stereo');
+});
+
+const deskSent = h => h.ports.at(-1).sent.map(m => [m.address, ...(m.args || [])]);
+
+test('a new snapshot drops the last one\'s Ear Scene writes still waiting, and reads those sends again', () => {
+  const h = serverHarness();
+  h.run("serverCfg.channels = 3; scenes.getAll().A[1] = { 1: 0.6, 2: 0.6, 3: 0.6 }");
+  h.echo({ address: '/Snapshots/Current_Snapshot', args: [1] });
+  h.echo({ address: '/Snapshots/name', args: [1, 'A'] });
+  h.clock.advance(400); // A's scene queued, its first write out
+  h.echo({ address: '/Snapshots/Current_Snapshot', args: [3] });
+  h.echo({ address: '/Snapshots/name', args: [3, 'C'] }); // no Ear Scene for C
+  h.echo({ address: level(2), args: [-30] }); h.echo({ address: level(3), args: [-30] });
+  const mark = h.ports.at(-1).sent.length;
+  h.clock.advance(1000);
+  const after = h.ports.at(-1).sent.slice(mark);
+  assert.ok(after.length > 0 && after.every(m => m.address.endsWith('/?')), 'only reads go out, none of A\'s levels');
+  assert.equal(h.cached(level(2)), -30);
+});
+
+test('DiGiCo: odd Console Controller and phone input never reaches the desk as written', () => {
+  const h = serverHarness();
+  h.echo({ address: '/Console/Input_Channels', args: [2] });
+  h.echo({ address: '/Console/Aux_Outputs/modes', args: [1] });
+  h.ports.at(-1).sent.length = 0;
+  h.send({ type: 'console-param', ch: 1, path: 'constructor', value: 1 });
+  h.send({ type: 'console-param', ch: 1, path: '__proto__', value: 1 });
+  assert.deepEqual(deskSent(h), [], 'only the channel panel\'s own controls');
+  h.send({ type: 'console-fader', ch: 1, db: 1e9 });
+  h.send({ type: 'aux-fader', aux: 1, db: -1e9 });
+  assert.deepEqual(deskSent(h), [['/Input_Channels/1/fader', 10], ['/Aux_Outputs/1/fader', -150]], 'faders kept in the desk\'s range');
+  for (const aux of ['abc', 40]) {
+    h.send({ type: 'set-active-aux', aux });
+    h.run('queueActiveAuxRefresh()');
+    h.ports.at(-1).sent.length = 0;
+    h.clock.advance(500);
+    assert.deepEqual(deskSent(h), [], `a phone's mix ${aux} that this session doesn't have isn't asked for`);
+  }
+  h.socket.sent.length = 0;
+  h.send({ type: 'apply-preset', aux: 1, name: 'x', levels: 'x'.repeat(5000), pans: [0.5] });
+  h.clock.advance(500);
+  assert.ok(!deskSent(h).some(([a]) => /Aux_Send/.test(a) && !a.endsWith('/?')), 'a My Mix that isn\'t an object writes nothing');
+});
+
+test('every console\'s server caps a message and takes a My Mix only as an object', () => {
+  const plainMap = vm.runInNewContext(read('src/server/shared-handlers.js').match(/const plainMap = (.*);\n/)[1]);
+  assert.equal(Object.keys(plainMap('xxxx')).length, 0);
+  assert.equal(Object.keys(plainMap([1, 2])).length, 0);
+  assert.deepEqual({ ...plainMap({ 1: 0.5 }) }, { 1: 0.5 });
+  for (const f of ['osc', 'dlive', 'lv1', 'wing', 'klang']) {
+    const src = read(`src/server/${f}-server.js`);
+    assert.match(src, /new WebSocket\.Server\(\{ server: httpServer, maxPayload: shared\.MAX_PAYLOAD \}\)/, `${f}: message size capped`);
+    assert.doesNotMatch(src, /msg\.(levels|pans) \|\| \{\}/, `${f}: no unchecked My Mix values`);
+  }
+});
+
+test('Settings: every element settings.js looks up by id is on the page', () => {
+  // A missing one throws while the window starts, and every tab after it stops working
+  const js = read('src/windows/settings/settings.js');
+  const html = read('src/windows/settings/index.html');
+  const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g), ...js.matchAll(/\.id = '([^']+)'/g)].map((m) => m[1]));
+  const used = [...js.matchAll(/\$\('([A-Za-z0-9_-]+)'\)/g)].map((m) => m[1]);
+  for (const key of ['Foh', 'ProPresenter', 'Lighting', 'Switcher', 'Producer']) used.push(`pco${key}Position`, `pcoAlt${key}Position`);
+  assert.deepEqual([...new Set(used)].filter((id) => !ids.has(id)), []);
+});
+
+test('a mix with its own channel list: every console sends it, cleaned, and the default stays the main list', () => {
+  // Taken from the file itself: shared-handlers.js needs Electron to load
+  const auxChannels = vm.runInNewContext('(' + read('src/server/shared-handlers.js').match(/function auxChannels\(ov\) \{[\s\S]*?\n\}/)[0] + ')');
+  assert.equal(auxChannels({}), undefined, 'not set = the main list');
+  assert.equal(auxChannels({ channels: 'abc' }), undefined);
+  assert.deepEqual([...auxChannels({ channels: [] })], [], 'none picked yet');
+  assert.deepEqual([...auxChannels({ channels: [16, '10', 10, 0, -1, 2.5, 'x', 600, 129] })], [10, 16, 129], 'whole channel numbers, once each, in order');
+  for (const f of ['osc-server', 'dlive-server', 'lv1-server', 'klang-server', 'wing-server']) {
+    assert.match(read(`src/server/${f}.js`), /channels:\s+shared\.auxChannels\(ov\)/, `${f} sends each mix's own channel list`);
+  }
+});

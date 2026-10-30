@@ -156,6 +156,7 @@ function buildConfig() {
       eqEnabled: false, // aux EQ not implemented for KLANG in this pass
       linkOnly:  ov.linkOnly === true,
       groups:    shared.auxGroupNames(ov, serverCfg),
+      channels:  shared.auxChannels(ov),
     });
   }
 
@@ -308,7 +309,7 @@ function start(cfg) {
     console.log(`[JPMixer/KLANG] Web server → http://localhost:${cfg.serverPort}`);
   });
 
-  wss = new WebSocket.Server({ server: httpServer });
+  wss = new WebSocket.Server({ server: httpServer, maxPayload: shared.MAX_PAYLOAD });
 
   pingInterval = setInterval(() => {
     const now = Date.now();
@@ -413,7 +414,7 @@ function start(cfg) {
       // same on every backend — see shared-handlers.js
       if (shared.handleSharedMessage(ws, msg, { logEvent, onActivity: (m, from) => shared.broadcastActivity(connections, m, from) })) return;
       if (msg.type === 'apply-preset') {
-        const { levels, pans } = pushValuesToKlang(String(msg.aux), msg.levels || {}, msg.pans || {});
+        const { levels, pans } = pushValuesToKlang(String(msg.aux), shared.plainMap(msg.levels), shared.plainMap(msg.pans));
         broadcastToClients({ type: 'preset-loaded', aux: msg.aux, name: msg.name, levels, pans });
         return;
       }

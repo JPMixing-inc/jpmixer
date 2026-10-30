@@ -78,12 +78,14 @@ function unzip(file, dest) {
         const mode = (entry.externalFileAttributes >>> 16) & 0o170000;
         if (mode === 0o120000) return fail(new Error(`It contains a link (${rel}). Plugins can only hold plain files.`));
         const target = path.join(dest, ...rel.split('/'));
-        if (/\/$/.test(entry.fileName)) { fs.mkdirSync(target, { recursive: true }); return zip.readEntry(); }
+        // A file and a folder of the same name can't both be made: a damaged zip, not a stuck import
+        const mkdir = (dir) => { try { fs.mkdirSync(dir, { recursive: true }); return true; } catch (_) { fail(new Error('That zip is damaged.')); return false; } };
+        if (/\/$/.test(entry.fileName)) { if (mkdir(target)) zip.readEntry(); return; }
         if (++files > MAX_FILES) return fail(new Error(`It has more than ${MAX_FILES} files.`));
         if (total + entry.uncompressedSize > MAX_BYTES) return fail(new Error('It’s over 100 MB unpacked.'));
         zip.openReadStream(entry, (err, stream) => {
           if (err) return fail(new Error('That zip is damaged.'));
-          fs.mkdirSync(path.dirname(target), { recursive: true });
+          if (settled || !mkdir(path.dirname(target))) { stream.destroy(); return; }
           const out = fs.createWriteStream(target, { mode: 0o644 });
           stream.on('data', (chunk) => { total += chunk.length; if (total > MAX_BYTES) { stream.destroy(); out.destroy(); fail(new Error('It’s over 100 MB unpacked.')); } });
           stream.on('error', () => fail(new Error('That zip is damaged.')));

@@ -108,6 +108,31 @@
             "sha256": "78a8e5ccbe2f17631b7957e07cc00c37476d1da1c5a0a6688189cbbdb2a0ea62"
           }
         ]
+      },
+      {
+        "version": "1.2.0",
+        "files": [
+          {
+            "path": "companion.js",
+            "size": 18408,
+            "sha256": "7a5bc92dd8a62aaeff46802d6cb8d55fa94f7b8ed7492460ff7dcc44452b40e2"
+          },
+          {
+            "path": "index.js",
+            "size": 2464,
+            "sha256": "4b91244938c66598df2376e9e4d3413c867142e4581d10eac98952f980cb2e90"
+          },
+          {
+            "path": "plugin.json",
+            "size": 534,
+            "sha256": "ea9fc201124a91d2b3d93c0638a8ba7748d530f03d02af076528cf3113d58a28"
+          },
+          {
+            "path": "README.md",
+            "size": 962,
+            "sha256": "b528eeddeb0ff7872eb8698cce30ee45106a4265446afad138e352983a7f4652"
+          }
+        ]
       }
     ]
   }

@@ -33,6 +33,7 @@
 
 const config = require('./config');
 const pco = require('./pco-client').shared; // 20s shared cache — see pco-client.js
+const { teamMatcher } = require('./pco-client');
 const pcoServices = require('./pco-services'); // the main service, or the second one on its day
 
 // What Planning Center Live is on now and the next item, for the TV's Now /
@@ -202,11 +203,7 @@ function mountGreenRoom(app) {
       const hidden = new Set((config.get('pcoGreenRoomHidden') || []).map((p) => p.toLowerCase()));
 
       const teamId = service.teamId;
-      let positionTeam = null;
-      if (teamId) {
-        const positions = await pco.listPositions(serviceTypeId, creds);
-        positionTeam = new Map(positions.map((p) => [p.name.toLowerCase(), p.teamId]));
-      }
+      const onTeam = teamId ? teamMatcher(await pco.listPositions(serviceTypeId, creds), teamId) : null;
 
       // Which day's team: one answer from the plan's own times, the same as
       // the Home pages (pco-client.js serviceDays). "auto" follows the
@@ -223,7 +220,7 @@ function mountGreenRoom(app) {
           if (m.declined) return false;
           if (!(includeUnconfirmed || m.confirmed)) return false;
           if (hidden.has((m.positionName || '').toLowerCase())) return false;
-          if (positionTeam && positionTeam.get((m.positionName || '').toLowerCase()) !== teamId) return false;
+          if (onTeam && !onTeam(m)) return false;
           if (day && m.days.length > 0 && !m.days.includes(day)) return false;
           return true;
         });

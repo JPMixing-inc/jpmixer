@@ -93,9 +93,9 @@ test('registers one surface per Home page, using PNG images and a stable serial 
   const fake = await fakeCompanion();
   t.after(async () => { await companion.stop(); await fake.close(); });
   await companion.applyConfig(cfg(fake.port));
-  await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 4);
+  await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 5);
   const adds = fake.lines.filter(l => l.startsWith('ADD-DEVICE'));
-  assert.deepEqual(adds.map(l => /DEVICEID=(\S+)/.exec(l)[1]), ['jpmixer-foh', 'jpmixer-propresenter', 'jpmixer-lighting', 'jpmixer-switcher']);
+  assert.deepEqual(adds.map(l => /DEVICEID=(\S+)/.exec(l)[1]), ['jpmixer-foh', 'jpmixer-propresenter', 'jpmixer-lighting', 'jpmixer-switcher', 'jpmixer-producer']);
   for (const l of adds) {
     assert.match(l, /KEYS_TOTAL=32 KEYS_PER_ROW=8/);
     assert.match(l, /BITMAP_FORMAT=png/);
@@ -106,11 +106,36 @@ test('registers one surface per Home page, using PNG images and a stable serial 
   await until(() => companion.getStatus().state === 'connected' && companion.getStatus().surfaces.switcher.registered);
 });
 
+test('a Home page added for another role gets a surface like the others, with the Home pages\' grid', async (t) => {
+  const fake = await fakeCompanion();
+  const server = await pageServer(() => true);
+  t.after(async () => { await companion.stop(); await fake.close(); server.close(); });
+  const id = '0a1b2c3d4e', role = `hp-${id}`;
+  await companion.applyConfig(cfg(fake.port, { companionColumns: 6, companionRows: 3, pcoHomePages: [{ id, name: 'Stage Manager' }] }));
+  const add = await until(() => fake.lines.find(l => l.startsWith(`ADD-DEVICE DEVICEID=jpmixer-${role} `)));
+  assert.match(add, /PRODUCT_NAME="JPMixer Stage Manager Home"/);
+  assert.match(add, /KEYS_TOTAL=18 KEYS_PER_ROW=6/, 'the Home pages\' grid');
+  assert.match(add, new RegExp(`SERIAL=jpmixer:[A-Za-z0-9-]+:${role}`), 'its own serial, so Companion keeps its page');
+  // Its page gets its buttons
+  fake.send(`KEY-STATE DEVICEID=jpmixer-${role} KEY=2 TEXT=${Buffer.from('Stand by').toString('base64')} COLOR=#112233`);
+  const state = await until(async () => { const r = await request(server.address().port, 'GET', `/companion/state?role=${role}`); return r.body && r.body.keys && r.body.keys.length ? r : null; });
+  assert.equal(state.body.keys[0].text, 'Stand by');
+  // Renamed: the same surface under its new name. Home page surfaces off: gone from Companion
+  await companion.applyConfig(cfg(fake.port, { companionColumns: 6, companionRows: 3, pcoHomePages: [{ id, name: 'Floor Manager' }] }));
+  await until(() => fake.lines.some(l => l.startsWith(`ADD-DEVICE DEVICEID=jpmixer-${role} `) && l.includes('PRODUCT_NAME="JPMixer Floor Manager Home"')));
+  const before = fake.lines.length;
+  await companion.applyConfig(cfg(fake.port, { companionColumns: 6, companionRows: 3, companionHome: false, pcoHomePages: [{ id, name: 'Floor Manager' }] }));
+  await wait(1500);
+  assert.equal(fake.lines.slice(before).some(l => l.startsWith(`ADD-DEVICE DEVICEID=jpmixer-${role} `) || l.startsWith('ADD-DEVICE DEVICEID=jpmixer-producer ')), false, 'with the Home page surfaces off, none of the Home pages');
+  assert.equal((await request(server.address().port, 'GET', `/companion/state?role=${role}`)).body.homeOff, true);
+  assert.equal((await request(server.address().port, 'GET', '/companion/state?role=hp-ffffffffff')).status, 400, 'a page that doesn\'t exist has no surface');
+});
+
 test('older Companion (no CAPS): plain RGB images, no serial, and at most 32 keys', async (t) => {
   const fake = await fakeCompanion({ apiVersion: '1.4.0', caps: null });
   t.after(async () => { await companion.stop(); await fake.close(); });
   await companion.applyConfig(cfg(fake.port, { companionRows: 5 })); // 8 × 5 = 40 keys
-  await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 4);
+  await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 5);
   const add = fake.lines.find(l => l.startsWith('ADD-DEVICE'));
   assert.match(add, /KEYS_TOTAL=32 /, 'API 1.4 allows at most 32 keys');
   assert.doesNotMatch(add, /BITMAP_FORMAT|SERIAL|BRIGHTNESS/, 'only parameters this version knows');
@@ -181,8 +206,8 @@ test('a refused surface or a dropped connection shows up in the status', async (
   const fake = await fakeCompanion({ autoOk: false });
   t.after(async () => { await companion.stop(); await fake.close(); });
   await companion.applyConfig(cfg(fake.port));
-  await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 4);
-  for (const role of ['foh', 'propresenter', 'lighting', 'switcher']) fake.send(`ADD-DEVICE ERROR DEVICEID=jpmixer-${role} MESSAGE="Surface limit reached"`);
+  await until(() => fake.lines.filter(l => l.startsWith('ADD-DEVICE')).length === 5);
+  for (const role of ['foh', 'propresenter', 'lighting', 'switcher', 'producer']) fake.send(`ADD-DEVICE ERROR DEVICEID=jpmixer-${role} MESSAGE="Surface limit reached"`);
   await until(() => companion.getStatus().state === 'error');
   assert.match(companion.getStatus().message, /Surface limit reached/);
   fake.dropClient();

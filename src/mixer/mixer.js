@@ -79,7 +79,8 @@ const VOLUME_TICKS = [
 
 let selectedAux        = null;
 let selectedStereo     = false;
-let auxConfig          = [];   // { enabled, label, channel, stereo, colour, icon }
+let selectedPan        = false; // the PAN toggle: a stereo mix, unless the server says pan isn't there (yet)
+let auxConfig          = [];   // { enabled, label, channel, stereo, pan?, colour, icon }
 let channelConfig      = [];   // { enabled, label, channel, order, title }
 let volumeInputs       = [];
 let panInputs          = [];
@@ -539,7 +540,7 @@ function renderSnapshotEditRows(values) {
   if (!list) return;
   list.innerHTML = '';
   snapshotEditValues = {};
-  for (const ch of channelConfig) {
+  for (const ch of channelsFor(selectedAux)) {
     if (!ch.enabled) continue;
     const v = values[String(ch.channel)] !== undefined ? values[String(ch.channel)] : 0;
     snapshotEditValues[ch.channel] = v;
@@ -962,7 +963,7 @@ function onMessage(e) {
       ch.label = json.label;
       const cached = channelRowCache.get(json.channel);
       if (cached && cached.nameEl) cached.nameEl.textContent = json.label || '';
-      globalThis.mixerUI?.refresh();
+      globalThis.mixerUI?.setChannels(channelsFor(selectedAux)); // a mix's own list is a copy
     }
     return;
   }
@@ -1209,9 +1210,27 @@ function onMessage(e) {
 function channelLayoutKey(channels) {
   return JSON.stringify((channels || []).map(c => [c.channel, c.enabled, c.order, c.title, c.icon]));
 }
+let builtLayout = null; // channelLayoutKey() of the rows on screen
+
+// The channels a mix shows. A mix with its own list (Settings → Aux mixes →
+// Channels, say Lighting with click, guide and vocals) shows just those,
+// hidden ones too, in the main list's order; every other mix the main list.
+function channelsFor(aux) {
+  const opt = aux === null ? null : auxConfig.find(a => a.channel === aux);
+  if (!opt || !Array.isArray(opt.channels)) return channelConfig;
+  const only = new Set(opt.channels);
+  return channelConfig.map(c => ({ ...c, enabled: only.has(c.channel) }));
+}
+// Rows for this mix's channels, rebuilt only when they differ from the ones on screen
+function showChannelsFor(aux) {
+  const channels = channelsFor(aux);
+  if (channelRowCache.size > 0 && builtLayout === channelLayoutKey(channels)) return false;
+  buildChannels(channels);
+  globalThis.mixerUI?.setChannels(channels);
+  return true;
+}
 
 function applyConfig(config) {
-  const previousLayout = channelLayoutKey(channelConfig);
   auxConfig          = config.aux      || [];
   channelConfig      = config.channels || [];
   allScenes          = config.scenes   || {};
@@ -1225,21 +1244,6 @@ function applyConfig(config) {
   allSolos           = config.solos    || {};
 
   document.getElementById('snapshotName').textContent = currentSnapshot;
-
-  // Same channels, order, sections and icons as before (a reconnect, a
-  // session reload, a Settings change that only renamed things): keep the
-  // existing rows — and the levels on them — and just update the names.
-  // Rebuilding put every fader at -∞ until fresh values arrived, which after
-  // a session reload could be a minute or more, and performers would push
-  // "dead" faders up in the meantime.
-  if (channelRowCache.size > 0 && previousLayout === channelLayoutKey(channelConfig)) {
-    for (const ch of channelConfig) {
-      const cached = channelRowCache.get(ch.channel);
-      if (cached && cached.nameEl) cached.nameEl.textContent = ch.label || '';
-    }
-  } else {
-    buildChannels(channelConfig);
-  }
 
   // Try to restore the previously selected aux (handles reconnects + iOS page reloads).
   // A ?aux=N link takes priority on first load — that's how a hidden/link-only
@@ -1259,6 +1263,24 @@ function applyConfig(config) {
     ? selectedAux
     : (savedAux && auxConfig.some(a => a.channel === savedAux && a.enabled && !a.linkOnly) ? savedAux : null);
   urlAux = null;
+
+  // Same channels, order, sections and icons as before (a reconnect, a
+  // session reload, a Settings change that only renamed things): keep the
+  // existing rows — and the levels on them — and just update the names.
+  // Rebuilding put every fader at -∞ until fresh values arrived, which after
+  // a session reload could be a minute or more, and performers would push
+  // "dead" faders up in the meantime.
+  // For the mix this phone is about to show (worked out first, above): a mix
+  // with its own channel list is built once, not the main list and then its own
+  const shown = channelsFor(targetAux);
+  if (channelRowCache.size > 0 && builtLayout === channelLayoutKey(shown)) {
+    for (const ch of channelConfig) {
+      const cached = channelRowCache.get(ch.channel);
+      if (cached && cached.nameEl) cached.nameEl.textContent = ch.label || '';
+    }
+  } else {
+    buildChannels(shown);
+  }
 
   if (targetAux !== null) {
     document.body.classList.remove('auxPicker');
@@ -1285,7 +1307,7 @@ function applyConfig(config) {
       btn.classList.toggle('aux-btn-last', btn.dataset.aux === saved);
     });
   }
-  globalThis.mixerUI?.setChannels(channelConfig);
+  globalThis.mixerUI?.setChannels(channelsFor(selectedAux));
   document.dispatchEvent(new Event('jpm-config-ready'));
 }
 
@@ -1340,6 +1362,11 @@ function selectAux(auxChannel, requestValues, skipReset) {
 
   const opt = auxConfig.find(a => a.channel === auxChannel) || {};
   selectedStereo = !!opt.stereo;
+  // dLive sends `pan` of its own (a stereo mix's pan waits for its place on
+  // the console to check out); every other console's stereo mixes pan
+  selectedPan = opt.pan === undefined ? selectedStereo : !!opt.pan;
+  // Before the group chips: they're worked out from the channels shown
+  showChannelsFor(auxChannel);
   globalThis.mixerUI?.selectAux({ ...opt, channel: auxChannel });
 
   // Update topbar
@@ -1361,10 +1388,10 @@ function selectAux(auxChannel, requestValues, skipReset) {
   if (menuEqItem) menuEqItem.style.display = (auxChannel !== null && opt.eqEnabled) ? '' : 'none';
   globalThis.mixProcessing?.setAux(auxChannel, opt); // a dLive mix's graphic EQ and compressor (mix-processing.js)
 
-  // Show pan toggle only for stereo auxes
+  // Show pan toggle only for stereo auxes that have pan
   const panLabel = document.getElementById('panLabel');
-  panLabel.style.display = selectedStereo ? 'flex' : 'none';
-  if (!selectedStereo) {
+  panLabel.style.display = selectedPan ? 'flex' : 'none';
+  if (!selectedPan) {
     document.getElementById('panCheckbox').checked = false;
     document.body.classList.remove('panning');
   }
@@ -1425,7 +1452,7 @@ function requestAuxValues(auxChannel) {
     const i = ch.channel;
     if (!Number.isInteger(i)) continue;
     sendOSC(`/Input_Channels/${i}/Aux_Send/${auxChannel}/send_level/?`);
-    if (selectedStereo) {
+    if (selectedPan) {
       sendOSC(`/Input_Channels/${i}/Aux_Send/${auxChannel}/send_pan/?`);
     }
   }
@@ -1456,12 +1483,16 @@ function buildChannels(channels) {
   volumeInputs = [];
   panInputs    = [];
   channelRowCache.clear();
+  builtLayout = channelLayoutKey(channels);
 
   // Sort by order field
   const sorted = [...channels].sort((a, b) => a.order - b.order);
+  // A group heading only over a group with a channel showing (a mix with its
+  // own short list leaves most groups empty)
+  const shownGroups = new Set(sorted.filter(c => c.enabled).map(c => c.group || ''));
 
   for (const ch of sorted) {
-    if (ch.title) {
+    if (ch.title && shownGroups.has(ch.group || '')) {
       const heading = document.createElement('div');
       heading.className = 'section-title';
       heading.textContent = ch.title;

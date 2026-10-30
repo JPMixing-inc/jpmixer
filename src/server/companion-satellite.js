@@ -26,13 +26,15 @@
 
 const express = require('express');
 const plugins = require('./plugins');
+const homeRoles = require('./home-roles');
 
-const ROLES = {
-  foh: 'FOH Home',
-  propresenter: 'ProPresenter Home',
-  lighting: 'Lighting Home',
-  switcher: 'Switcher Home',
-};
+// The Home pages' surfaces: role -> label, every Home page (home-roles.js),
+// as of the last applyConfig. The ones a church added ("hp-<id>") go to the
+// plugin as extras alongside Custom Pages' (it registers them as Home pages).
+let ROLES = Object.fromEntries(Object.entries(homeRoles.all({})).map(([id, r]) => [id, r.page.replace(/^FOH Engineer Home$/, 'FOH Home')]));
+let homeExtras = [];            // [{ role: 'hp-<id>', label }]
+// Before 1.3.0 the plugin had only the first four Home pages
+const OLD_PLUGIN_ROLES = new Set(['foh', 'propresenter', 'lighting', 'switcher']);
 const DEFAULT_PORT = 16622;
 const LIMITS = { columns: [1, 12], rows: [1, 8] };
 const PRESS_LIMIT = 30, PRESS_WINDOW_MS = 1000; // per device address
@@ -42,6 +44,7 @@ let status = null;             // the plugin's getStatus(), as it last shared it
 const surfaces = new Map();    // role -> the plugin's snapshot, kept up to date with its key and clear events
 const CUSTOM_ROLE = /^ev-[0-9a-f]{10}$/;
 const isRole = (role) => Object.hasOwn(ROLES, role) || CUSTOM_ROLE.test(String(role));
+const streamsOf = (role) => { if (!streams.has(role)) streams.set(role, new Set()); return streams.get(role); };
 let customSurfaces = [];        // what Custom Pages asked for: [{ role, label, columns, rows }]
 // Revisions, for Custom Pages: every change gets the next number; a surface
 // emptied (a snapshot or a clear) records it, so an older page gets everything
@@ -49,13 +52,29 @@ let rev = 0;
 const revs = new Map();        // role -> { reset, keys: Map(index -> rev) }
 const streams = new Map();     // role -> Set(res)
 const pressTimes = new Map();  // address -> recent press times
-for (const role of Object.keys(ROLES)) streams.set(role, new Set());
 
 const live = () => settings.enabled && plugins.isRunning('companion');
 const homeOff = (role) => Object.hasOwn(ROLES, role) && !settings.home;
 const clampInt = (v, [lo, hi], dflt) => { const n = Number(v); return Number.isInteger(n) && n >= lo && n <= hi ? n : dflt; };
 
 function applyConfig(cfg) {
+  // The Home pages now: a page added, renamed or removed changes the surfaces
+  const pages = homeRoles.all(cfg);
+  ROLES = Object.fromEntries(Object.entries(pages).map(([id, r]) => [id, id === 'foh' ? 'FOH Home' : r.page]));
+  const nextExtras = Object.entries(pages).filter(([, r]) => r.custom).map(([id, r]) => ({ role: id, label: r.page }));
+  if (JSON.stringify(nextExtras) !== JSON.stringify(homeExtras)) {
+    for (const role of [...surfaces.keys()]) if (role.startsWith('hp-') && !Object.hasOwn(ROLES, role)) { surfaces.delete(role); revs.delete(role); }
+    // A removed page's open tabs: told it's gone, and their streams closed
+    for (const [role, set] of streams) {
+      if (!role.startsWith('hp-') || Object.hasOwn(ROLES, role)) continue;
+      const gone = { ok: true, enabled: false, homeOff: false, state: 'off', message: 'This Home page was removed in JPMixer Settings.', registered: false, locked: false, error: '', columns: settings.columns, rows: settings.rows, keys: [] };
+      for (const res of set) { try { res.end(`event: snapshot\ndata: ${JSON.stringify(gone)}\n\n`); } catch (_) {} }
+      streams.delete(role);
+    }
+    homeExtras = nextExtras;
+    rev++;
+    setImmediate(sendEventSurfaces);
+  }
   const next = { enabled: cfg.companionEnabled === true, home: cfg.companionHome !== false, host: String(cfg.companionHost || '').trim(), columns: clampInt(cfg.companionColumns, LIMITS.columns, 8), rows: clampInt(cfg.companionRows, LIMITS.rows, 4) };
   const was = settings;
   settings = next;
@@ -74,7 +93,10 @@ function message() {
 }
 function snapshot(role) {
   if (live() && surfaces.has(role) && !homeOff(role)) return surfaces.get(role);
-  return { ok: true, enabled: settings.enabled && settings.home && !!settings.host, homeOff: homeOff(role), state: settings.enabled && !homeOff(role) ? 'connecting' : 'off', message: message(), registered: false, locked: false, error: '', columns: settings.columns, rows: settings.rows, keys: [] };
+  // Producer Home and the added Home pages need the plugin's 1.3.0
+  const old = live() && !OLD_PLUGIN_ROLES.has(role) && tooOldFor('1.3.0');
+  const text = old ? 'Update the Companion buttons plugin (Settings → Plugins) to show Companion buttons on this page.' : message();
+  return { ok: true, enabled: settings.enabled && settings.home && !!settings.host, homeOff: homeOff(role), state: settings.enabled && !homeOff(role) && !old ? 'connecting' : 'off', message: text, registered: false, locked: false, error: '', columns: settings.columns, rows: settings.rows, keys: [] };
 }
 
 // What the plugin shares: each surface's snapshot, key and clear events, and its status
@@ -83,7 +105,7 @@ plugins.onShare('companion', (event, data) => {
   if (event === 'started' || event === 'stopped') {
     status = null; surfaces.clear(); revs.clear(); rev++;
     for (const role of Object.keys(ROLES)) broadcast(role, 'snapshot', snapshot(role));
-    // A new run: Custom Pages' surfaces again, once its process is there (this comes just before)
+    // A new run: Custom Pages' (and the added Home pages') surfaces again, once its process is there (this comes just before)
     if (event === 'started') setImmediate(sendEventSurfaces);
     return;
   }
@@ -168,8 +190,8 @@ function mountCompanion(app, { canUse = () => true } = {}) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.write('retry: 3000\n\n');
     res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot(role))}\n\n`);
-    streams.get(role).add(res);
-    req.on('close', () => streams.get(role).delete(res));
+    streamsOf(role).add(res);
+    req.on('close', () => streamsOf(role).delete(res));
   });
 
   app.post('/companion/press', express.json({ limit: '1kb' }), async (req, res) => {
@@ -198,13 +220,16 @@ function setCustomSurfaces(list) {
 }
 function sendEventSurfaces() {
   if (!plugins.isRunning('companion')) return Promise.resolve(false);
-  return plugins.callIntegration('companion', 'extras', { surfaces: customSurfaces }).then(() => true, () => false);
+  // Before 1.3.0 the plugin would take an "hp-" surface for a Custom page: only Custom Pages' then
+  const home = tooOldFor('1.3.0') ? [] : homeExtras;
+  return plugins.callIntegration('companion', 'extras', { surfaces: [...customSurfaces, ...home] }).then(() => true, () => false);
 }
 // What a custom page shows: { rev, live, note, columns, rows, full, keys }
 // (keys: the buttons changed since `since`, or every one if it's older than
 // the surface's last reset)
 // The Companion buttons plugin before 1.1.0 has no custom pages' surfaces
-const tooOld = () => { try { const v = plugins.officialState('companion').version; return !!v && !versionAtLeast(v, '1.1.0'); } catch (_) { return false; } };
+const tooOldFor = (want) => { try { const v = plugins.officialState('companion').version; return !!v && !versionAtLeast(v, want); } catch (_) { return false; } };
+const tooOld = () => tooOldFor('1.1.0');
 function versionAtLeast(v, want) {
   const a = String(v).split('.').map(Number), b = want.split('.').map(Number);
   for (let i = 0; i < 3; i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
@@ -252,4 +277,4 @@ function getStatus() {
 // The plugin stops with the other plugins (plugins.stopAll), dropping the surfaces in Companion
 function stop() {}
 
-module.exports = { applyConfig, mountCompanion, getStatus, stop, setCustomSurfaces, customView, customPress, customStatus, ROLES, DEFAULT_PORT, LIMITS };
+module.exports = { applyConfig, mountCompanion, getStatus, stop, setCustomSurfaces, customView, customPress, customStatus, get ROLES() { return ROLES; }, DEFAULT_PORT, LIMITS };

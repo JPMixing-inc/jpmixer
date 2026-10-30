@@ -16,7 +16,7 @@
 // Layouts saved before this (v1: an order plus width/height presets) are
 // converted to the same arrangement they produced.
 (() => {
-  const role = (location.pathname.match(/\/(propresenter|lighting|switcher)\.html$/) || [])[1] || 'foh';
+  const role = (location.pathname.match(/\/(propresenter|lighting|switcher|producer|hp-[0-9a-f]{10})\.html$/) || [])[1] || 'foh';
   const STORAGE_KEY = role === 'foh' ? 'jpm_foh_layout_v1' : `jpm_${role}_layout_v1`;
   const COLS = 24, ROW = 10, GAP_ROWS = 2;   // GAP_ROWS: the vertical space kept between cards
   const MIN_W = 4, MIN_H = 12, MAX_H = 160;

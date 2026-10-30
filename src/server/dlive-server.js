@@ -26,17 +26,16 @@
 //     channel faders, ±0.5dB boost buttons, mute/solo, and snapshot prev/
 //     next all reuse the exact same message types/addresses as the musician
 //     mixer, so they fell out of the above for free once it worked
-//   ✗ Pan — no per-channel-per-aux pan message exists in the V2.0 spec as
-//     documented; sends are silently accepted and dropped rather than faked.
-//     mixer.js's PAN toggle stays hidden regardless, since it's already
-//     gated on the aux's `stereo` flag (verified against a real browser),
-//     which every dLive aux reports false — no separate fix needed there.
-//   ✗ Built-in aux EQ — same story as pan: config always reports
-//     `eqEnabled: false`, so mixer.js's existing gate already hides the EQ
-//     menu item; the request-aux-eq stub below is unreachable in practice.
+//   ✓ Mono and stereo mixes, read from the console's mix layout (each
+//     pool, as many as the show has; see the mix layout below)
+//   ✓ Pan on the stereo mixes, and a mix's graphic EQ and compressor —
+//     MIDI has none, so through dLive's own app protocol (dlive-private.js),
+//     once the mix's place on it checks out (see panAvailable)
+//   ✓ A mix's EQ for its musicians (its PEQ, over MIDI), where Settings allows
 //   ✓ Console Controller: input, aux and DCA faders and mutes, input and
-//     DCA solo (the desk's own solo — see consoleWrite below). Not the
-//     channel processing panel.
+//     DCA solo (the desk's own solo — see consoleWrite below), each
+//     channel's preamp, high-pass and EQ, and FX, groups, matrices, mains
+//     and mute groups.
 //   ✗ OSC/MIDI log recording,
 //     iPad relay — not implemented; exported stubs only so main.js's shared
 //     calls don't crash if invoked while dLive is active. Console
@@ -44,9 +43,6 @@
 //     etc.) have no `.address` field and match none of the handled `type`s,
 //     so they're inert no-ops rather than errors — except fire-snapshot,
 //     which Console Controller also uses and which *is* implemented.
-//   ✗ Aux mono/stereo distinction — dLive has separate mono/stereo aux send
-//     pools; every JPMixer-configured aux is mapped to a *mono* aux send
-//     (1-62 available), which covers the overwhelmingly common case
 //
 // Send-level push: dLive sends an unsolicited Send Level message when a send
 // changes, the way it's documented to for Fader/Mute/Assignment. Confirmed
@@ -407,12 +403,14 @@ function peqVv(field, v) {
   if (field === 'freq') return P.peqFreqToVv(v);
   return P.peqQToVv(v);
 }
-function requestEq(c, withHpf) {
+function requestEq(c, withHpf, first = false) {
+  const asks = [];
   for (let band = 0; band < 4; band++) for (const field of ['type', 'freq', 'width', 'gain']) {
     const param = P.peqParam(band, field);
-    enqueuePrime(() => client && client.requestParam(c, param));
+    asks.push(() => client && client.requestParam(c, param));
   }
-  if (withHpf) for (const param of [P.PARAM.HPF_ON, P.PARAM.HPF_FREQ]) enqueuePrime(() => client && client.requestParam(c, param));
+  if (withHpf) for (const param of [P.PARAM.HPF_ON, P.PARAM.HPF_FREQ]) asks.push(() => client && client.requestParam(c, param));
+  if (first) enqueuePrimeFirst(asks); else for (const a of asks) enqueuePrime(a);
   startPriming();
 }
 // One NRPN setting, written by JPMixer
@@ -514,14 +512,18 @@ function toPanels(ch, path, value, except) {
 function openChannelDetail(ws, ch) {
   ws._detailCh = ch;
   try { ws.send(JSON.stringify(channelDetail(ch))); } catch (_) {}
+  // Its settings ahead of whatever else is being read: someone is waiting
+  const c = channelCoord(moduleBaseN, ch);
+  if (c) requestEq(c, true, true);
   const { sock } = preampSocket(ch);
   if (sock) {
-    enqueuePrime(() => client && client.requestPreampGain(sock.socket));
-    enqueuePrime(() => client && client.requestPad(sock.socket));
-    enqueuePrime(() => client && client.requestPhantom(sock.socket));
+    enqueuePrimeFirst([
+      () => client && client.requestPreampGain(sock.socket),
+      () => client && client.requestPad(sock.socket),
+      () => client && client.requestPhantom(sock.socket),
+    ]);
+    startPriming();
   }
-  const c = channelCoord(moduleBaseN, ch);
-  if (c) requestEq(c, true);
 }
 // A change from the panel: to the console, and to the other panels on that channel
 function writeChannelParam(ws, ch, path, raw) {
@@ -646,6 +648,27 @@ async function subscribeMix(auxRaw) {
 // can reach one protocol before the other, so a disagreement only counts if
 // it's still there a moment later.
 const panRechecks = new Map(); // "ch:aux" -> timer
+// At most 4 asked again at once, the rest wait their turn: a mix in the
+// wrong place disagrees on every send, and every mix is checked on
+// connect, so asking for them all straight away was a burst of MIDI gets
+const RECHECKS_AT_ONCE = 4;
+const recheckWaiting = new Map(); // "ch:aux" -> { ch, aux, c, wasProven }
+function nextRecheck() {
+  for (const [key, { ch, aux, c, wasProven }] of recheckWaiting) {
+    if (panRechecks.size >= RECHECKS_AT_ONCE) return;
+    recheckWaiting.delete(key);
+    if (c.bad > 0) { c.pending = Math.max(0, c.pending - 1); continue; } // found wrong meanwhile
+    const input = sourceCoord(moduleBaseN, ch), snd = auxCoord(moduleBaseN, aux);
+    if (input && snd) { requestSendLevel(ch, aux, input, snd); if (client) client.requestSendAssign(input, snd); }
+    panRechecks.set(key, setTimeout(() => {
+      panRechecks.delete(key);
+      c.pending = Math.max(0, c.pending - 1);
+      checkPanPlace(ch, aux, true);
+      if (placeProven(aux) !== wasProven) scheduleLayoutPush();
+      nextRecheck();
+    }, 2500));
+  }
+}
 // MIDI's quietest send is -53 dB (the next step is off): anything quieter
 // here reads as off there, so both count as off
 const sendOff = (db) => !(db > -53.25);
@@ -654,8 +677,9 @@ function checkPanPlace(ch, aux, again = false) {
   if (isRightHalf(ch) || !panLink.privLevel.has(key) || !levelCache.has(key)) return; // a pair's right half has no sends of its own
   // A send muted by its level: MIDI's cache keeps the level to put back, the console has it off
   if (!muteBySendOff() && isSilenced(aux, ch)) return;
-  // A send switched off: MIDI still reads its level, and this protocol may
-  // or may not (Director's does), so it says nothing
+  // A send switched off: both protocols still read its level (Director and
+  // a MixRack, 2026-10-29), but a send JPMixer has just switched off may
+  // not have been read since, so it says nothing
   if (assignCache.get(key) === false) return;
   const a = panLink.privLevel.get(key), b = levelCache.get(key);
   const aOff = sendOff(a), bOff = sendOff(b);
@@ -677,18 +701,13 @@ function checkPanPlace(ch, aux, again = false) {
   // with a change made elsewhere), and it counts only if it's still there.
   // While it's being looked at, nothing goes to that mix's place.
   if (!again) {
-    if (panRechecks.has(key)) return;
+    // A mix already found wrong is being looked for (or given up on)
+    if (panRechecks.has(key) || recheckWaiting.has(key) || c.bad > 0) return;
     const wasProven = placeProven(aux);
     c.pending++;
     if (wasProven) scheduleLayoutPush();
-    const input = sourceCoord(moduleBaseN, ch), snd = auxCoord(moduleBaseN, aux);
-    if (input && snd) { requestSendLevel(ch, aux, input, snd); if (client) client.requestSendAssign(input, snd); }
-    panRechecks.set(key, setTimeout(() => {
-      panRechecks.delete(key);
-      c.pending = Math.max(0, c.pending - 1);
-      checkPanPlace(ch, aux, true);
-      if (placeProven(aux) !== wasProven) scheduleLayoutPush();
-    }, 2500));
+    recheckWaiting.set(key, { ch, aux, c, wasProven });
+    nextRecheck();
     return;
   }
   c.matched.delete(ch);
@@ -749,11 +768,15 @@ async function findPlace(aux, failedAt) {
 function moveMix(aux, place) {
   const ofAux = (key) => key.split(':').pop() === String(aux);
   for (const [key, t] of [...panRechecks]) if (ofAux(key)) { clearTimeout(t); panRechecks.delete(key); }
+  for (const key of [...recheckWaiting.keys()]) if (ofAux(key)) recheckWaiting.delete(key);
   for (const [key, sub] of [...panLink.subs]) if ((key.startsWith('pan:') || key.startsWith('level:')) && ofAux(key)) { panLink.subs.delete(key); panLink.byHandle.delete(sub.handle); }
+  // The old place's graphic EQ and compressor (another mix's, it turned out)
+  for (const [h, sub] of [...panLink.byHandle]) if ((sub.what === 'geq' || sub.what === 'comp') && sub.aux === aux) panLink.byHandle.delete(h);
   for (const map of [panLink.privLevel, panCache]) for (const key of [...map.keys()]) if (ofAux(key)) map.delete(key);
   panLink.checked.delete(aux); panLink.mixes.delete(aux); procs.delete(aux);
   panLink.placeOf.set(aux, place);
   subscribeMix(aux);
+  nextRecheck(); // other mixes' turns
 }
 function onPanValue({ handle, value, bytes }) {
   const sub = panLink.byHandle.get(handle);
@@ -841,7 +864,7 @@ function startPanLink(host) {
     logEvent('pan-link', 'up — pan on the stereo mixes');
     pushLayout();
     readStereoInputs();
-    for (const aux of Object.keys(getActiveMixerCounts()).map(Number)) subscribeMix(aux);
+    checkEveryPlace();
   });
   link.on('close', () => {
     if (panLink.client !== link) return;
@@ -949,7 +972,7 @@ function writeProc(ws, aux, kind, name, raw) {
 // moves them), so nothing goes to a place before it's proven again
 function forgetPlaces() {
   for (const t of panRechecks.values()) clearTimeout(t);
-  panRechecks.clear();
+  panRechecks.clear(); recheckWaiting.clear();
   panLink.checked.clear();
   procs.clear();
   for (const [key, sub] of [...panLink.subs]) if (!key.startsWith('stereo:')) { panLink.subs.delete(key); panLink.byHandle.delete(sub.handle); }
@@ -1115,6 +1138,95 @@ function stopSendLevelPolling() {
   if (sendLevelPollTimer) { clearInterval(sendLevelPollTimer); sendLevelPollTimer = null; }
   sendLevelPollQueue = [];
   sendLevelPollIndex = 0;
+  for (const t of mixLoadOut.values()) clearTimeout(t);
+  mixLoadOut.clear(); mixLoadQueue = []; mixLoaded.clear(); mixLoadUnanswered = 0;
+}
+
+// A mix a phone has just opened: all its send levels asked for straight
+// away, so its faders are in place in under a second. Left to the
+// background poll's turn (one every 75 ms, every open mix in turn), a show
+// with 128 inputs took 10 s a mix and more.
+// Paced by the console's answers, not a timer: a MixRack answers MIDI
+// gets on a 20 ms cycle, everything waiting in one go, and 4 waiting at a
+// time (200 a second) lost none in 3,000, where a timer at 100 a second
+// lost about 1 in 1,000 (measured 2026-10-29, with Companion connected).
+// One not answered in 250 ms is asked once more, then left to the poll.
+// Every mix is read the same way once JPMixer connects (readEveryMix),
+// more gently (2 waiting): a mix a phone opens goes ahead of that. While
+// names, faders and the rest are being read (40 a second, startPriming),
+// each takes half as many, and one at a time while the mix layout is
+// asked for, so the console never gets more than measured.
+const MIX_LOAD_WINDOW = 4, MIX_SWEEP_WINDOW = 2, MIX_LOAD_TIMEOUT_MS = 250, MIX_LOAD_AGAIN_MS = 3000;
+let mixLoadQueue = [], mixLoadBase = 0, mixLoadUnanswered = 0;
+const mixLoadOut = new Map(); // "midiCh:ch:sndMidiCh:sndCh" -> its timeout, while waiting
+const mixLoaded = new Map();  // aux -> when it was last asked for
+function loadMixLevels(baseN, aux, opened = true) {
+  if (!client || !client.connected || !auxCoord(baseN, aux)) return;
+  const queued = mixLoadQueue.some((x) => x.aux === aux);
+  if (queued ? !opened : Date.now() - (mixLoaded.get(aux) || 0) < MIX_LOAD_AGAIN_MS) return; // just asked (another phone on it)
+  mixLoaded.set(aux, Date.now());
+  mixLoadBase = baseN;
+  const items = mixChannels().map((ch) => ({ ch, aux, tries: 0, opened })); // a stereo pair's right half isn't shown
+  const rest = mixLoadQueue.filter((x) => x.aux !== aux);
+  mixLoadQueue = opened ? [...items, ...rest] : [...rest, ...items];
+  pumpMixLoad();
+}
+function pumpMixLoad() {
+  const share = probing() ? 4 : primeTimer ? 2 : 1; // one at a time while a probe runs
+  while (mixLoadQueue.length && mixLoadOut.size < (mixLoadQueue[0].opened ? MIX_LOAD_WINDOW : MIX_SWEEP_WINDOW) / share && client && client.connected) {
+    const item = mixLoadQueue.shift();
+    const input = item.ch > FX_BASE ? sourceCoord(mixLoadBase, item.ch) : channelCoord(mixLoadBase, item.ch), snd = auxCoord(mixLoadBase, item.aux);
+    if (!input || !snd) continue;
+    const key = `${input.midiCh}:${input.ch}:${snd.midiCh}:${snd.ch}`;
+    if (mixLoadOut.has(key)) continue;
+    mixLoadOut.set(key, setTimeout(() => {
+      mixLoadOut.delete(key);
+      // A console that answers none (not one in a row of 16): the
+      // background read of every mix stops; mixes phones open still load
+      if (++mixLoadUnanswered >= 16) { mixLoadQueue = mixLoadQueue.filter((x) => x.opened); if (mixLoadUnanswered === 16) logEvent('mix-load', 'the console isn\'t answering send level gets — the background read of every mix stops'); }
+      if (++item.tries < 2) { if (item.opened) mixLoadQueue.unshift(item); else mixLoadQueue.push(item); } // an opened mix's goes ahead of the background read
+      pumpMixLoad();
+    }, MIX_LOAD_TIMEOUT_MS));
+    requestSendLevel(item.ch, item.aux, input, snd);
+  }
+}
+// A send level from the console: the answer to one the mix load asked for frees its turn
+function mixLoadAnswered(ev) {
+  const key = `${ev.midiCh}:${ev.ch}:${ev.sndMidiCh}:${ev.sndCh}`;
+  const timer = mixLoadOut.get(key);
+  if (timer === undefined) return;
+  clearTimeout(timer); mixLoadOut.delete(key);
+  mixLoadUnanswered = 0;
+  pumpMixLoad();
+}
+// Every mix, once JPMixer connects or the console's mixes change: all their
+// send levels read in the background (about 20 s for 17 mixes of 128
+// inputs), so the Monitor Engineer page has every mix, not just those a
+// phone has open; and each mix that can have pan, graphic EQ or compressor
+// is checked on the app protocol (checkEveryPlace), so PAN is there the
+// moment a musician opens it.
+// Not with "Poll send levels" off in Settings: that's asking for less traffic.
+function readEveryMix(baseN) {
+  if (!serverCfg.dlivePollSendLevels || mixLoadUnanswered >= 16) return;
+  const open = new Set(Object.keys(getActiveMixerCounts()).map(Number));
+  for (let aux = 1; aux <= auxCountNow(); aux++) if (!open.has(aux)) loadMixLevels(baseN, aux, false);
+}
+const placeWanted = (aux) => !!(mixMap && mixMap[aux - 1] && (mixMap[aux - 1].stereo || serverCfg.auxOverrides?.[String(aux)]?.eqEnabled === true));
+// The open mixes' subscriptions go first, straight away. The rest wait a
+// moment between mixes: each is 128 to 256 subscriptions, and the console
+// answers every one (a phone opening a mix has always asked for one mix's
+// worth at once; every stereo mix at once was thousands in a few seconds).
+const BACKGROUND_MIX_GAP_MS = 300;
+async function checkEveryPlace() {
+  if (!panLink.ready || !mixMap) return;
+  const open = Object.keys(getActiveMixerCounts()).map(Number);
+  const rest = mixMap.map((_, i) => i + 1).filter((aux) => placeWanted(aux) && !open.includes(aux));
+  for (const aux of open) await subscribeMix(aux);
+  for (const aux of rest) {
+    if (!panLink.ready || panLink.mixes.has(aux)) continue; // opened meanwhile: done already
+    await subscribeMix(aux);
+    await new Promise((resolve) => setTimeout(resolve, BACKGROUND_MIX_GAP_MS));
+  }
 }
 
 // ── Name/colour priming on connect — same "never burst the console" pacing ─
@@ -1122,6 +1234,15 @@ let primeQueue = [];
 let primeTimer = null;
 
 function enqueuePrime(fn) { primeQueue.push(fn); }
+// Ahead of everything waiting: someone is looking at it (the channel panel)
+function enqueuePrimeFirst(fns) { primeQueue.unshift(...fns); }
+// One every 25 ms (40 a second): a MixRack answered every one of 2,600
+// gets at a steady 25 to 60 a second, and lost about 1 in 1,000 from 80
+// (measured 2026-10-29). Was 75 ms: a Console Controller's first look at a
+// 128-input show took 30 s and more to fill in.
+const PRIME_MS = 25;
+let primeSkip = 0;
+const probing = () => !!(mixProbeTimer || extraProbeTimer);
 
 // Bug fixed here: this used to call stopPriming() first, which clears
 // primeQueue — but every real call site enqueues the whole batch *then*
@@ -1132,10 +1253,14 @@ function enqueuePrime(fn) { primeQueue.push(fn); }
 function startPriming() {
   if (primeTimer) return; // already running — a fresh enqueue just extends the same queue
   primeTimer = setInterval(() => {
+    // While the mix layout or the More tab's strips are asked for (50 a
+    // second on their own lane), one in three: about 65 a second in all,
+    // under the 80 where replies started to go missing
+    if (probing() && ++primeSkip % 3) return;
     const fn = primeQueue.shift();
     if (fn) fn();
     if (primeQueue.length === 0) stopPriming();
-  }, 75);
+  }, PRIME_MS);
 }
 function stopPriming() {
   if (primeTimer) { clearInterval(primeTimer); primeTimer = null; }
@@ -1195,9 +1320,10 @@ function buildConfig() {
       enabled:   ov.enabled !== false,
       label:     ov.label || shared.consoleNameOr(serverCfg, 'auxes', i, liveName) || `AUX ${i}`,
       channel:   i,
-      // A stereo mix gets pan when the console's own app protocol is up and
-      // the mix's place checks out (see panAvailable)
-      stereo:    panAvailable(i),
+      // Stereo as the console's mix layout has it; pan once the console's
+      // own app protocol is up and the mix's place checks out (panAvailable)
+      stereo:    !!(mixMap && mixMap[i - 1] && mixMap[i - 1].stereo),
+      pan:       panAvailable(i),
       colour:    ov.colour || colourCache.get(`aux:${i}`) || '#e8a020',
       icon:      '',
       eqEnabled: auxEqAllowed(i), // the mix's own PEQ on the console, when Settings allows it
@@ -1206,6 +1332,7 @@ function buildConfig() {
       compEnabled: procAvailable(i, 'comp'),
       linkOnly:  ov.linkOnly === true,
       groups:    shared.auxGroupNames(ov, serverCfg),
+      channels:  shared.auxChannels(ov),
     });
   }
 
@@ -1532,6 +1659,7 @@ function finishMixProbe(baseN) {
       releaseAllSilencing(baseN);
       levelCache.clear(); assignCache.clear(); assignWrites.clear(); levelWrites.clear();
     }
+    const unchanged = same(mixMap, next);
     mixMap = next;
     // Where the auxes are in the console's list of mixes (a stereo mix takes
     // two places): the groups, the mono auxes, the FX sends, then the stereo
@@ -1541,8 +1669,12 @@ function finishMixProbe(baseN) {
     // isn't there is looked for (findPlace)
     const groups = probe.groups.mono.size + 2 * probe.groups.stereo.size;
     const fx = probe.fx.mono.size + 2 * probe.fx.stereo.size;
-    busLayout = { firstMonoAux: groups, firstStereoAux: groups + mono.length + fx };
-    forgetPlaces(); // every mix's place is proven again on this layout
+    const layout = { firstMonoAux: groups, firstStereoAux: groups + mono.length + fx };
+    // Every mix's place is proven again on a new layout. The same one (MIDI
+    // came back, the app protocol stayed): what's proven stands, and the
+    // console isn't asked to subscribe it all again (it has no unsubscribe)
+    if (!unchanged || !busLayout || busLayout.firstMonoAux !== layout.firstMonoAux || busLayout.firstStereoAux !== layout.firstStereoAux) forgetPlaces();
+    busLayout = layout;
     logEvent('mix-layout', `${mono.length} mono + ${stereo.length} stereo aux mixes (${probe.groups.mono.size} mono + ${probe.groups.stereo.size} stereo groups, ${probe.fx.mono.size} mono + ${probe.fx.stereo.size} stereo FX sends; mono auxes from place ${busLayout.firstMonoAux + 1}, stereo from ${busLayout.firstStereoAux + 1})`);
     mixMap.forEach((m, i) => {
       nameCache.set(`aux:${i + 1}`, (m.stereo ? probe.stereo : probe.mono).get(m.n));
@@ -1552,9 +1684,13 @@ function finishMixProbe(baseN) {
   }
   startPriming();
   rebuildSendLevelPollQueue();
+  // The mixes phones already have open (a console that came back, a new layout), then every other
+  mixLoaded.clear();
+  for (const aux of Object.keys(getActiveMixerCounts()).map(Number)) loadMixLevels(baseN, aux);
+  readEveryMix(baseN);
   if (wss) { const msg = JSON.parse(buildConfig()); msg.config.liveUpdate = true; broadcastToClients(msg); }
-  // Phones already on a mix: its places can be read now (before the layout, they couldn't)
-  for (const aux of Object.keys(getActiveMixerCounts()).map(Number)) subscribeMix(aux);
+  // Every mix's place can be read now (before the layout, it couldn't)
+  checkEveryPlace();
 }
 
 // ── Server lifecycle ───────────────────────────────────────────────────────
@@ -1618,7 +1754,7 @@ function start(cfg) {
     console.log(`[JPMixer/dLive] Connecting to dLive MixRack → ${cfg.deskIp}`);
   });
 
-  wss = new WebSocket.Server({ server: httpServer });
+  wss = new WebSocket.Server({ server: httpServer, maxPayload: shared.MAX_PAYLOAD });
 
   pingInterval = setInterval(() => {
     const now = Date.now();
@@ -1710,10 +1846,13 @@ function start(cfg) {
       }
 
       if (msg.type === 'set-active-aux') {
+        const was = ws._activeAux;
         ws._activeAux = (msg.aux === null || msg.aux === undefined) ? null : parseInt(msg.aux, 10);
         broadcastToClients({ type: 'active-mixers', counts: getActiveMixerCounts() });
         broadcastDevicesUpdate();
         rebuildSendLevelPollQueue(); // picks up newly (in)active auxes immediately, not next full cycle
+        // Its faders, now; not again for the same mix (every layout change re-sends it)
+        if (ws._activeAux && ws._activeAux !== was) loadMixLevels(moduleBaseN, ws._activeAux);
         if (ws._activeAux) subscribeMix(ws._activeAux); // its pans, on a stereo mix
         return;
       }
@@ -1728,12 +1867,12 @@ function start(cfg) {
       if (shared.handleSharedMessage(ws, msg, { logEvent, onActivity: (m, from) => shared.broadcastActivity(connections, m, from) })) return;
       if (msg.type === 'apply-preset') {
         const auxStr = String(msg.aux);
-        const levels = pushSceneValuesToDesk(baseN, auxStr, msg.levels || {});
+        const levels = pushSceneValuesToDesk(baseN, auxStr, shared.plainMap(msg.levels));
         // Its pans, on a stereo mix that has them
         const pans = {};
         const aux = parseInt(msg.aux, 10);
         if (panAvailable(aux)) {
-          for (const [chStr, val] of Object.entries(msg.pans || {})) {
+          for (const [chStr, val] of Object.entries(shared.plainMap(msg.pans))) {
             const ch = parseInt(chStr, 10);
             if (Number.isFinite(val) && val >= 0 && val <= 1 && writePan(ch, aux, val)) pans[chStr] = val;
           }
@@ -1951,6 +2090,7 @@ function start(cfg) {
   });
 
   on('sendLevel', (ev) => {
+    mixLoadAnswered(ev);
     if (ev.midiCh === baseN) checkStereoPair(ev.ch + 1, `${ev.sndMidiCh}:${ev.sndCh}`, ev.db);
     // This same message shape carries Group/Matrix/DCA sends too, not just
     // Input channels — checking the *source's* bank (ev.midiCh) as well as

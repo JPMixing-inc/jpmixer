@@ -361,6 +361,7 @@
           <div id="auxKeyEq"><dt>EQ</dt><dd>Performers can adjust this mix's EQ</dd></div>
           <div><dt>Link only</dt><dd>Hidden from the picker; open it with its direct link below</dd></div>
           <div class="aux-key-groups" id="auxKeyGroups" hidden><dt>Opens to</dt><dd>The channel groups phones start on. Performers can still tap All.</dd></div>
+          <div><dt>Channels</dt><dd>All channels by default. Pick a mix’s own channels to show only those, hidden ones too</dd></div>
         </dl>
         <div class="aux-list" id="auxesList" role="table" aria-label="Aux mixes"></div>
       </section>
@@ -414,21 +415,20 @@
           <input type="checkbox" id="sceneRecallEnabled" class="toggle" />
         </div>
       </section>
-      <section class="card">
-        <div class="card-row space-between">
-          <h2>Saved Mixes</h2>
-          <button class="btn btn-sm" id="refreshMixesBtn">Refresh</button>
+      <section class="card" id="saved-mixes">
+        <div class="settings-heading"><h2>Saved Mixes</h2><p class="sub">Each performer’s My Mixes, kept per phone or browser. Pick one to see, copy or delete their mixes.</p></div>
+        <div class="mix-picker-row">
+          <div class="field-row"><label for="mixDeviceSelect">Performer</label><select id="mixDeviceSelect"><option value="">Loading…</option></select></div>
+          <button type="button" class="btn" id="refreshMixesBtn">Refresh</button>
         </div>
-        <p class="sub">Performer mixes are organized by device. Use Set Name to make a performer’s mixes easier to find.</p><details class="settings-help"><summary>Combine mixes from another phone or browser</summary><div class="settings-help-body"><p>A new phone, a cleared browser, or a different server address can create a separate device entry. Use <strong>Merge Into</strong> to combine a performer’s mixes; their phone picks them up when it next connects. A backup is saved before every merge.</p></div></details>
-        <p class="sub">Copy one mix or all mixes from a device, then paste into another device below. Connected performers can receive copies immediately; offline devices receive them when they reconnect.</p>
         <div class="mix-clipboard" id="mixClipboard" hidden><p id="mixClipboardLabel" role="status"></p><button type="button" class="btn btn-sm" id="clearMixClipboardBtn">Clear copy</button></div>
         <p class="backup-status" id="mixCopyStatus" role="status" aria-live="polite"></p>
         <div id="mixesByAux"></div>
+        <details class="settings-help"><summary>Copying and merging mixes</summary><div class="settings-help-body"><p><strong>Copy</strong> a mix (or all of them), pick another performer, then <strong>Paste</strong>. A connected phone gets it straight away; one that’s off gets it when it reconnects.</p><p>A new phone, a cleared browser or a different server address starts a new entry. Use <strong>Merge into</strong> under More to put a performer’s mixes back together; their phone picks them up when it next connects. A backup is saved before every merge.</p></div></details>
       </section>
       <section class="card">
-        <div class="settings-heading"><h2>Back up &amp; recover My Mixes</h2><p class="sub">Keep a separate copy of every performer’s saved mixes, including levels and pans.</p></div>
+        <div class="settings-heading"><h2>Back up &amp; recover My Mixes</h2><p class="sub">A separate file with every performer’s saved mixes, levels and pans. Loading one lets you bring back just the My Mixes and keep this computer’s settings.</p></div>
         <div class="card-row"><button type="button" class="btn btn-primary" id="exportMixBackupBtn">Back Up My Mixes…</button><button type="button" class="btn" id="importMixBackupBtn">Load a Backup…</button></div>
-        <p class="sub">Load any backup through the shared loader, review what it contains, and select My Mixes to recover saved mixes while keeping this computer’s settings.</p>
         <p class="backup-status" id="mixBackupStatus" role="status" aria-live="polite"></p>
       </section>
 
@@ -441,7 +441,7 @@
       <div class="views-directory">
         <section class="card view-directory-card" data-engineer-view="home">
           <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></span><h2>Home page picker</h2></div>
-          <p class="sub view-directory-description">One link for the whole production team: pick FOH, ProPresenter, Lighting or Switcher Home, with who’s on today.</p>
+          <p class="sub view-directory-description">One link for the whole production team: pick any Home page, with who’s on today.</p>
           <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openHomePickerViewBtn">Open Home page picker</button></div>
           <p class="sub view-directory-hint" id="homePickerViewHint" role="status">Start the server first to open.</p>
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="homePickerViewUrl">—</span></div>
@@ -486,6 +486,16 @@
           <div class="view-welcomes"><span class="view-welcomes-label">Welcomes</span><span class="view-welcomes-who" id="welcomesSwitcher">—</span><button type="button" class="settings-text-link" data-settings-target="pco" data-settings-jump="pco-home-pages">Change</button></div>
           <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="switcherViewUrl">—</span></div>
         </section>
+        <section class="card view-directory-card" data-engineer-view="producer">
+          <div class="view-directory-heading"><span class="view-directory-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" focusable="false"><path d="M4 7h16v12H4z"/><path d="m4 7 3-4m4 4 3-4m4 4 2-3M4 11h16"/></svg></span><h2>Producer Home</h2></div>
+          <p class="sub view-directory-description">Welcome, live service item, team and order of service for the service producer.</p>
+          <div class="view-directory-actions"><button type="button" class="btn btn-primary" id="openProducerViewBtn">Open Producer Home</button></div>
+          <p class="sub view-directory-hint" id="producerViewHint" role="status">Start the server first to open.</p>
+          <div class="view-welcomes"><span class="view-welcomes-label">Welcomes</span><span class="view-welcomes-who" id="welcomesProducer">—</span><button type="button" class="settings-text-link" data-settings-target="pco" data-settings-jump="pco-home-pages">Change</button></div>
+          <div class="ip-row view-directory-url"><span class="ip-label">Direct link</span><span class="ip-address" id="producerViewUrl">—</span></div>
+        </section>
+        <!-- The Home pages added on the Planning Center tab (settings.js renderCustomHomeCards) -->
+        <div class="views-directory-custom" id="customHomeViewCards" hidden></div>
       </div>
       <div class="views-section-heading"><h2>Engineer tools</h2><p>Mixing and monitoring pages for the audio team.</p></div>
       <div class="views-directory">
@@ -561,7 +571,7 @@
           <div class="field-row"><label for="companionPort">Satellite port</label><input type="number" id="companionPort" min="1" max="65535" placeholder="16622" /></div>
           <div class="field-row"><label for="companionColumns">Buttons per row</label><input type="number" id="companionColumns" min="1" max="12" /></div>
           <div class="field-row"><label for="companionRows">Rows</label><input type="number" id="companionRows" min="1" max="8" /></div>
-          <div class="pco-setting-row companion-home-row"><div><label class="toggle-label" for="companionHome">Home page surfaces</label><p class="sub">A surface for each Home page: FOH, ProPresenter, Lighting and Switcher. Off, Companion is for custom pages only: each custom page with Companion buttons is still its own surface, set up under Plugins → Custom Pages.</p></div><input type="checkbox" id="companionHome" class="toggle" /></div>
+          <div class="pco-setting-row companion-home-row"><div><label class="toggle-label" for="companionHome">Home page surfaces</label><p class="sub">A surface for each Home page: FOH, ProPresenter, Lighting, Switcher, Producer and any you add on the Planning Center tab. Off, Companion is for custom pages only: each custom page with Companion buttons is still its own surface, set up under Plugins → Custom Pages.</p></div><input type="checkbox" id="companionHome" class="toggle" /></div>
         </div>
         <div class="companion-status" id="companionStatus" role="status"><span class="dot" id="companionDot"></span><span id="companionStatusText">Off</span></div>
         <details class="settings-help"><summary>Setting it up in Companion</summary><div class="settings-help-body"><div class="sub">In Companion, open <strong>Surfaces</strong>. After Save &amp; Apply, a Satellite surface appears for each page: <strong>JPMixer FOH Home</strong>, <strong>JPMixer ProPresenter Home</strong>, <strong>JPMixer Lighting Home</strong> and <strong>JPMixer Switcher Home</strong> (unless Home page surfaces is off), and <strong>JPMixer</strong> and the page’s name for each custom page with Companion buttons. Give each one the page of buttons it needs. Companion’s Satellite port is 16622 unless you changed it. Each Home page shows its buttons in a Companion card you can move and resize with Arrange page.</div></div></details>
@@ -682,138 +692,107 @@
     </div>
 
     <!-- ── Planning Center tab ── -->
+    <!-- Numbered steps, each needing the one before. The lists load by
+         themselves once connected (settings.js loadPcoLists). -->
     <div class="tab-panel" id="tab-pco">
       <section class="card pco-switch-card">
         <div class="card-row space-between">
-          <div class="settings-heading"><h2>Use Planning Center</h2><p class="sub">The team, positions, schedule and order of service from Planning Center Services: who gets which mix, the Home pages, chat and the Green Room. Turned off, JPMixer doesn’t contact Planning Center and nothing that needs it shows. Everything set up here is kept for when it’s turned back on.</p></div>
+          <div class="settings-heading"><h2>Use Planning Center</h2><p class="sub">Puts the people scheduled in Planning Center Services on their mixes, the Home pages and the Green Room. Turned off, JPMixer doesn’t contact Planning Center, and your setup here is kept.</p></div>
           <input type="checkbox" id="pcoEnabled" class="toggle" aria-label="Use Planning Center" />
         </div>
       </section>
 
-      <nav class="pco-section-nav" aria-label="Planning Center sections">
-        <a href="#pco-connection">Connection</a><a href="#pco-schedule">Service &amp; team</a><a href="#pco-mapping">Aux mapping</a><a href="#pco-sync">Sync</a><a href="#pco-home-pages">Home pages</a><a href="#pco-alt">Second service</a>
-      </nav>
-
-      <details class="card pco-card pco-connection" id="pco-connection" open>
-        <summary><strong>Connection</strong><span>Planning Center Services credentials</span></summary>
-        <div class="pco-section-body">
-          <div class="pco-field-grid">
-            <div class="field-row"><label for="pcoAppId">Application ID</label><input type="text" id="pcoAppId" autocomplete="off" /></div>
-            <div class="field-row"><label for="pcoSecret">Secret</label><input type="password" id="pcoSecret" autocomplete="off" /></div>
-          </div>
-          <details class="pco-help"><summary>Where do I find these credentials?</summary><p>Create a personal access token for your Planning Center account at <span class="mono">api.planningcenteronline.com/personal_access_tokens</span>. Enter its Application ID and Secret here. Credentials are stored in JPMixer’s local configuration, like the console password.</p></details>
+      <section class="card pco-card" id="pco-connection" aria-labelledby="pcoConnectHeading">
+        <div class="pco-step-head"><span class="pco-step-num" aria-hidden="true">1</span><div><h2 id="pcoConnectHeading">Connect</h2><p class="sub">With a personal access token from your Planning Center account.</p></div></div>
+        <div class="pco-field-grid">
+          <div class="field-row"><label for="pcoAppId">Application ID</label><input type="text" id="pcoAppId" autocomplete="off" /></div>
+          <div class="field-row"><label for="pcoSecret">Secret</label><input type="password" id="pcoSecret" autocomplete="off" /></div>
         </div>
-      </details>
+        <div class="pco-connect-row">
+          <button type="button" class="btn btn-primary" id="pcoConnectBtn">Connect</button>
+          <p class="pco-conn-status" id="pcoConnectionStatus" role="status"><span class="dot" aria-hidden="true"></span><span>Not connected</span></p>
+        </div>
+        <details class="pco-help"><summary>Where do I get these?</summary><ol><li>Sign in at <span class="mono">api.planningcenteronline.com/personal_access_tokens</span>.</li><li>Create a new personal access token. Name it something like JPMixer.</li><li>Copy its Application ID and Secret into the boxes above, then select Connect.</li></ol><p>They’re kept only on this computer, like the console password.</p></details>
+      </section>
 
-      <section class="card pco-card" id="pco-schedule" aria-labelledby="pcoScheduleHeading">
-        <div class="pco-section-heading"><div><h2 id="pcoScheduleHeading">Service &amp; team</h2><p class="sub">Choose the schedule and people to display.</p></div></div>
-        <div class="pco-field-action">
-          <div class="field-row"><label for="pcoServiceType">Service type</label><select id="pcoServiceType"><option value="">— load service types —</option></select></div>
-          <button type="button" class="btn" id="pcoRefreshTypesBtn">Refresh service types</button>
+      <section class="card pco-card pco-needs-connection" id="pco-schedule" aria-labelledby="pcoScheduleHeading">
+        <div class="pco-step-head"><span class="pco-step-num" aria-hidden="true">2</span><div><h2 id="pcoScheduleHeading">Your service</h2><p class="sub">The Service Type your services are planned under, and the team your band is on.</p></div></div>
+        <div class="pco-field-grid">
+          <div class="field-row"><label for="pcoServiceType">Service type</label><select id="pcoServiceType"><option value="">Connect first</option></select></div>
+          <div class="field-row"><label for="pcoTeam">Team</label><select id="pcoTeam"><option value="">All teams</option></select></div>
         </div>
         <p class="sub pco-field-status" id="pcoServiceTypeStatus" role="status"></p>
-        <div class="pco-field-grid">
-          <div class="pco-field-stack">
-            <div class="field-row"><label for="pcoTeam">Team</label><select id="pcoTeam"><option value="">— All Teams —</option></select></div>
-            <button type="button" class="btn" id="pcoRefreshTeamsBtn">Refresh teams</button>
-          </div>
-          <div class="pco-field-stack">
-            <div class="field-row"><label for="pcoDay">Service day</label><select id="pcoDay">
-              <option value="auto">Automatic — closest service time</option><option value="">— Every Day —</option>
-              <option value="Sunday">Sunday</option><option value="Monday">Monday</option><option value="Tuesday">Tuesday</option><option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option><option value="Friday">Friday</option><option value="Saturday">Saturday</option>
-            </select></div>
-            <details class="pco-help"><summary>How does Automatic work?</summary><p>Automatic follows the service time nearest to now, including upcoming times before the show. A specific day narrows Sync Now and, once saved, the Green Room display. This applies when your Planning Center plan uses different people for different service times; otherwise everyone is shown.</p></details>
-          </div>
-        </div>
         <p class="sub pco-field-status" id="pcoTeamStatus" role="status"></p>
-        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoIncludeUnconfirmed">Include unconfirmed team members</label><p class="sub">Show scheduled people who have not confirmed yet.</p></div><input type="checkbox" id="pcoIncludeUnconfirmed" class="toggle" /></div>
+        <details class="pco-more">
+          <summary>More options</summary>
+          <div class="pco-more-body">
+            <div class="pco-setting-row">
+              <div><label class="toggle-label" for="pcoDay">Service day</label><p class="sub">For a plan with different people on different days. Automatic follows the service that’s on now, or the next one.</p></div>
+              <select id="pcoDay" class="pco-day-select">
+                <option value="auto">Automatic</option><option value="">Every day</option>
+                <option value="Sunday">Sunday</option><option value="Monday">Monday</option><option value="Tuesday">Tuesday</option><option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option><option value="Friday">Friday</option><option value="Saturday">Saturday</option>
+              </select>
+            </div>
+            <div class="pco-setting-row"><div><label class="toggle-label" for="pcoIncludeUnconfirmed">Include people who haven’t confirmed</label><p class="sub">Off, only people who accepted are shown.</p></div><input type="checkbox" id="pcoIncludeUnconfirmed" class="toggle" /></div>
+          </div>
+        </details>
       </section>
 
-      <section class="card pco-card" id="pco-mapping" aria-labelledby="pcoMappingHeading">
-        <div class="pco-section-heading"><div><h2 id="pcoMappingHeading">Position → aux mapping</h2><p class="sub">Assign each team position to a monitor mix.</p></div><button type="button" class="btn" id="pcoRefreshPositionsBtn">Refresh positions</button></div>
-        <details class="pco-help"><summary>Mapping and display behavior</summary><p>The selected team filters this list and, once saved, the Green Room display. Sync Now applies all saved mappings, regardless of the team shown here. Unmapped positions are skipped and listed in the sync results. Hide from Green Room only changes that display.</p></details>
-        <div class="pco-mapping-head" aria-hidden="true"><span>Team position</span><span>Aux mix</span><span>Green Room</span></div>
-        <div id="pcoPositionsList">Choose a service type, then refresh positions.</div>
+      <section class="card pco-card pco-needs-connection" id="pco-mapping" aria-labelledby="pcoMappingHeading">
+        <div class="pco-step-head"><span class="pco-step-num" aria-hidden="true">3</span><div><h2 id="pcoMappingHeading">Mixes</h2><p class="sub">Pick the mix for each position. Whoever is scheduled in it gets that mix. Leave the rest on “No mix”.</p></div></div>
+        <div class="pco-mapping-head" aria-hidden="true"><span>Position</span><span>Mix</span><span>Green Room</span></div>
+        <div id="pcoPositionsList">Connect and pick a service type to list its positions.</div>
       </section>
 
-      <section class="card pco-card" id="pco-sync" aria-labelledby="pcoSyncHeading">
-        <div class="pco-section-heading"><div><h2 id="pcoSyncHeading">Sync aux names</h2><p class="sub">Use scheduled names to identify each performer’s mix.</p></div></div>
-        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoUpdateAuxNames">Show performer names on aux mixes</label><p class="sub">Names each mix after who’s scheduled on it, like “Vocal 1 - Sam”, on the aux picker and in Settings. Turn off to keep the mixes’ own names; names already added come off when you save. Planning Center still runs the Green Room and the production Home pages either way.</p></div><input type="checkbox" id="pcoUpdateAuxNames" class="toggle" /></div>
-        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoPhoneAssignments">Assign phones by Planning Center performer</label><p class="sub">Performers choose their name once. JPMixer selects their mapped aux and keeps My Mixes under their Planning Center identity, so a changed device ID can recover them. If browser data is cleared, choose the name again.</p><p class="sub" id="pcoPhoneAssignmentsNote" hidden>Turn on performer names above to use this.</p></div><input type="checkbox" id="pcoPhoneAssignments" class="toggle" /></div>
-        <p class="sub">When enabled, names follow the schedule by themselves: 10 seconds after JPMixer opens, after Save &amp; Apply, and every 5 minutes while it runs. A mix nobody is scheduled on goes back to its own name. Sync Now does it straight away; unmapped positions are listed in the results.</p>
-        <div class="pco-sync-action"><p class="sub" id="pcoSyncStatus" role="status"></p><button type="button" class="btn btn-primary" id="pcoSyncNowBtn">Sync Now</button></div>
+      <section class="card pco-card pco-needs-connection" id="pco-home-pages" aria-labelledby="pcoHomePagesHeading">
+        <div class="pco-step-head"><span class="pco-step-num" aria-hidden="true">4</span><div><h2 id="pcoHomePagesHeading">Home pages</h2><p class="sub">Who each production Home page welcomes, with the live service item and the order of service. Add a Home page for any other role, like Stage Manager or Camera. Open the pages from the <button type="button" class="settings-text-link" data-settings-target="views">Pages</button> tab.</p></div></div>
+        <div class="pco-team-pages">
+          <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoFohPosition">FOH Home</label><select id="pcoFohPosition"><option value="">Nobody</option></select></div>
+          <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoProPresenterPosition">ProPresenter Home</label><select id="pcoProPresenterPosition"><option value="">Nobody</option></select></div>
+          <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoLightingPosition">Lighting Home</label><select id="pcoLightingPosition"><option value="">Nobody</option></select></div>
+          <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoSwitcherPosition">Switcher Home</label><select id="pcoSwitcherPosition"><option value="">Nobody</option></select></div>
+          <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoProducerPosition">Producer Home</label><select id="pcoProducerPosition"><option value="">Nobody</option></select></div>
+        </div>
+        <div class="pco-team-pages pco-custom-pages" id="pcoCustomHomePages" aria-label="Added Home pages"></div>
+        <div class="pco-add-home-row"><button type="button" class="btn" id="pcoAddHomePageBtn">Add a Home page</button><p class="sub" id="pcoAddHomePageNote">Its own page and link, team chat, saved layouts and Companion surface, like the others.</p></div>
+      </section>
+
+      <section class="card pco-card pco-needs-connection" id="pco-sync" aria-labelledby="pcoSyncHeading">
+        <div class="pco-step-head"><span class="pco-step-num" aria-hidden="true">5</span><div><h2 id="pcoSyncHeading">Names on mixes and phones</h2><p class="sub">Names follow the schedule by themselves, every 5 minutes and after Save &amp; Apply.</p></div></div>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoUpdateAuxNames">Show performer names on mixes</label><p class="sub">Like “Vocal 1 - Sam” on the mix picker. Off keeps the mixes’ own names.</p></div><input type="checkbox" id="pcoUpdateAuxNames" class="toggle" /></div>
+        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoPhoneAssignments">Assign phones by performer</label><p class="sub">Performers pick their name once. Their phone then opens their mix, and their My Mixes stay with their name.</p><p class="sub" id="pcoPhoneAssignmentsNote" hidden>Turn on performer names above to use this.</p></div><input type="checkbox" id="pcoPhoneAssignments" class="toggle" /></div>
+        <div class="pco-sync-action"><p class="sub" id="pcoSyncStatus" role="status"></p><button type="button" class="btn" id="pcoSyncNowBtn">Sync now</button></div>
         <div id="pcoSyncResults" aria-live="polite"></div>
       </section>
-      <section class="card pco-card" id="pco-home-pages" aria-labelledby="pcoHomePagesHeading">
-        <div class="pco-section-heading"><div><h2 id="pcoHomePagesHeading">Production team Home pages</h2><p class="sub">Each Home page welcomes whoever is scheduled in the role you pick: their name, the live service item and the order of service. Open the pages from the <button type="button" class="settings-text-link" data-settings-target="views">Pages</button> tab.</p></div><button type="button" class="btn" id="pagesRefreshPcoBtn">Refresh lists</button></div>
-        <p class="sub" id="pagesPcoStatus" role="status"></p>
-        <div class="pco-team-pages">
-          <div class="pco-team-page-row">
-            <span class="pco-team-page-name">FOH Home</span>
-            <div class="field-row"><label for="pcoFohTeam">Team</label><select id="pcoFohTeam"><option value="">— Select Team —</option></select></div>
-            <div class="field-row"><label for="pcoFohPosition">Role</label><select id="pcoFohPosition"><option value="">— None —</option></select></div>
-          </div>
-          <div class="pco-team-page-row">
-            <span class="pco-team-page-name">ProPresenter Home</span>
-            <div class="field-row"><label for="pcoProPresenterTeam">Team</label><select id="pcoProPresenterTeam"><option value="">— Select Team —</option></select></div>
-            <div class="field-row"><label for="pcoProPresenterPosition">Role</label><select id="pcoProPresenterPosition"><option value="">— None —</option></select></div>
-          </div>
-          <div class="pco-team-page-row">
-            <span class="pco-team-page-name">Lighting Home</span>
-            <div class="field-row"><label for="pcoLightingTeam">Team</label><select id="pcoLightingTeam"><option value="">— Select Team —</option></select></div>
-            <div class="field-row"><label for="pcoLightingPosition">Role</label><select id="pcoLightingPosition"><option value="">— None —</option></select></div>
-          </div>
-          <div class="pco-team-page-row">
-            <span class="pco-team-page-name">Switcher Home</span>
-            <div class="field-row"><label for="pcoSwitcherTeam">Team</label><select id="pcoSwitcherTeam"><option value="">— Select Team —</option></select></div>
-            <div class="field-row"><label for="pcoSwitcherPosition">Role</label><select id="pcoSwitcherPosition"><option value="">— None —</option></select></div>
+
+      <details class="card pco-card pco-needs-connection pco-alt" id="pco-alt">
+        <summary><span class="pco-alt-title">Second service <span class="setup-step-tag">Optional</span></span><span class="sub">For a youth night or midweek service planned under its own Service Type.</span></summary>
+        <div class="pco-alt-body">
+          <div class="pco-setting-row"><div><label class="toggle-label" for="pcoAltEnabled">Use a second service</label><p class="sub">On a day the second service has a plan and the main one doesn’t, its people go on the mixes, phones, the Green Room and the Home pages. The main service always comes first.</p></div><input type="checkbox" id="pcoAltEnabled" class="toggle" /></div>
+          <div id="pcoAltFields" class="pco-alt-fields" hidden>
+            <div class="pco-field-grid">
+              <div class="field-row"><label for="pcoAltServiceType">Service type</label><select id="pcoAltServiceType"><option value="">Connect first</option></select></div>
+              <div class="field-row"><label for="pcoAltTeam">Team</label><select id="pcoAltTeam"><option value="">All teams</option></select></div>
+            </div>
+            <p class="sub pco-field-status" id="pcoAltStatus" role="status"></p>
+
+            <h3 class="pco-alt-subheading">Mixes</h3>
+            <p class="sub">“Same as main service” uses the main service’s mix for a position with the same name.</p>
+            <div class="pco-mapping-head" aria-hidden="true"><span>Position</span><span>Mix</span><span>Green Room</span></div>
+            <div id="pcoAltPositionsList">Pick a service type to list its positions.</div>
+
+            <h3 class="pco-alt-subheading">Home pages</h3>
+            <div class="pco-team-pages">
+              <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoAltFohPosition">FOH Home</label><select id="pcoAltFohPosition"><option value="">Same as main service</option></select></div>
+              <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoAltProPresenterPosition">ProPresenter Home</label><select id="pcoAltProPresenterPosition"><option value="">Same as main service</option></select></div>
+              <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoAltLightingPosition">Lighting Home</label><select id="pcoAltLightingPosition"><option value="">Same as main service</option></select></div>
+              <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoAltSwitcherPosition">Switcher Home</label><select id="pcoAltSwitcherPosition"><option value="">Same as main service</option></select></div>
+              <div class="pco-team-page-row"><label class="pco-team-page-name" for="pcoAltProducerPosition">Producer Home</label><select id="pcoAltProducerPosition"><option value="">Same as main service</option></select></div>
+            </div>
+            <div class="pco-team-pages" id="pcoAltCustomHomePages" aria-label="Added Home pages on the second service"></div>
           </div>
         </div>
-      </section>
-
-      <section class="card pco-card" id="pco-alt" aria-labelledby="pcoAltHeading">
-        <div class="pco-section-heading"><div><h2 id="pcoAltHeading">Second service <span class="setup-step-tag">Optional</span></h2><p class="sub">For a Wednesday night, a youth night or another event planned under its own Service Type, with its own teams.</p></div></div>
-        <div class="pco-setting-row"><div><label class="toggle-label" for="pcoAltEnabled">Use a second service</label><p class="sub">The main service above always comes first. On a day when the second service has a plan and the main one doesn’t, its people go on the mixes, phones, the Green Room and the Home pages instead. Every other day, nothing changes.</p></div><input type="checkbox" id="pcoAltEnabled" class="toggle" /></div>
-        <div id="pcoAltFields" class="pco-alt-fields" hidden>
-          <div class="pco-field-action">
-            <div class="field-row"><label for="pcoAltServiceType">Service type</label><select id="pcoAltServiceType"><option value="">— load service types —</option></select></div>
-            <button type="button" class="btn" id="pcoAltRefreshBtn">Refresh lists</button>
-          </div>
-          <p class="sub pco-field-status" id="pcoAltStatus" role="status"></p>
-          <div class="field-row"><label for="pcoAltTeam">Team</label><select id="pcoAltTeam"><option value="">— All Teams —</option></select></div>
-          <p class="sub">Whose people the Green Room and the Home pages’ team card show on that day, and which positions are listed below.</p>
-
-          <h3 class="pco-alt-subheading">Position → aux mapping</h3>
-          <p class="sub">A position left on “Same as main service” uses the main service’s mix for a position with the same name. Hide from Green Room is shared with the main service.</p>
-          <div class="pco-mapping-head" aria-hidden="true"><span>Team position</span><span>Aux mix</span><span>Green Room</span></div>
-          <div id="pcoAltPositionsList">Choose a service type, then Refresh lists.</div>
-
-          <h3 class="pco-alt-subheading">Home pages</h3>
-          <p class="sub">Who each Home page welcomes on that day. A page left on “Same as main service” looks for the main service’s role name in this plan.</p>
-          <div class="pco-team-pages">
-            <div class="pco-team-page-row">
-              <span class="pco-team-page-name">FOH Home</span>
-              <div class="field-row"><label for="pcoAltFohTeam">Team</label><select id="pcoAltFohTeam"><option value="">— Select Team —</option></select></div>
-              <div class="field-row"><label for="pcoAltFohPosition">Role</label><select id="pcoAltFohPosition"><option value="">Same as main service</option></select></div>
-            </div>
-            <div class="pco-team-page-row">
-              <span class="pco-team-page-name">ProPresenter Home</span>
-              <div class="field-row"><label for="pcoAltProPresenterTeam">Team</label><select id="pcoAltProPresenterTeam"><option value="">— Select Team —</option></select></div>
-              <div class="field-row"><label for="pcoAltProPresenterPosition">Role</label><select id="pcoAltProPresenterPosition"><option value="">Same as main service</option></select></div>
-            </div>
-            <div class="pco-team-page-row">
-              <span class="pco-team-page-name">Lighting Home</span>
-              <div class="field-row"><label for="pcoAltLightingTeam">Team</label><select id="pcoAltLightingTeam"><option value="">— Select Team —</option></select></div>
-              <div class="field-row"><label for="pcoAltLightingPosition">Role</label><select id="pcoAltLightingPosition"><option value="">Same as main service</option></select></div>
-            </div>
-            <div class="pco-team-page-row">
-              <span class="pco-team-page-name">Switcher Home</span>
-              <div class="field-row"><label for="pcoAltSwitcherTeam">Team</label><select id="pcoAltSwitcherTeam"><option value="">— Select Team —</option></select></div>
-              <div class="field-row"><label for="pcoAltSwitcherPosition">Role</label><select id="pcoAltSwitcherPosition"><option value="">Same as main service</option></select></div>
-            </div>
-          </div>
-        </div>
-      </section>
+      </details>
 
     </div>
 

@@ -142,7 +142,7 @@ main::-webkit-scrollbar-thumb { background: var(--jp-muted); border: 2px solid v
 .pco-mapping-head, #pcoPositionsList .pco-position-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr) 160px; gap: 20px; align-items: center; }
 .pco-mapping-head { color: var(--jp-secondary); font-size: 10px; padding: 0 0 12px; border-bottom: 1px solid var(--jp-edge); }
 #pcoPositionsList { min-width: 0; color: var(--jp-secondary); font-size: 12px; line-height: 1.7; }
-#pcoPositionsList .pco-position-row { padding: 18px 0; }
+#pcoPositionsList .pco-position-row { padding: 12px 0; }
 #pcoPositionsList .pco-position-name { min-width: 0; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
 #pcoPositionsList select { min-width: 0; width: 100%; }
 #pcoPositionsList .pco-hide-toggle { white-space: normal; line-height: 1.5; font-size: 11px; gap: 8px; cursor: pointer; }
@@ -253,6 +253,17 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .mix-clipboard .btn { flex-shrink: 0; }
 .mix-device-transfer { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 6px; }
 .mixes-tab-row .btn { flex-shrink: 0; }
+/* Saved Mixes: pick a performer, then their mixes */
+.mix-picker-row { display: flex; align-items: flex-end; gap: 12px; }
+.mix-picker-row .field-row { flex: 1; min-width: 0; }
+#mixDeviceSelect { width: 100%; min-height: 40px; }
+.mix-picker-row .btn { min-height: 40px; flex-shrink: 0; }
+.mix-device-meta { margin: 0 0 6px; }
+.mix-device-meta:empty { display: none; }
+.mix-device-more { margin-top: 8px; border-top: 1px solid var(--jp-line); padding-top: 10px; }
+.mix-device-more > summary { cursor: pointer; color: var(--jp-label); font-size: 12px; padding: 3px 0; }
+.mix-device-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.mix-device-more .mixes-tab-tools { padding: 10px 0 2px; }
 #mixCopyStatus:empty { display: none; }
 /* All backup types share one inspect/select/restore flow. */
 .settings-transfer-grid:has(.restore-loader-card) { grid-template-columns: minmax(0, 1fr); }
@@ -337,6 +348,28 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .aux-group-pill { min-height: 24px; padding: 2px 10px; border-radius: 12px; border: 1px solid var(--jp-line); background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 11px; cursor: pointer; }
 .aux-group-pill:hover { border-color: var(--jp-edge); color: var(--text); }
 .aux-group-pill[aria-pressed="true"] { background: rgba(var(--jp-accent-rgb), .15); border-color: rgba(var(--jp-accent-rgb), .55); color: var(--text); }
+/* Aux mixes: a mix's own channel list */
+.aux-channels { display: grid; gap: 8px; }
+.aux-channels-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.aux-channels-toggle { min-height: 24px; padding: 2px 10px; border-radius: 12px; border: 1px solid var(--jp-line); background: var(--jp-surface); color: var(--jp-label); font: inherit; font-size: 11px; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.aux-channels-toggle::after { content: ' ▾'; color: var(--jp-sub); }
+.aux-channels-toggle[aria-expanded="true"]::after { content: ' ▴'; }
+.aux-channels-toggle:hover { border-color: var(--jp-edge); color: var(--text); }
+.aux-channels-toggle.is-custom { background: rgba(var(--jp-accent-rgb), .15); border-color: rgba(var(--jp-accent-rgb), .55); color: var(--text); }
+.aux-channels-editor { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--jp-edge); border-radius: 8px; background: var(--jp-deep); }
+.aux-channels-modes { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12px; color: var(--text); }
+.aux-channels-modes label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.aux-channels-modes input { accent-color: var(--accent); }
+.aux-channels-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.aux-channels-tools input[type="search"] { flex: 1 1 180px; min-width: 0; min-height: 32px; }
+.aux-channels-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 4px 10px; max-height: 260px; overflow-y: auto; padding-right: 4px; }
+.aux-ch-item { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 4px 2px; font-size: 12px; color: var(--text); cursor: pointer; }
+.aux-ch-item[hidden] { display: none; }
+.aux-ch-item input { flex-shrink: 0; accent-color: var(--accent); }
+.aux-ch-num { flex-shrink: 0; min-width: 22px; color: var(--jp-sub); font-size: 10px; text-align: right; }
+.aux-ch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aux-ch-item .aux-badge { flex-shrink: 0; padding: 0 6px; }
+.aux-ch-warn { color: #f3a5b6; }
 .aux-links { display: flex; flex-direction: column; gap: 8px; }
 .aux-link-row { display: grid; grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--jp-edge); border-radius: 9px; background: var(--jp-surface); }
 .aux-link-name { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text); font-size: 12px; font-weight: 550; overflow-wrap: anywhere; }
@@ -452,14 +485,47 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 
 /* Planning Center: the production team Home pages, one row per page */
 .pco-team-pages { display: grid; gap: 4px; margin-top: 12px; }
-.pco-team-page-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 12px; padding: 10px 0; border-top: 1px solid var(--jp-line); }
+.pco-team-page-row { display: grid; grid-template-columns: 170px minmax(0, 1fr); align-items: center; gap: 12px 20px; padding: 10px 0; border-top: 1px solid var(--jp-line); }
 .pco-team-page-row:first-child { border-top: none; }
-.pco-team-page-name { padding-bottom: 10px; color: var(--text); font-size: 13px; font-weight: 600; }
-.pco-team-page-row .field-row { margin: 0; }
-@media (max-width: 760px) {
-  .pco-team-page-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .pco-team-page-name { grid-column: 1 / -1; padding-bottom: 0; }
+/* Planning Center: the Home pages a church adds (name, who it welcomes, Remove) */
+.pco-custom-pages:empty { display: none; }
+.pco-custom-pages { margin-top: 0; border-top: 1px solid var(--jp-line); }
+.pco-custom-page-row { grid-template-columns: 170px minmax(0, 1fr) auto; }
+.pco-custom-page-row .pco-hp-name { min-height: 40px; font-weight: 600; }
+.pco-add-home-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding-top: 6px; }
+.pco-add-home-row .sub { flex: 1; min-width: 200px; margin: 0; }
+#pcoAltCustomHomePages:empty { display: none; }
+/* Pages: their cards sit in the Production team grid with the rest */
+.views-directory-custom { display: contents; }
+.views-directory-custom[hidden] { display: none; }
+.pco-team-page-name { color: var(--text); font-size: 13px; font-weight: 600; }
+@container (max-width: 520px) {
+  .pco-team-page-row, .pco-custom-page-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .pco-custom-page-row .pco-hp-remove { justify-self: start; }
 }
+
+/* Planning Center: numbered steps, and step 1's connection status */
+.pco-step-head { display: flex; align-items: flex-start; gap: 14px; }
+.pco-step-head > div { flex: 1; min-width: 0; }
+.pco-step-head .sub { margin-top: 6px; }
+.pco-step-num { display: grid; place-items: center; flex: 0 0 28px; height: 28px; margin-top: -4px; border-radius: 50%; border: 1.5px solid var(--jp-edge); color: var(--text); font-size: 12px; font-weight: 700; }
+.pco-connect-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 18px; }
+.pco-conn-status { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 220px; color: var(--jp-label); font-size: 12px; line-height: 1.5; }
+.pco-conn-status .dot { flex-shrink: 0; }
+.pco-conn-status .dot.bad { background: var(--accent); }
+.pco-conn-status.is-error { color: #f3a5b6; }
+#tab-pco .pco-card.is-waiting { opacity: .55; }
+.pco-help ol { margin: 10px 0 0; padding-left: 18px; }
+.pco-help li + li { margin-top: 4px; }
+.pco-more > summary { color: var(--jp-label); cursor: pointer; font-size: 12px; padding: 3px 0; }
+.pco-more > summary:focus-visible, .pco-alt > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.pco-more-body { padding-top: 8px; }
+#tab-pco select.pco-day-select { flex: 0 0 auto; width: 180px; }
+#tab-pco .pco-alt { display: block; }
+.pco-alt > summary { cursor: pointer; }
+.pco-alt-title { color: var(--text); font-size: 15px; font-weight: 650; }
+.pco-alt > summary .sub { display: block; margin: 6px 0 0 18px; }
+.pco-alt-body { display: grid; gap: 12px; padding-top: 18px; }
 
 /* Aux mixes: your own name for a mix (placeholder = the console's name) */
 .aux-row .aux-main .aux-name-label { width: 100%; }
@@ -478,7 +544,7 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .pco-alt-fields[hidden] { display: none; }
 .pco-alt-subheading { margin-top: 14px; color: var(--text); font-size: 14px; font-weight: 600; }
 #pcoAltPositionsList { min-width: 0; color: var(--jp-secondary); font-size: 12px; line-height: 1.7; }
-#pcoAltPositionsList .pco-position-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr) 160px; gap: 20px; align-items: center; padding: 18px 0; border-bottom: 1px solid var(--jp-line); }
+#pcoAltPositionsList .pco-position-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr) 160px; gap: 20px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--jp-line); }
 #pcoAltPositionsList .pco-position-name { min-width: 0; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
 #pcoAltPositionsList select { min-width: 0; width: 100%; }
 #pcoAltPositionsList .pco-hide-toggle { white-space: normal; line-height: 1.5; font-size: 11px; gap: 8px; cursor: pointer; }
@@ -577,3 +643,4 @@ summary:focus-visible, .settings-section-nav a:focus-visible, .settings-inline-l
 .plugin-badge.is-original { color: #fff; background: var(--accent); border-color: var(--accent); }
 .plugin-watch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--jp-edge); border-radius: 9px; font-size: 12px; color: var(--jp-label); }
 #tab-plugins.is-dropping #pluginsIntro { outline: 2px dashed var(--accent); outline-offset: 4px; }
+#mixCopyStatus:empty { display: none; }

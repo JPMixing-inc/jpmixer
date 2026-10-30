@@ -192,6 +192,7 @@ function buildConfig(extra = {}) {
       eqEnabled: auxEqAllowed(i), // the mix's EQ on LV1, when Settings allows it
       linkOnly:  ov.linkOnly === true,
       groups:    shared.auxGroupNames(ov, serverCfg),
+      channels:  shared.auxChannels(ov),
     });
   }
   return JSON.stringify({
@@ -290,8 +291,14 @@ function flushRelease(key) {
     noteWrite(`lvl:${key}`, P.clampLevel(db));
     sent = lv1.setSendLevel(ch, aux, db) && sent;
   }
-  if (sent) pendingReleases.delete(key);
+  if (sent) { pendingReleases.delete(key); recentReleases.set(key, { entry, at: Date.now() }); }
 }
+// Releases sent in the last 10 s: written into a connection that turned out
+// to be dead (LV1 is only noticed gone after 4 s of silence), they never
+// arrived, and the send would stay off with nothing on any phone to show
+// it. Sent again when LV1 is back; switching a send on twice does nothing.
+const recentReleases = new Map(); // key -> { entry, at }
+const RELEASE_RESEND_MS = 10000;
 
 // A send level from a phone, preset or Ear Scene: straight to LV1 (or
 // paced, for a batch), or held while a mute/solo has the send switched off
@@ -301,9 +308,16 @@ function writeLevel(ch, aux, db, paced) {
   pacer.cancel(`lvl:${ch}:${aux}`); // this supersedes a queued write
   const entry = silencedSends.get(key);
   if (entry) { entry.levelHeld = true; return; }
-  noteWrite(`lvl:${key}`, P.clampLevel(db));
-  if (paced) pacer.write(`lvl:${ch}:${aux}`, () => lv1 && lv1.setSendLevel(ch, aux, db));
-  else if (lv1) lv1.setSendLevel(ch, aux, db);
+  if (!paced) { noteWrite(`lvl:${key}`, P.clampLevel(db)); if (lv1) lv1.setSendLevel(ch, aux, db); return; }
+  // Paced (a recall can take seconds): muted meanwhile, it's held for the
+  // release, as above (raising it would switch the send back on in LV1);
+  // and its echo is counted from when it's sent, not when it was queued
+  pacer.write(`lvl:${ch}:${aux}`, () => {
+    const held = silencedSends.get(key) || pendingReleases.get(key);
+    if (held) { held.levelHeld = true; levelCache.set(key, db); return true; } // over what LV1 reported meanwhile
+    noteWrite(`lvl:${key}`, P.clampLevel(db));
+    return lv1 && lv1.setSendLevel(ch, aux, db);
+  });
 }
 
 // The Console Controller's and Monitor Engineer's ‹ › scene buttons: LV1's
@@ -921,6 +935,9 @@ function consoleWrite(ws, strip, numRaw, kind, value) {
 function noteDeskOn(ch, aux, on) {
   const key = levelKey(ch, aux);
   onCache.set(key, on);
+  // LV1 has told us this send's state since a release: it arrived (or the
+  // engineer has changed it since), so a reconnect mustn't send it again
+  recentReleases.delete(key);
   const entry = silencedSends.get(key);
   if (entry && on) {
     entry.wasOn = true;
@@ -944,7 +961,7 @@ function resetState() {
   for (const t of channelTimers.values()) clearTimeout(t);
   channelTimers.clear();
   levelCache.clear(); panCache.clear(); onCache.clear();
-  silencedSends.clear(); pendingReleases.clear(); recentWrites.clear();
+  silencedSends.clear(); pendingReleases.clear(); recentReleases.clear(); recentWrites.clear();
   pacer.clear();
   Object.keys(muteState).forEach(k => delete muteState[k]);
   Object.keys(soloState).forEach(k => delete soloState[k]);
@@ -971,7 +988,7 @@ function start(cfg) {
   });
   httpServer.listen(cfg.serverPort, () => console.log(`[JPMixer/LV1] Web server → http://localhost:${cfg.serverPort}`));
 
-  wss = new WebSocket.Server({ server: httpServer });
+  wss = new WebSocket.Server({ server: httpServer, maxPayload: shared.MAX_PAYLOAD });
   pingInterval = setInterval(() => {
     const now = Date.now();
     for (const conn of connections) {
@@ -1077,8 +1094,8 @@ function start(cfg) {
         const aux = parseInt(msg.aux, 10);
         const outLevels = {}, outPans = {};
         if (Number.isInteger(aux) && aux >= 1 && aux <= auxCount()) {
-          Object.assign(outLevels, pushSceneValues(String(aux), msg.levels));
-          for (const [chStr, panVal] of Object.entries(msg.pans || {})) {
+          Object.assign(outLevels, pushSceneValues(String(aux), shared.plainMap(msg.levels)));
+          for (const [chStr, panVal] of Object.entries(shared.plainMap(msg.pans))) {
             const ch = parseInt(chStr, 10);
             if (!Number.isInteger(ch) || ch < 1 || ch > chCount() || !Number.isFinite(panVal) || panVal < 0 || panVal > 1) continue;
             panCache.set(levelKey(ch, aux), panVal);
@@ -1212,7 +1229,11 @@ function start(cfg) {
       const [ch, aux] = key.split(':').map(Number);
       pacer.write(`on:${key}`, () => lv1 && lv1.setSendOn(ch, aux, false), true);
     }
-    // And mutes/solos released while LV1 couldn't be reached
+    // And mutes/solos released while LV1 couldn't be reached, or just before
+    for (const [key, { entry, at }] of recentReleases) {
+      if (Date.now() - at < RELEASE_RESEND_MS && !silencedSends.has(key) && !pendingReleases.has(key)) pendingReleases.set(key, entry);
+    }
+    recentReleases.clear();
     for (const key of pendingReleases.keys()) pacer.write(`rel:${key}`, () => flushRelease(key), true);
   });
   client.on('disconnected', () => {

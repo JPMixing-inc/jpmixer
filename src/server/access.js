@@ -78,7 +78,7 @@ function mountOneTimeLinks(appExpress) {
     u.searchParams.delete('jpm_pass');
     if (ok) res.set('Set-Cookie', `${LOCAL_COOKIE}=${localPass()}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${ONE_YEAR_S}`);
     res.set('Cache-Control', 'no-store');
-    res.redirect(302, u.pathname + u.search);
+    res.redirect(302, '/' + u.pathname.replace(/^\/+/, '') + u.search); // "//host" would be another site
   });
 }
 

@@ -8,8 +8,9 @@
 //   share 'status'   getStatus(), when it changes
 //   integration call 'press'    { role, key, pressed } → true if sent
 //   integration call 'snapshot' { role } → the surface now
-//   integration call 'extras'   { surfaces: [{ role: 'ev-<id>', label, columns, rows }] }
-//                               the Custom Pages plugin's surfaces (JPMixer passes them on)
+//   integration call 'extras'   { surfaces: [{ role: 'ev-<id>' | 'hp-<id>', label, columns, rows }] }
+//                               the Custom Pages plugin's surfaces (JPMixer passes them on),
+//                               and the Home pages a church added (from 1.3.0)
 // Its settings are JPMixer's own (Settings → Plugins → Companion: the
 // address, whether the Home pages get surfaces, their grid), passed in as
 // they are, and change without a restart.

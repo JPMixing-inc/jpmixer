@@ -78,7 +78,11 @@ class Lv1Client extends EventEmitter {
     socket.setNoDelay(true);
     this._socket = socket;
     const reader = new P.FrameReader();
+    // A computer that's off drops the attempt without a word, and the OS
+    // waits about 75 s before it gives up: tried again sooner than that
+    this._handshakeTimer = setTimeout(() => { if (this._socket === socket && !this.connected) this._drop(true); }, this.handshakeMs);
     socket.on('connect', () => {
+      clearTimeout(this._handshakeTimer);
       this._lastRx = Date.now();
       socket.write(P.msg.handshake());
       socket.write(P.msg.deviceName(this.deviceName, this.deviceId));

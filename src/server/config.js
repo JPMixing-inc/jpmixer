@@ -95,7 +95,7 @@ const DEFAULTS = {
   // An optional second service (a Wednesday night, another event) that takes
   // over on a day it has a plan and the main one doesn't — see pco-services.js.
   // { enabled, serviceTypeId, teamId, positionMapping: { position: aux, 0 = not
-  // on a mix }, roles: { foh|propresenter|lighting|switcher: { team, position } } }
+  // on a mix }, roles: { <Home page role id, see home-roles.js>: { team, position } } }
   pcoAlt: { enabled: false, serviceTypeId: '', teamId: '', positionMapping: {}, roles: {} },
   pcoIncludeUnconfirmed: false,
   pcoGreenRoomHidden: [], // PCO position names to exclude from the Green Room display; empty = show everyone
@@ -121,6 +121,11 @@ const DEFAULTS = {
   pcoLightingTeamId: '',
   pcoSwitcherPositionName: '',
   pcoSwitcherTeamId: '',
+  pcoProducerPositionName: '',
+  pcoProducerTeamId: '',
+  // Home pages the church adds for other roles (Settings → Planning Center →
+  // Home pages): [{ id: 10 hex characters, name, position, team }] — see home-roles.js
+  pcoHomePages: [],
   // Optional code for FOH Home on other devices ('' = open). See foh.js.
   fohAccessCode: '',
   consoleAccessCode: '', // the Console Controller's code (access.js); '' = none

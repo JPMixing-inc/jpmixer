@@ -157,6 +157,14 @@ function auxGroupNames(ov, cfg) {
   return (cfg.channelGroups || []).filter(g => ids.has(String(g.id))).map(g => g.name);
 }
 
+// A mix's own channel list (Settings → Aux mixes → Channels): the channels
+// its phones show, hidden ones included, in the main list's order. Not set
+// (undefined) = the main list, as before; [] = none picked yet.
+function auxChannels(ov) {
+  if (!ov || !Array.isArray(ov.channels)) return undefined;
+  return [...new Set(ov.channels.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 512))].sort((a, b) => a - b);
+}
+
 // The phone/monitor channel list, the same on every console: Settings'
 // overrides applied, sorted by group then custom order, with each group's
 // name as a heading on its first channel. `consoleName(n)` gives the desk's
@@ -209,4 +217,13 @@ function buildChannelList(chCount, cfg, consoleName, extra = [], skip = null) {
   });
 }
 
-module.exports = { handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb, guarded, buildChannelList, auxGroupNames, consoleNameOr };
+// A My Mix's levels or pans from a client: an object of channel → value, or
+// nothing. A string was split into one entry per character, and a long one
+// held up the whole server for seconds.
+const plainMap = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+
+// What a phone may send at most in one message: a My Mix of 128 channels is
+// a few kB. The default (100 MB) let one message tie the server up.
+const MAX_PAYLOAD = 1024 * 1024;
+
+module.exports = { plainMap, MAX_PAYLOAD, handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb, guarded, buildChannelList, auxGroupNames, auxChannels, consoleNameOr };

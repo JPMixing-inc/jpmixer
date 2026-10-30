@@ -645,6 +645,7 @@ function buildConfig(extra) {
       eqEnabled: ov.eqEnabled === true,
       linkOnly:  ov.linkOnly === true,
       groups:    shared.auxGroupNames(ov, serverCfg),
+      channels:  shared.auxChannels(ov),
     });
   }
 
@@ -758,6 +759,18 @@ function sendToDeskPaced(address, args, urgent = false) {
     }
     if (deskSetQueue.size === 0 && deskSetUrgent.size === 0) { clearInterval(deskSetTimer); deskSetTimer = null; }
   }, DESK_SET_TICK_MS);
+}
+
+// A new snapshot on the desk: the last one's Ear Scene (or a My Mix) still
+// waiting to go out would land on top of it, for up to a minute and more.
+// Mutes and solos (the urgent lane) stay. Those sends are read again, so
+// the phones show what the desk has, not what was never sent.
+function dropQueuedSceneWrites() {
+  if (!deskSetQueue.size) return;
+  const addrs = [...deskSetQueue.keys()];
+  deskSetQueue.clear();
+  logEvent('desk-set-dropped', `${addrs.length} queued scene writes dropped for the new snapshot`);
+  queueDeskQueries(addrs.map((a) => `${a}/?`));
 }
 
 function clearDeskSetQueue() {
@@ -1106,7 +1119,9 @@ function primeCache() {
 function queueActiveAuxRefresh() {
   const chCount  = cache.get('/Console/Input_Channels').args[0];
   const auxModes = cache.get('/Console/Aux_Outputs/modes').args;
-  const activeAuxes = [...new Set(connections.map(c => c._activeAux).filter(a => a != null))];
+  // A phone's saved mix can be one this session doesn't have (it says so
+  // before it has the new config)
+  const activeAuxes = [...new Set(connections.map(c => c._activeAux).filter(a => Number.isInteger(a) && a >= 1 && a <= auxModes.length))];
   // Every active aux's levels before any pans — levels are what performers
   // react to. Phones keep showing their previous faders meanwhile (mixer.js
   // keeps the rows when the channel layout is unchanged).
@@ -1128,6 +1143,7 @@ function processSnapshotMsg(oscMsg) {
   if (sessionReloadTimer) return;
   if (oscMsg.address === '/Snapshots/Current_Snapshot') {
     cancelSceneRecall();
+    if (oscMsg.args[0] !== currentSnapshot) dropQueuedSceneWrites();
     currentSnapshot = oscMsg.args[0];
     if (currentSnapshot < 0) {
       currentSnapshotName = '';
@@ -1161,7 +1177,7 @@ function processSnapshotMsg(oscMsg) {
 
 function startWebSocketServer() {
   if (wss) return;
-  wss = new WebSocket.Server({ server: httpServer });
+  wss = new WebSocket.Server({ server: httpServer, maxPayload: shared.MAX_PAYLOAD });
 
   // Ping all clients every 25s using native WS ping frames (handled by browser
   // at protocol level — works even when iOS has suspended JavaScript).
@@ -1278,7 +1294,8 @@ function startWebSocketServer() {
         // Mixer tells us which aux it's currently viewing/adjusting — lets the
         // Monitor view show a live "who's mixing what" presence indicator.
         if (msg.type === 'set-active-aux') {
-          ws._activeAux = (msg.aux === null || msg.aux === undefined) ? null : parseInt(msg.aux, 10);
+          const aux = parseInt(msg.aux, 10);
+          ws._activeAux = Number.isInteger(aux) && aux >= 1 && aux <= 256 ? aux : null;
           broadcastToClients({ type: 'active-mixers', counts: getActiveMixerCounts() });
           broadcastDevicesUpdate();
           return;
@@ -1302,21 +1319,23 @@ function startWebSocketServer() {
           const auxStr = String(msg.aux);
           const auxNum = parseInt(auxStr);
           if (isNaN(auxNum) || auxNum < 1 || auxNum > (serverCfg.auxes || 16)) return;
-          const levels = pushSceneValuesToDesk(auxStr, msg.levels || {});
+          const levels = pushSceneValuesToDesk(auxStr, shared.plainMap(msg.levels));
           // Same reasoning as pushSceneValuesToDesk — ch/val come straight
           // from a client-controlled msg.pans object, not the allowlisted
           // OSC-address path below, so nothing else validates them.
           const chMax = serverCfg.channels || 48;
-          for (const [chStr, rawPan] of Object.entries(msg.pans || {})) {
+          const pans = {}; // what was sent, for the phones
+          for (const [chStr, rawPan] of Object.entries(shared.plainMap(msg.pans))) {
             const ch = parseInt(chStr);
             if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(rawPan)) continue;
             const val = Math.max(0, Math.min(1, rawPan)); // a pan is 0..1, as the other backends enforce
             const addr = `/Input_Channels/${ch}/Aux_Send/${auxNum}/send_pan`;
             sendToDeskPaced(addr, [val]);
             cache.set(addr, { address: addr, args: [val] });
+            pans[chStr] = val;
           }
           logEvent('preset-apply', `aux:${msg.aux} name:"${msg.name}"`);
-          broadcastToClients({ type: 'preset-loaded', aux: msg.aux, name: msg.name, levels, pans: msg.pans || {} });
+          broadcastToClients({ type: 'preset-loaded', aux: msg.aux, name: msg.name, levels, pans });
           return;
         }
         if (msg.type === 'request-aux-eq') {
@@ -1444,6 +1463,7 @@ function startWebSocketServer() {
         if (msg.type === 'console-fader') {
           const ch = parseInt(msg.ch);
           if (isNaN(ch) || ch < 1 || ch > liveChMax || !Number.isFinite(msg.db)) return;
+          msg.db = Math.max(-150, Math.min(10, msg.db)); // the desk's fader range
           sendToDesk(`/Input_Channels/${ch}/fader`, [msg.db]);
           consoleFaders[ch] = msg.db;
           broadcastToClients({ address: `/Input_Channels/${ch}/fader`, args: [msg.db] }, ws);
@@ -1476,6 +1496,7 @@ function startWebSocketServer() {
         if (msg.type === 'aux-fader') {
           const aux = parseInt(msg.aux);
           if (isNaN(aux) || aux < 1 || aux > liveAuxMax || !Number.isFinite(msg.db)) return;
+          msg.db = Math.max(-150, Math.min(10, msg.db));
           sendToDesk(`/Aux_Outputs/${aux}/fader`, [msg.db]);
           auxFaders[aux] = msg.db;
           broadcastToClients({ address: `/Aux_Outputs/${aux}/fader`, args: [msg.db] }, ws);
@@ -1497,6 +1518,7 @@ function startWebSocketServer() {
         if (msg.type === 'cg-fader') {
           const cg = parseInt(msg.cg);
           if (isNaN(cg) || cg < 1 || cg > liveCgMax || !Number.isFinite(msg.db)) return;
+          msg.db = Math.max(-150, Math.min(10, msg.db));
           sendToDesk(`/Control_Groups/${cg}/fader`, [msg.db]);
           cgFaders[cg] = msg.db;
           broadcastToClients({ address: `/Control_Groups/${cg}/fader`, args: [msg.db] }, ws);

@@ -255,7 +255,7 @@ test('Companion buttons on a custom page go through the Companion buttons plugin
   try {
     await until(() => plugins.list().find((p) => p.id === 'companion')?.state === 'running' && plugins.list().find((p) => p.id === 'custom-pages')?.state === 'running', 'both running');
     await until(() => lines.filter((l) => l.startsWith('ADD-DEVICE')).length >= 4, 'the Home pages’ surfaces');
-    for (const role of ['foh', 'propresenter', 'lighting', 'switcher']) sock.write(`ADD-DEVICE OK DEVICEID=jpmixer-${role}\n`);
+    for (const role of ['foh', 'propresenter', 'lighting', 'switcher', 'producer']) sock.write(`ADD-DEVICE OK DEVICEID=jpmixer-${role}\n`);
     // A page with its Companion card on: a surface of its own, in the Companion plugin's connection
     const ed = await plugins.callPage('custom-pages', 'save', { page: { name: 'YTH "Wed"', companion: true, columns: 2, rows: 1, faders: [{ kind: 'ch', n: 3, max: 0 }] } }, LOCAL);
     const page = ed.pages.find((p) => p.id === ed.saved);

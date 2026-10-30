@@ -11,9 +11,12 @@
 // Companion, the same as a Stream Deck.
 //
 // JPMixer can also ask for more surfaces (setExtras): one per Custom page with
-// Companion buttons, "JPMixer <page name>", each with its own grid. Their
-// roles are "ev-<page id>". With the Home page surfaces off (companionHome:
-// false) only those are registered: Companion for the custom pages alone.
+// Companion buttons, "JPMixer <page name>", each with its own grid (roles
+// "ev-<page id>"), and one per Home page the church added for another role
+// ("hp-<page id>", from 1.3.0), which are Home pages like the rest: Settings'
+// grid, and only while the Home page surfaces are on. With those off
+// (companionHome: false) only the Custom pages' are registered: Companion for
+// the custom pages alone.
 //
 // Protocol: https://companion.free/for-developers/Satellite-API — line-based
 // text over TCP (default port 16622). One connection carries every surface. What the pages need goes out through onEvent(role, event, data)
@@ -27,6 +30,7 @@ const ROLES = {
   propresenter: 'ProPresenter Home',
   lighting: 'Lighting Home',
   switcher: 'Switcher Home',
+  producer: 'Producer Home',
 };
 const DEFAULT_PORT = 16622;
 const LIMITS = { columns: [1, 12], rows: [1, 8] };
@@ -46,17 +50,18 @@ let server = { apiVersion: null, companionVersion: null, caps: {} };
 let state = 'off';             // off | connecting | connected | error
 let message = 'Companion buttons are off.';
 const surfaces = new Map();    // role -> { registered, locked, keys: Map(index -> key) }
-const extras = new Map();      // "ev-<id>" -> { label, columns, rows }: the Custom Pages' surfaces
-const EXTRA_RE = /^ev-[0-9a-f]{10}$/;
+const extras = new Map();      // "ev-<id>" / "hp-<id>" -> { label, columns, rows }: the Custom Pages' and the added Home pages' surfaces
+const EXTRA_RE = /^(?:ev|hp)-[0-9a-f]{10}$/;
+const isHomeExtra = (role) => String(role).startsWith('hp-');
 const held = new Map();        // `${role}:${key}` -> timer
 let bitmapSize = 72;
 let onEvent = () => {};        // (role, event, data): to the pages, through JPMixer
 
 // The surfaces registered in Companion: the Home pages' (unless they're off) and the custom pages'
-const allRoles = () => [...(settings.home ? Object.keys(ROLES) : []), ...extras.keys()];
+const allRoles = () => [...(settings.home ? Object.keys(ROLES) : []), ...[...extras.keys()].filter((r) => settings.home || !isHomeExtra(r))];
 const labelOf = (role) => (ROLES[role] || (extras.get(role) || {}).label || '');
-// A Home page's grid is Settings'; an Custom page's is its own
-const dims = (role) => (extras.has(role) ? extras.get(role) : settings);
+// A Home page's grid is Settings'; a Custom page's is its own
+const dims = (role) => (extras.has(role) && !isHomeExtra(role) ? extras.get(role) : settings);
 for (const role of Object.keys(ROLES)) surfaces.set(role, freshSurface());
 function freshSurface() { return { registered: false, locked: false, error: '', keys: new Map() }; }
 
@@ -70,7 +75,7 @@ const versionAtLeast = (v, want) => {
 // each surface's page. The computer's name keeps two JPMixers apart.
 const hostTag = () => os.hostname().replace(/\.local$/i, '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 24) || 'mac';
 const deviceId = (role) => `jpmixer-${role}`;
-const roleFromDevice = (id) => { const m = /^jpmixer-([a-z]+|ev-[0-9a-f]{10})$/.exec(String(id || '')); return m && ((settings.home && ROLES[m[1]]) || extras.has(m[1])) ? m[1] : null; };
+const roleFromDevice = (id) => { const m = /^jpmixer-([a-z]+|(?:ev|hp)-[0-9a-f]{10})$/.exec(String(id || '')); return m && ((settings.home && ROLES[m[1]]) || (extras.has(m[1]) && (settings.home || !isHomeExtra(m[1])))) ? m[1] : null; };
 const keyCount = (role) => dims(role).columns * dims(role).rows;
 
 // ── Connection ──────────────────────────────────────────────────────────
@@ -270,14 +275,16 @@ function register(role) {
   send(parts.join(' '));
 }
 
-// The Custom Pages' surfaces: [{ role: "ev-<id>", label, columns, rows }].
+// The Custom Pages' surfaces and the added Home pages': [{ role: "ev-<id>" |
+// "hp-<id>", label, columns, rows }] (an added Home page's grid is Settings').
 // Added, changed or removed in Companion while connected.
 function setExtras(list) {
   const next = new Map();
-  for (const x of Array.isArray(list) ? list.slice(0, 20) : []) {
+  for (const x of Array.isArray(list) ? list.slice(0, 40) : []) {
     if (!x || !EXTRA_RE.test(String(x.role))) continue;
-    const columns = clampInt(x.columns, LIMITS.columns, 4), rows = clampInt(x.rows, LIMITS.rows, 2);
-    next.set(x.role, { label: String(x.label || 'Custom page').replace(/[\u0000-\u001f]/g, ' ').slice(0, 40), columns, rows });
+    const home = isHomeExtra(x.role);
+    const columns = home ? 0 : clampInt(x.columns, LIMITS.columns, 4), rows = home ? 0 : clampInt(x.rows, LIMITS.rows, 2);
+    next.set(x.role, { label: String(x.label || (home ? 'Home' : 'Custom page')).replace(/[\u0000-\u001f]/g, ' ').slice(0, 40), columns, rows });
   }
   const registered = !!(socket && server.apiVersion && !capsTimer);
   for (const role of [...extras.keys()]) {
@@ -293,7 +300,7 @@ function setExtras(list) {
     extras.set(role, want);
     surfaces.set(role, freshSurface());
     broadcast(role, 'snapshot', snapshot(role));
-    if (registered) register(role);
+    if (registered && (settings.home || !isHomeExtra(role))) register(role);
   }
   if (registered) updateConnectedStatus(); // its status says whether there are any
 }
@@ -335,8 +342,9 @@ function updateConnectedStatus() {
   if (!socket) return;
   const mine = allRoles().map((role) => surfaces.get(role)).filter(Boolean);
   const refused = mine.filter((s) => s.error);
-  if (mine.length && refused.length === mine.length) setStatus('error', `Companion refused the surfaces: ${refused[0].error}`);
-  else setStatus('connected', `Connected to Companion${server.companionVersion ? ' ' + server.companionVersion : ''} at ${settings.host}.${settings.home ? '' : extras.size ? ' Custom Pages only.' : ' Custom Pages only: no custom page has Companion buttons yet.'}`);
+  if (mine.length && refused.length === mine.length) { setStatus('error', `Companion refused the surfaces: ${refused[0].error}`); return; }
+  const customPages = [...extras.keys()].some((r) => !isHomeExtra(r)); // the added Home pages are off with the rest
+  setStatus('connected', `Connected to Companion${server.companionVersion ? ' ' + server.companionVersion : ''} at ${settings.host}.${settings.home ? '' : customPages ? ' Custom Pages only.' : ' Custom Pages only: no custom page has Companion buttons yet.'}`);
 }
 function setStatus(next, text) {
   const changed = next !== state || text !== message;

@@ -150,7 +150,7 @@ test('JPMixer’s own plugins that aren’t on the list yet install from the cop
   // The list on GitHub has only Patch, and a Smaart that needs a newer JPMixer
   const smaart = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'plugins', 'catalog.json'), 'utf8')).plugins.find((p) => p.id === 'smaart');
   served.set('/plugins/catalog.json', JSON.stringify({ version: 1, plugins: [{ ...smaart, version: '9.0.0', minJPMixer: '9.0.0' }] }));
-  const list = await store().catalog('2.0.14');
+  const list = await store().catalog('2.0.18');
   const byId = Object.fromEntries(list.plugins.map((p) => [p.id, p]));
   assert.equal(list.notice, '');
   assert.deepEqual(['companion', 'shure', 'smaart'].map((id) => [byId[id].bundled, byId[id].official, byId[id].integration, byId[id].tooNew]), [[true, true, true, false], [true, true, true, false], [true, true, true, false]],
@@ -164,7 +164,7 @@ test('JPMixer’s own plugins that aren’t on the list yet install from the cop
   assert.equal(result.ok, true, result.error);
   assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'plugins', 'companion', 'plugin.json')), 'nothing removed from the copy that comes with JPMixer');
   assert.equal(plugins.list().find((p) => p.id === 'companion').official, true);
-  assert.equal((await store().catalog('2.0.14')).plugins.find((p) => p.id === 'companion').installedVersion, byId.companion.version, 'and shown as installed');
+  assert.equal((await store().catalog('2.0.18')).plugins.find((p) => p.id === 'companion').installedVersion, byId.companion.version, 'and shown as installed');
   served.delete('/plugins/catalog.json');
 });
 

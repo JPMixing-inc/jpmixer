@@ -12,7 +12,14 @@ const path = require('path');
 function writeFileAtomic(filePath, data) {
   const tmp = filePath + '.tmp';
   try { fs.unlinkSync(tmp); } catch (_) {} // a leftover temp file would keep its old mode
+  // Handed to the drive before the rename: without the flush, a power cut
+  // just after could leave the renamed file empty, and the saved mixes would
+  // come back from an auto-backup up to a week old. (macOS's fsync stops at
+  // the drive; its own cache needs F_FULLFSYNC, which Node can't ask for.
+  // This narrows the window rather than closing it.)
   fs.writeFileSync(tmp, data, { mode: 0o600 });
+  const fd = fs.openSync(tmp, 'r+');
+  try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   try {
     fs.renameSync(tmp, filePath);
   } catch (e) {
@@ -20,6 +27,11 @@ function writeFileAtomic(filePath, data) {
     // holds the target open — fall back to a direct write rather than lose the save
     fs.writeFileSync(filePath, data);
     try { fs.unlinkSync(tmp); } catch (_) {}
+    return;
+  }
+  // The rename itself is in the folder: flushed too (Windows can't open a folder this way)
+  if (process.platform !== 'win32') {
+    try { const dir = fs.openSync(path.dirname(filePath), 'r'); try { fs.fsyncSync(dir); } finally { fs.closeSync(dir); } } catch (_) {}
   }
 }
 

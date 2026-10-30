@@ -529,10 +529,12 @@ async function planTeamMembers(serviceTypeId, planId, creds) {
       [...timeIds].map(id => dayByTimeId.get(id)).filter(Boolean)
     )];
 
+    const teamRel = d.relationships && d.relationships.team && d.relationships.team.data;
     return {
       personId: personRel?.id != null ? String(personRel.id) : null,
       personName: personName || '(unnamed)',
       positionName: positionName || null,
+      teamId: teamRel?.id != null ? String(teamRel.id) : null, // the team they're scheduled on (see onTeam)
       photoUrl,
       status,
       confirmed: !declined && !unconfirmed,
@@ -541,6 +543,31 @@ async function planTeamMembers(serviceTypeId, planId, creds) {
       days, // e.g. ["Saturday"] — empty means "no day-specific scheduling info, applies to every day"
     };
   });
+}
+
+// Who is on a chosen team: a test for scheduled members. A member counts by
+// the team Planning Center scheduled them on, or (an answer without it) by
+// any team with a position of their position's name. A name-only lookup used
+// to pick one team for a position name two teams share ("Vocals" on Worship
+// and on Youth), and the other team's people went missing.
+// Teams with the chosen team's name count as it: Settings picks a team by
+// name, and a church can have two called "Production" (found on a real
+// account, with the people scheduled on the one not picked).
+function teamMatcher(positions, teamId) {
+  const want = String(teamId);
+  const nameOf = (id) => String((positions.find((p) => p.teamId === id) || {}).teamName || '').toLowerCase();
+  const name = nameOf(want);
+  const ids = new Set([want]);
+  if (name) for (const p of positions) if (String(p.teamName || '').toLowerCase() === name) ids.add(p.teamId);
+  const byPosition = new Map();
+  for (const p of positions) {
+    const key = String(p.name || '').toLowerCase();
+    if (!byPosition.has(key)) byPosition.set(key, []);
+    byPosition.get(key).push(p.teamId);
+  }
+  return (member) => member.teamId
+    ? ids.has(member.teamId)
+    : (byPosition.get(String(member.positionName || '').toLowerCase()) || []).some((id) => ids.has(id));
 }
 
 // ── Shared short cache for the display pages and phones ────────────────────
@@ -606,4 +633,4 @@ const shared = {
   clear: () => sharedCache.clear(), // tests
 };
 
-module.exports = { _setRequestTimeout: (ms) => { REQUEST_TIMEOUT_MS = ms; }, requestStats, isTemporary: temporary, listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };
+module.exports = { teamMatcher, _setRequestTimeout: (ms) => { REQUEST_TIMEOUT_MS = ms; }, requestStats, isTemporary: temporary, listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };

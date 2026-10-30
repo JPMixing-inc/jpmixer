@@ -21,21 +21,14 @@
 // "Include unconfirmed" and the hidden Green Room positions are shared.
 
 const config = require('./config');
-
-// Home page id → its main-service config keys [position, team]
-const ROLE_FIELDS = {
-  foh:          ['pcoFohPositionName', 'pcoFohTeamId'],
-  propresenter: ['pcoProPresenterPositionName', 'pcoProPresenterTeamId'],
-  lighting:     ['pcoLightingPositionName', 'pcoLightingTeamId'],
-  switcher:     ['pcoSwitcherPositionName', 'pcoSwitcherTeamId'],
-};
+const homeRoles = require('./home-roles'); // every Home page and its main-service pick
 
 const str = (v) => (typeof v === 'string' ? v : '');
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
 
 function mainService(cfg = config.getAll()) {
   const roles = {};
-  for (const [id, [posKey, teamKey]] of Object.entries(ROLE_FIELDS)) roles[id] = { position: str(cfg[posKey]), team: str(cfg[teamKey]) };
+  for (const [id, r] of Object.entries(homeRoles.all(cfg))) roles[id] = { position: r.position, team: r.team };
   return {
     which: 'main',
     serviceTypeId: str(cfg.pcoServiceTypeId),
@@ -65,7 +58,7 @@ function altService(cfg = config.getAll()) {
   if (!alt.enabled || !str(alt.serviceTypeId)) return null;
   const main = mainService(cfg);
   const roles = {};
-  for (const id of Object.keys(ROLE_FIELDS)) {
+  for (const id of Object.keys(main.roles)) {
     const pick = obj(obj(alt.roles)[id]);
     roles[id] = str(pick.position) ? { position: str(pick.position), team: str(pick.team) } : { position: main.roles[id].position, team: '' };
   }
@@ -130,8 +123,8 @@ async function activeService(pco, creds, cfg = config.getAll(), now = new Date()
 
 // Whether any Home page role is picked, in either service
 function rolePicked(roleId, cfg = config.getAll()) {
-  const [posKey] = ROLE_FIELDS[roleId] || [];
-  return !!(posKey && (str(cfg[posKey]) || (obj(cfg.pcoAlt).enabled && str(obj(obj(obj(cfg.pcoAlt).roles)[roleId]).position))));
+  const role = homeRoles.get(roleId, cfg);
+  return !!(role && (role.position || (obj(cfg.pcoAlt).enabled && str(obj(obj(obj(cfg.pcoAlt).roles)[roleId]).position))));
 }
 
-module.exports = { mainService, altService, layMapping, activeService, rolePicked, ROLE_FIELDS };
+module.exports = { mainService, altService, layMapping, activeService, rolePicked };

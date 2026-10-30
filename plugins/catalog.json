@@ -4,34 +4,34 @@
     {
       "id": "companion",
       "name": "Companion buttons",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "description": "Bitfocus Companion buttons on the Home pages and Custom Pages, live: each page is a button surface in Companion, and taps press the button, the same as a Stream Deck.",
       "author": "JPMixer",
       "permissions": [
         "integration"
       ],
-      "minJPMixer": "2.0.14",
+      "minJPMixer": "2.0.18",
       "path": "companion",
       "files": [
         {
           "path": "companion.js",
-          "size": 18408,
-          "sha256": "7a5bc92dd8a62aaeff46802d6cb8d55fa94f7b8ed7492460ff7dcc44452b40e2"
+          "size": 19172,
+          "sha256": "1b07b8d7eca0f38a2afe9e0cc38ed5fda8466d7564329d00b9437e481b2ee3a8"
         },
         {
           "path": "index.js",
-          "size": 2464,
-          "sha256": "4b91244938c66598df2376e9e4d3413c867142e4581d10eac98952f980cb2e90"
+          "size": 2557,
+          "sha256": "f42364341cdb015cb801308b5bcab870efadfc1f1efce85ef2b04aa668455ff7"
         },
         {
           "path": "plugin.json",
           "size": 534,
-          "sha256": "ea9fc201124a91d2b3d93c0638a8ba7748d530f03d02af076528cf3113d58a28"
+          "sha256": "b812d5aba11b3e2ac0ba1e3ea9a404d08d425a93f9f73a20f7af8ec91bbf9f57"
         },
         {
           "path": "README.md",
-          "size": 962,
-          "sha256": "b528eeddeb0ff7872eb8698cce30ee45106a4265446afad138e352983a7f4652"
+          "size": 1307,
+          "sha256": "903146f63853f22b39ec77d1c650ba11f6a1d7cac9fa9f2cc959eae3e1a98548"
         }
       ]
     },

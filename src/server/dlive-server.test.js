@@ -274,14 +274,34 @@ async function main() {
     assert.ok(mockSocket3, 'scenario 3: mock console should be connected');
 
     const ws3 = new WebSocket('ws://127.0.0.1:18201');
+    let layoutRead3 = false; // the console's mix layout asked for (no answer here), then the open mix read again
+    ws3.on('message', (d) => { try { const j = JSON.parse(d); if (j.config && j.config.liveUpdate) layoutRead3 = true; } catch (_) {} });
     await new Promise((resolve) => ws3.once('open', resolve));
+    received3.length = 0;
     ws3.send(JSON.stringify({ type: 'set-active-aux', aux: 1 }));
-
+    // The mix opening is read once, straight away: each channel's send asked
+    // for (this console never answers, so each waits out its 250 ms)
+    const asked3 = (ch) => { const c = P.coordinate(0, 'input', ch); return containsSubsequence(received3.flat(), P.buildSendLevelGet(c.midiCh, c.ch, P.coordinate(0, 'monoAux', 1))); };
+    for (let t = 0; t < 30 && ![1, 2, 3, 4].every(asked3); t++) await new Promise((r) => setTimeout(r, 50));
+    for (let ch = 1; ch <= 4; ch++) assert.ok(asked3(ch), `the opened mix's channel ${ch} is read at once`);
+    // ...and then nothing in the background (each is asked once more after
+    // 250 ms, then left alone), also once the layout is in: with polling
+    // off, the other mixes aren't read
+    for (let t = 0; t < 140 && !layoutRead3; t++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(layoutRead3, 'the mix layout probe finished');
+    await new Promise((r) => setTimeout(r, 1200));
     received3.length = 0;
     await new Promise((r) => setTimeout(r, 400));
     const getOpcodeSeq = [0x05, 0x0F, 0x0D]; // Send Level Get's distinguishing opcode bytes
-    assert.ok(!containsSubsequence(received3.flat(), getOpcodeSeq), 'polling disabled should mean zero Send Level Get requests');
-    console.log('ok - polling (when disabled) sends no Get requests at all');
+    assert.ok(!containsSubsequence(received3.flat(), getOpcodeSeq), 'polling disabled should mean no background Send Level Get requests');
+    // A second phone opening the same mix straight after doesn't read it again
+    const ws3b = new WebSocket('ws://127.0.0.1:18201');
+    await new Promise((resolve) => ws3b.once('open', resolve));
+    ws3b.send(JSON.stringify({ type: 'set-active-aux', aux: 1 }));
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok(!containsSubsequence(received3.flat(), getOpcodeSeq), 'a mix just read isn\'t read again for another phone');
+    ws3b.close();
+    console.log('ok - polling (when disabled): a mix is read once when it opens, and nothing in the background');
 
     ws3.close();
     server.stop();
@@ -562,7 +582,8 @@ async function main() {
     const in1 = P.coordinate(0, 'input', 1), aux1 = P.coordinate(0, 'monoAux', 1);
 
     // FX returns: channels 129 on, named as on the console
-    assert.ok(await waitFor(() => seen9.some(j => j.type === 'channel-relabeled' && j.channel === 129 && j.label === 'VERB')), 'FX return 1 is named from the console');
+    // (a rename once the phone is on, or already in its config if the name came first)
+    assert.ok(await waitFor(() => seen9.some(j => (j.type === 'channel-relabeled' && j.channel === 129 && j.label === 'VERB') || (j.config && j.config.channels.some(c => c.channel === 129 && c.label === 'VERB')))), 'FX return 1 is named from the console');
     const cfg9 = seen9.find(j => j.config).config;
     assert.deepEqual(cfg9.channels.map(c => c.channel), [1, 2, 3, 4, 129, 130], 'the inputs, then 2 FX returns');
     assert.equal(cfg9.channels.find(c => c.channel === 130).label, 'FX Return 2', 'an FX return with only its number is called FX Return N');
@@ -736,7 +757,8 @@ async function main() {
     const lastCfg = () => (seen11.filter(j => j.config).at(-1) || {}).config;
     assert.ok(await waitFor(() => lastCfg() && lastCfg().aux.map(x => x.label).join() === 'IEM,BAND,VOX'), 'the layout is read');
     await new Promise((r) => setTimeout(r, 600)); // the link comes up
-    assert.equal(lastCfg().aux[1].stereo, false, 'no pan before the mix\'s place is proven');
+    assert.deepEqual(lastCfg().aux.map(a => a.stereo), [false, true, true], 'mono and stereo as the console\'s layout has them, before any place is proven');
+    assert.equal(lastCfg().aux[1].pan, false, 'no pan before the mix\'s place is proven');
     // Phones on both stereo mixes, and their send levels over MIDI: the places prove out
     const in1 = P.coordinate(0, 'input', 1);
     const in2 = P.coordinate(0, 'input', 2);
@@ -747,13 +769,13 @@ async function main() {
     ph11.send(JSON.stringify({ type: 'set-active-aux', aux: 3 }));
     ph11.send(JSON.stringify({ type: 'set-active-aux', aux: 2 }));
     await new Promise((r) => setTimeout(r, 800));
-    assert.equal(lastCfg().aux[1].stereo, false, 'one channel matching doesn\'t prove a place');
+    assert.equal(lastCfg().aux[1].pan, false, 'one channel matching doesn\'t prove a place');
     midiSock.write(Buffer.from(P.buildSendLevelSet(in2.midiCh, in2.ch, P.coordinate(0, 'stereoAux', 1), P.dbToLv(-4))));
     midiSock.write(Buffer.from(P.buildSendLevelSet(in2.midiCh, in2.ch, P.coordinate(0, 'stereoAux', 2), P.dbToLv(-6))));
     ph11.send(JSON.stringify({ type: 'set-active-aux', aux: 3 }));
     ph11.send(JSON.stringify({ type: 'set-active-aux', aux: 2 }));
-    assert.ok(await waitFor(() => lastCfg().aux[1].stereo && lastCfg().aux[2].stereo), 'the stereo mixes get pan once their places are proven');
-    assert.deepEqual(lastCfg().aux.map(a => [a.label, a.stereo]), [['IEM', false], ['BAND', true], ['VOX', true]], 'a mono mix has no pan');
+    assert.ok(await waitFor(() => lastCfg().aux[1].pan && lastCfg().aux[2].pan), 'the stereo mixes get pan once their places are proven');
+    assert.deepEqual(lastCfg().aux.map(a => [a.label, a.stereo, a.pan]), [['IEM', false, false], ['BAND', true, true], ['VOX', true, true]], 'a mono mix has no pan');
     assert.ok(await waitFor(() => lastCfg().channels.length === 3), 'a stereo input (3 and 4) is one channel');
     assert.deepEqual(lastCfg().channels.map(c => c.channel), [1, 2, 3]);
     // Mix 2 is stereo aux 1: place 3 in the console's list (2 groups, 1 mono aux before it)
@@ -803,8 +825,9 @@ async function main() {
     const lvlHandle = [...priv.handles.entries()].find(([, h]) => h.param === DP.inputParam('level', 3, 3))[0];
     priv.sock.write(frameOf(lvlHandle, 0x2e, 0x1000, u16(0x8000)));
     midiSock.write(Buffer.from(P.buildSendLevelSet(in3.midiCh, in3.ch, st1, P.dbToLv(-20))));
-    assert.ok(await waitFor(() => lastCfg().aux[1].stereo === false, 6000), 'the mix loses its pan when its levels disagree with MIDI');
-    assert.equal(lastCfg().aux[2].stereo, true, 'the other stereo mix keeps it');
+    assert.ok(await waitFor(() => lastCfg().aux[1].pan === false, 6000), 'the mix loses its pan when its levels disagree with MIDI');
+    assert.equal(lastCfg().aux[1].stereo, true, 'still a stereo mix');
+    assert.equal(lastCfg().aux[2].pan, true, 'the other stereo mix keeps it');
     console.log('ok - pan on the stereo mixes: found by itself, read and set both ways, none on a mono mix, and none where the place doesn\'t check out');
     net.createConnection = origCC11;
     ph11.close(); await server.stop(); midi.close(); privServer.close();
@@ -872,13 +895,90 @@ async function main() {
     assert.ok(await waitFor(() => [...handles.values()].includes(DP.inputParam('level', 4, 3))), 'checked first after the mono aux and the FX send');
     assert.ok(![...handles.values()].includes(DP.inputParam('level', 4, 1)), 'not straight after the mono aux');
     // Place 3 disagrees (rechecked after 2.5 s), the search reads every place, and place 5 checks out
-    assert.ok(await waitFor(() => lastCfg().aux[1].stereo === true, 12000), 'the mix gets pan at the place its levels are found at');
+    assert.ok(await waitFor(() => lastCfg().aux[1].pan === true, 12000), 'the mix gets pan at the place its levels are found at');
     ph.send(JSON.stringify({ address: '/Input_Channels/1/Aux_Send/2/send_pan', args: [0] }));
     assert.ok(await waitFor(() => sets.some(x => x.param === DP.inputParam('pan', 1, 5) && x.value === 0)), 'a pan goes to place 5');
     assert.ok(!sets.some(x => x.param === DP.inputParam('pan', 1, 3)), 'never to the place the layout guessed');
     console.log('ok - pan on a mix that isn\'t where the layout says: found by its levels, a send switched off saying nothing');
     net.createConnection = origCC;
     ph.close(); await server.stop(); midi.close(); privServer.close();
+  }
+
+  // ── Every mix read once JPMixer connects, with no phone on any ──────────
+  {
+    const DP = require('./dlive-private');
+    // Mono aux 1 and stereo aux 1; this console answers send-level gets
+    const mono1 = P.coordinate(0, 'monoAux', 1), st1 = P.coordinate(0, 'stereoAux', 1);
+    const names = [[mono1, 'IEM'], [st1, 'BAND']];
+    const sends = new Map([[`0:${mono1.ch}`, -6], [`1:${mono1.ch}`, -8], [`0:${st1.ch}`, -10], [`1:${st1.ch}`, -4]]); // "input ch (0-based):aux ch" -> dB
+    let gets = 0;
+    const midi = net.createServer((s) => {
+      const dec = new P.Decoder();
+      s.on('data', (d) => {
+        for (const ev of dec.push([...d])) {
+          if (ev.type !== 'sysex') continue;
+          const b = ev.bytes;
+          if (b[8] === 0x01) { const hit = names.find(([c]) => c.midiCh === b[7] && c.ch === b[9]); if (hit) s.write(Buffer.from(P.buildNameSet(hit[0].midiCh, hit[0].ch, hit[1]))); }
+          if (b[8] === 0x05 && b[9] === 0x0F && b[10] === 0x0D) {
+            gets++;
+            const db = sends.get(`${b[11]}:${b[13]}`);
+            s.write(Buffer.from(P.buildSendLevelSet(b[7], b[11], { midiCh: b[12], ch: b[13] }, db === undefined ? 0 : P.dbToLv(db))));
+          }
+        }
+      });
+    });
+    await new Promise((r) => midi.listen(0, '127.0.0.1', r));
+    // On the app protocol: the stereo aux at places 1 and 2, after the mono aux
+    const values = new Map();
+    for (const [ch, db] of [[1, -10], [2, -4]]) for (const place of [1, 2]) values.set(DP.inputParam('level', ch, place), DP.dbToValue(db));
+    for (const [ch, db] of [[1, -6], [2, -8]]) values.set(DP.inputParam('level', ch, 0), DP.dbToValue(db));
+    const frameOf = (src, dst, type, payload = Buffer.alloc(0)) => { const h = Buffer.alloc(19); h[0] = 0xf1; h.writeUInt16BE(1, 1); h.writeUInt32BE(src, 3); h.writeUInt32BE(dst, 7); h.writeUInt32BE(type, 11); h.writeUInt32BE(payload.length, 15); return Buffer.concat([h, payload, Buffer.from([0xf8])]); };
+    const u16 = (v) => { const b = Buffer.alloc(2); b.writeUInt16BE(v); return b; };
+    const handles = new Map();
+    const privServer = net.createServer((s) => {
+      let buf = Buffer.alloc(0);
+      s.on('data', (d) => {
+        buf = Buffer.concat([buf, d]);
+        for (;;) {
+          if (!buf.length) break;
+          const m = buf[0]; let n = null;
+          if (m === 0xf1 && buf.length >= 19) n = 20 + buf.readUInt32BE(15);
+          else if (m === 0xe0 && buf.length >= 3) n = 4 + buf.readUInt16BE(1);
+          if (n === null || buf.length < n) break;
+          const f = buf.subarray(0, n); buf = buf.subarray(n);
+          if (m !== 0xf1) continue;
+          const src = f.readUInt32BE(3), dst = f.readUInt32BE(7), type = f.readUInt32BE(11), payload = f.subarray(19, n - 1);
+          if (type === 4) { const mm = /Number (\d\d)/.exec(payload.toString('latin1')); const b = Buffer.alloc(4); if (mm) b.writeUInt32BE(0x2d + Number(mm[1])); s.write(frameOf(1, 0, mm ? 2 : 3, mm ? b : Buffer.alloc(0))); }
+          else if (type === 6) handles.set(payload.readUInt32BE(2), payload.readUInt16BE(12));
+          else if (type === 8) { const param = handles.get(dst); if (param !== undefined) s.write(frameOf(dst, src, 0x1000, u16(values.get(param) ?? (param >= 0x12b0 && param < 0x12b8 ? 0x0125 : param >= 0x1b00 ? 37 : 0)))); }
+        }
+      });
+    });
+    await new Promise((r) => privServer.listen(0, '127.0.0.1', r));
+    const origCC = net.createConnection;
+    net.createConnection = (opts, cb) => origCC.call(net, { ...opts, port: opts.port === DP.PORT ? privServer.address().port : midi.address().port }, cb);
+    server.start({ serverPort: 18210, deskIp: '127.0.0.1', channels: 4, auxes: 2, dliveBaseChannel: 0, dlivePollSendLevels: true }); // no mix open: nothing to poll
+    const mon = new WebSocket('ws://127.0.0.1:18210'); const seen = [];
+    mon.on('message', (m) => seen.push(JSON.parse(m)));
+    await new Promise((resolve) => mon.once('open', resolve));
+    const waitFor = async (check, ms = 8000) => { const end = Date.now() + ms; while (!check() && Date.now() < end) await new Promise((r) => setTimeout(r, 50)); return check(); };
+    const lastCfg = () => (seen.filter(j => j.config).at(-1) || {}).config;
+    assert.ok(await waitFor(() => lastCfg() && lastCfg().aux.map(x => x.label).join() === 'IEM,BAND'), 'the layout is read');
+    assert.deepEqual(lastCfg().aux.map(a => a.stereo), [false, true], 'mono and stereo from the layout');
+    // The stereo mix's place is checked with no phone on it: PAN is ready before anyone opens it
+    assert.ok(await waitFor(() => lastCfg().aux[1].pan === true), 'pan on a stereo mix nobody has opened');
+    // The Monitor Engineer page (no mix of its own) gets every mix's levels
+    const all = async () => { mon.send(JSON.stringify({ type: 'request-all-levels' })); await new Promise((r) => setTimeout(r, 100)); const a = seen.filter(j => j.type === 'all-levels').at(-1); return a ? a.levels : []; };
+    const levels = await all();
+    const level = (ch, aux) => (levels.find(l => l.address === `/Input_Channels/${ch}/Aux_Send/${aux}/send_level`) || {}).args;
+    assert.deepEqual(level(1, 1), [-6], 'mono mix 1, channel 1');
+    assert.deepEqual(level(2, 1), [-8], 'mono mix 1, channel 2');
+    assert.deepEqual(level(1, 2), [-10], 'stereo mix 2, channel 1');
+    assert.deepEqual(level(4, 2), [-150], 'a send that\'s off');
+    assert.equal(gets, 8, 'each of the 2 mixes\' 4 sends asked for once');
+    console.log('ok - every mix read once JPMixer connects: the Monitor page has them all, and a stereo mix has pan before anyone opens it');
+    net.createConnection = origCC;
+    mon.close(); await server.stop(); midi.close(); privServer.close();
   }
 
   // ── Finding the console's base MIDI channel ─────────────────────────────

@@ -228,6 +228,39 @@ async function main() {
     t('pairing the FOH position with the wrong team excludes an otherwise-matching person');
   }
 
+  // ── A role name two teams share: each person is matched by the team
+  // Planning Center scheduled them on, not by the name (which found one team) ──
+  {
+    const baseFetch = global.fetch;
+    global.fetch = async (url) => {
+      if (url.includes('/team_members')) {
+        return { ok: true, text: async () => JSON.stringify({ data: [
+          { id: '21', type: 'PlanPerson', attributes: { name: 'Worship Singer', team_position_name: 'Vocals', status: 'C' }, relationships: { team: { data: { type: 'Team', id: 'team-worship' } } } },
+          { id: '22', type: 'PlanPerson', attributes: { name: 'Youth Singer', team_position_name: 'Vocals', status: 'C' }, relationships: { team: { data: { type: 'Team', id: 'team-youth' } } } },
+        ] }) };
+      }
+      if (url.includes('/team_positions')) {
+        return { ok: true, text: async () => JSON.stringify({
+          data: [
+            { id: '30', type: 'TeamPosition', attributes: { name: 'Vocals' }, relationships: { team: { data: { type: 'Team', id: 'team-worship' } } } },
+            { id: '31', type: 'TeamPosition', attributes: { name: 'Vocals' }, relationships: { team: { data: { type: 'Team', id: 'team-youth' } } } },
+          ],
+          included: [{ type: 'Team', id: 'team-worship', attributes: { name: 'Worship Team' } }, { type: 'Team', id: 'team-youth', attributes: { name: 'Youth' } }],
+        }) };
+      }
+      return baseFetch(url);
+    };
+    for (const [team, who] of [['team-worship', 'Worship Singer'], ['team-youth', 'Youth Singer']]) {
+      config.save({ ...config.getAll(), pcoFohPositionName: 'Vocals', pcoFohTeamId: team, pcoTeamId: team });
+      const data = await get(port, '/foh-data');
+      assert.equal(data.engineer && data.engineer.name, who, `Vocals on ${team}`);
+      assert.deepEqual(data.roster.map((m) => m.name), [who], `the team card shows ${team} only`);
+    }
+    global.fetch = baseFetch;
+    config.save({ ...config.getAll(), pcoFohPositionName: 'Audio Engineer FOH', pcoFohTeamId: 'team-worship', pcoTeamId: '' });
+    t('a role name two teams share picks the person on the chosen team, on the welcome and the team card');
+  }
+
   // ── A decline must never win over an available confirmed person, even
   // when it's listed first and includeUnconfirmed is on (a real bug: the
   // original FOH slot's person declined, someone else got confirmed, and
@@ -372,12 +405,40 @@ async function main() {
     }
 
     const pages = (await get(port, '/home-pages')).pages;
-    assert.deepEqual(pages.map(p => p.id), ['foh', 'propresenter', 'lighting', 'switcher']);
+    assert.deepEqual(pages.map(p => p.id), ['foh', 'propresenter', 'lighting', 'switcher', 'producer']);
     assert.equal(pages[0].locked, true);
     assert.equal(pages[0].href, '/foh.html');
     assert.equal(pages.find(p => p.id === 'switcher').configured, false);
     t('the Home page picker lists every page, which are set up, and which need a code');
     config.save({ ...config.getAll(), fohAccessCode: '' });
+  }
+
+  // ── A Home page added for another role ───────────────────────────────
+  {
+    const status = (urlPath) => new Promise((resolve, reject) => http.get({ host: '127.0.0.1', port, path: urlPath }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); }).on('error', reject));
+    const id = '0a1b2c3d4e';
+    config.save({ ...config.getAll(), pcoHomePages: [{ id, name: 'Stage Manager', position: 'Lighting', team: '' }, { id: 'nope', name: 'Bad id' }] });
+    const pages = (await get(port, '/home-pages')).pages;
+    const added = pages.find(p => p.id === `hp-${id}`);
+    assert.deepEqual(pages.map(p => p.id), ['foh', 'propresenter', 'lighting', 'switcher', 'producer', `hp-${id}`], 'after the others; a malformed one left out');
+    assert.deepEqual([added.page, added.href, added.custom, added.configured], ['Stage Manager Home', `/hp-${id}.html`, true, true]);
+    assert.equal(await status(`/hp-${id}.html`), 200, 'served like the other Home pages');
+    assert.equal(await status('/producer.html'), 200);
+    assert.equal(await status('/hp-ffffffffff.html'), 404, 'a page that doesn\'t exist isn\'t');
+    const data = await get(port, `/role-data?role=hp-${id}`);
+    assert.deepEqual(data.role, { id: `hp-${id}`, label: 'Stage Manager', page: 'Stage Manager Home' });
+    assert.equal(data.engineer && data.engineer.name, 'Lee Lights', 'welcomes whoever is scheduled in its role');
+    // Team chat, under its own name, and saved layouts, like the other pages
+    const chat = await new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, path: '/chat/send', method: 'POST', headers: { 'Content-Type': 'application/json' } }, (res) => { let d = ''; res.on('data', c => (d += c)); res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(d) })); });
+      req.on('error', reject); req.end(JSON.stringify({ role: `hp-${id}`, name: 'Lee', text: 'Places in five' }));
+    });
+    assert.deepEqual([chat.status, chat.body.message.role, chat.body.message.roleLabel], [200, `hp-${id}`, 'Stage Manager']);
+    assert.equal((await get(port, `/home-layout?role=hp-${id}&person=p1`)).ok, true);
+    require('./chat').reset();
+    config.save({ ...config.getAll(), pcoHomePages: [] });
+    assert.equal(await status(`/hp-${id}.html`), 404, 'removed: its link stops working');
+    t('a Home page added for another role is listed, served at its own link, and welcomes its scheduled person');
   }
 
   // ── Team chat ─────────────────────────────────────────────────────────

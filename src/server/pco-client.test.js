@@ -380,7 +380,7 @@ async function main() {
   {
     const members = await pco.planTeamMembers('1', '102', creds);
     assert.equal(members.length, 3);
-    assert.deepEqual(members[0], { personId: null, personName: 'John Smith', positionName: 'Acoustic Guitar', photoUrl: null, status: 'C', confirmed: true, declined: false, days: [] });
+    assert.deepEqual(members[0], { personId: null, personName: 'John Smith', positionName: 'Acoustic Guitar', photoUrl: null, status: 'C', confirmed: true, declined: false, days: [], teamId: null });
     assert.equal(members[1].confirmed, false, 'status U (unconfirmed) must not count as confirmed');
     assert.equal(members[2].confirmed, false, 'status D (declined) must not count as confirmed');
     t('planTeamMembers parses direct convenience attributes and confirmed status correctly');
@@ -388,8 +388,27 @@ async function main() {
 
   {
     const members = await pco.planTeamMembers('2', '200', creds);
-    assert.deepEqual(members, [{ personId: 'p1', personName: 'Alex Rivera', positionName: 'Drums', photoUrl: 'https://example.com/alex.jpg', status: 'C', confirmed: true, declined: false, days: [] }]);
+    assert.deepEqual(members, [{ personId: 'p1', personName: 'Alex Rivera', positionName: 'Drums', photoUrl: 'https://example.com/alex.jpg', status: 'C', confirmed: true, declined: false, days: [], teamId: null }]);
     t('planTeamMembers falls back to resolving person/team_position/photo via included[] when no direct attributes exist');
+  }
+
+  {
+    // A position name two teams share: the member's own team decides; an
+    // answer without one falls back to any team with a position of that name.
+    // Two teams with one name ("Production" twice, as on a real account) count as one.
+    const positions = [
+      { name: 'Vocals', teamId: 'w', teamName: 'Worship' }, { name: 'Vocals', teamId: 'y', teamName: 'Youth' }, { name: 'Keys', teamId: 'w', teamName: 'Worship' },
+      { name: 'FOH', teamId: 'p1', teamName: 'Production' }, { name: 'FOH', teamId: 'p2', teamName: 'Production' },
+    ];
+    const youth = pco.teamMatcher(positions, 'y'), worship = pco.teamMatcher(positions, 'w');
+    assert.equal(youth({ positionName: 'Vocals', teamId: 'y' }), true);
+    assert.equal(worship({ positionName: 'Vocals', teamId: 'y' }), false, 'scheduled on Youth, not Worship');
+    assert.equal(youth({ positionName: 'vocals', teamId: null }), true, 'no team in the answer: any team with the name');
+    assert.equal(youth({ positionName: 'Keys', teamId: null }), false);
+    assert.equal(worship({ positionName: 'Drums', teamId: null }), false, 'a name no team has');
+    assert.equal(pco.teamMatcher(positions, 'p2')({ positionName: 'FOH', teamId: 'p1' }), true, 'picked one Production, scheduled on the other');
+    assert.equal(pco.teamMatcher(positions, 'p2')({ positionName: 'FOH', teamId: 'w' }), false);
+    t('teamMatcher matches a member by the team Planning Center scheduled them on');
   }
 
   {

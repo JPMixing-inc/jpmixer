@@ -1,16 +1,19 @@
 'use strict';
 
-// FOH Home, and the ProPresenter / Lighting / Switcher pages (role.html),
+// FOH Home, and the ProPresenter / Lighting / Switcher / Producer pages and
+// the ones a church added for other roles (role.html, at /hp-<id>.html),
 // which show the same schedule for their own scheduled operator.
-const ROLE = (location.pathname.match(/\/(propresenter|lighting|switcher)\.html$/) || [])[1] || 'foh';
-const ROLE_LABELS = { foh: 'FOH Engineer', propresenter: 'ProPresenter', lighting: 'Lighting', switcher: 'Switcher' };
-let roleLabel = ROLE_LABELS[ROLE];
+const ROLE = (location.pathname.match(/\/(propresenter|lighting|switcher|producer|hp-[0-9a-f]{10})\.html$/) || [])[1] || 'foh';
+const ROLE_LABELS = { foh: 'FOH Engineer', propresenter: 'ProPresenter', lighting: 'Lighting', switcher: 'Switcher', producer: 'Producer' };
+let roleLabel = ROLE_LABELS[ROLE] || 'Home'; // an added page's name comes with its data
 const DATA_URL = ROLE === 'foh' ? '/foh-data' : `/role-data?role=${ROLE}`;
-if (ROLE !== 'foh') {
+function showPageName() {
+  if (ROLE === 'foh') return;
   const page = `${roleLabel} Home`;
   document.title = `${page} — JPMixer`;
   for (const el of document.querySelectorAll('[data-role-page]')) el.textContent = page.toUpperCase();
 }
+showPageName();
 
 let refreshing = false;
 let lastSuccess = null;
@@ -445,7 +448,7 @@ async function refresh(options) {
     if (!response.ok) throw new Error('Can’t reach JPMixer right now. Check the connection.');
     showLock(false);
     const data = await response.json();
-    if (data.role && data.role.label) roleLabel = data.role.label;
+    if (data.role && data.role.label && data.role.label !== roleLabel) { roleLabel = data.role.label; showPageName(); }
     showConnection(data.consoleConnected, data.connectionCount || 0);
     // Planning Center didn't answer this time (a timeout, too many requests):
     // keep the schedule that's showing rather than blanking the page, as the

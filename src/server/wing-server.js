@@ -153,6 +153,7 @@ function buildConfig() {
       eqEnabled: false, // aux EQ not implemented for WING in this pass
       linkOnly:  ov.linkOnly === true,
       groups:    shared.auxGroupNames(ov, serverCfg),
+      channels:  shared.auxChannels(ov),
     });
   }
 
@@ -313,7 +314,7 @@ function start(cfg) {
     console.log(`[JPMixer/WING] Web server → http://localhost:${cfg.serverPort}`);
   });
 
-  wss = new WebSocket.Server({ server: httpServer });
+  wss = new WebSocket.Server({ server: httpServer, maxPayload: shared.MAX_PAYLOAD });
 
   pingInterval = setInterval(() => {
     const now = Date.now();
@@ -414,7 +415,7 @@ function start(cfg) {
         const chMax = serverCfg.channels || 40;
         const outLevels = {}, outPans = {};
         if (Number.isInteger(aux) && aux >= 1 && aux <= (serverCfg.auxes || 16)) {
-          for (const [chStr, sliderVal] of Object.entries(msg.levels || {})) {
+          for (const [chStr, sliderVal] of Object.entries(shared.plainMap(msg.levels))) {
             const ch = parseInt(chStr, 10);
             if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
             const db = shared.sliderToDb(sliderVal);
@@ -422,7 +423,7 @@ function start(cfg) {
             outLevels[chStr] = sliderVal;
             pacer.write(`lvl:${ch}:${aux}`, () => wing && wing.setSendLevel(ch, aux, db));
           }
-          for (const [chStr, panVal] of Object.entries(msg.pans || {})) {
+          for (const [chStr, panVal] of Object.entries(shared.plainMap(msg.pans))) {
             const ch = parseInt(chStr, 10);
             if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(panVal) || panVal < 0 || panVal > 1) continue;
             panCache.set(levelKey(ch, aux), panVal);

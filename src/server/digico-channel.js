@@ -66,7 +66,7 @@ const SECTIONS = ['input', 'eq', 'dynamics'];
 
 // The value to send for `path`, or null if it isn't a control we send
 function clampValue(path, value) {
-  const def = PARAMS[path];
+  const def = Object.hasOwn(PARAMS, path) ? PARAMS[path] : null; // not "constructor" and the like
   const v = Number(value);
   if (!def || !Number.isFinite(v)) return null;
   if (def.kind === 'bool') return v >= 0.5 ? 1 : 0;

@@ -535,6 +535,41 @@ test('LV1 backend end to end', async (t) => {
     assert.ok(await until(() => fake.state.on['3:0'] === true), 'the unmute landed after the reconnect');
   });
 
+  await t.test('an unmute LV1 has answered isn\'t sent again on a reconnect: the engineer\'s change after it stays', async () => {
+    a.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 4, muted: true }));
+    assert.ok(await until(() => fake.state.on['3:0'] === false));
+    a.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 4, muted: false }));
+    assert.ok(await until(() => fake.state.on['3:0'] === true), 'the unmute landed, and LV1 said so');
+    await wait(100);
+    // The engineer switches it off on LV1, then the link drops
+    fake.state.on['3:0'] = false;
+    fake.notifyAll('/Notify/Aux/Send/On', [0, 3, 0, false, true]);
+    await wait(100);
+    for (const s of fake.sockets) s.destroy();
+    assert.ok(await until(() => connected === false));
+    assert.ok(await until(() => connected === true, 6000));
+    await wait(500);
+    assert.equal(fake.state.on['3:0'], false, 'still off, as the engineer left it');
+    fake.state.on['3:0'] = true; // as the next checks expect
+    fake.notifyAll('/Notify/Aux/Send/On', [0, 3, 0, true, true]);
+    await wait(100);
+  });
+
+  await t.test('a My Mix level still queued when the send is muted waits for the unmute', async () => {
+    // LV1 switches a send on by itself when its level comes up from -inf, so
+    // a queued level landing after a mute would unmute it
+    const db = 50 * Math.log10(40) - 90; // slider 0.4
+    a.send(JSON.stringify({ type: 'apply-preset', aux: 1, name: 'Held', levels: { 1: 0.4, 2: 0.4, 3: 0.4, 4: 0.4 } }));
+    a.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 4, muted: true }));
+    assert.ok(await until(() => fake.state.on['3:0'] === false));
+    await wait(300);
+    assert.ok(Math.abs(fake.state.level['0:0'] - db) < 0.1, 'the rest of the mix went out');
+    assert.ok(!(Math.abs(fake.state.level['3:0'] - db) < 0.1), 'the muted send\'s level is held');
+    assert.equal(fake.state.on['3:0'], false, 'and the send stays off');
+    a.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 4, muted: false }));
+    assert.ok(await until(() => fake.state.on['3:0'] === true && Math.abs(fake.state.level['3:0'] - db) < 0.1), 'the unmute brings the held level');
+  });
+
   await t.test('a Planning Center or Control API rename reaches every mix LV1 has, whatever Settings\' count says', () => {
     server.applyConfigLive({ serverPort, deskIp: '127.0.0.1', lv1Port, channels: 16, auxes: 1, sceneRecallEnabled: true });
     assert.equal(server.setAuxLabel(2, 'VOX - Sam'), true, 'LV1 reported 2 mixes; Settings\' 1 is only a fallback');

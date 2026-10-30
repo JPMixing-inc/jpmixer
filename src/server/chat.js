@@ -1,6 +1,6 @@
 'use strict';
 
-// ── Team chat for the Home pages (FOH, ProPresenter, Lighting, Switcher) ───
+// ── Team chat for the Home pages (every one, custom ones too: home-roles.js) ─
 // A "Team chat" card on each page (src/mixer/foh-chat.js). Mounted from
 // mountFoh(), so it's on every console backend.
 //
@@ -24,7 +24,7 @@ const MAX_HISTORY = 200;
 const MAX_TEXT = 500;
 const MAX_NAME = 60;
 const SEND_LIMIT = 10, SEND_WINDOW_MS = 10000; // per device
-const ROLES = new Set(['foh', 'propresenter', 'lighting', 'switcher']);
+const homeRoles = require('./home-roles');
 
 const history = [];
 const streams = new Set(); // open SSE responses
@@ -111,9 +111,10 @@ function mountChat(app) {
   app.post('/chat/send', express.json({ limit: '4kb' }), (req, res) => {
     const role = clean(req.body?.role, 20);
     const text = clean(req.body?.text, MAX_TEXT);
-    if (!ROLES.has(role) || !text) { res.status(400).json({ ok: false, error: 'Type a message first.' }); return; }
+    const page = homeRoles.get(role);
+    if (!page || !text) { res.status(400).json({ ok: false, error: 'Type a message first.' }); return; }
     if (tooFast(address(req))) { res.status(429).json({ ok: false, error: 'Slow down a little — try again in a few seconds.' }); return; }
-    const message = { id: nextId++, at: new Date().toISOString(), role, name: clean(req.body?.name, MAX_NAME), clientId: clean(req.body?.clientId, 40), text };
+    const message = { id: nextId++, at: new Date().toISOString(), role, roleLabel: page.short, name: clean(req.body?.name, MAX_NAME), clientId: clean(req.body?.clientId, 40), text };
     post(message);
     res.json({ ok: true, message });
   });

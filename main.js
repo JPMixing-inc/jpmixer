@@ -527,10 +527,8 @@ function rebuildTrayMenu() {
         view('Devices', 'devices.html', 1280, 940),
         { type: 'separator' },
         view('Production View Select', 'home.html', 1100, 760),
-        view('FOH Home', 'foh.html', 1100, 760),
-        view('ProPresenter Home', 'propresenter.html', 1100, 760),
-        view('Lighting Home', 'lighting.html', 1100, 760),
-        view('Switcher Home', 'switcher.html', 1100, 760),
+        // Every Home page, the ones added in Settings too (home-roles.js)
+        ...Object.entries(require('./src/server/home-roles').all(config.getAll())).map(([id, r]) => view(id === 'foh' ? 'FOH Home' : r.page, r.href.slice(1), 1100, 760)),
         { type: 'separator' },
         { label: 'Phone Mixer in Browser', click: () => shell.openExternal(`http://localhost:${port}`) }
       ]

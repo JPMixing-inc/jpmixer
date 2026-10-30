@@ -40,10 +40,11 @@
 // — the nearest non-header item on either side of the live one.
 
 //
-// The same page also serves the ProPresenter, Lighting and Switcher
-// operators: /propresenter.html etc. (one shared role.html) read
-// /role-data?role=…, built by the same code from that role's own Team
-// Position setting. Only FOH Home has the console status and engineer links.
+// The same page also serves the ProPresenter, Lighting, Switcher and Producer
+// operators, and the Home pages a church adds for other roles: /producer.html,
+// /hp-<id>.html etc. (one shared role.html) read /role-data?role=…, built by
+// the same code from that role's own Team Position setting (home-roles.js).
+// Only FOH Home has the console status and engineer links.
 //
 // /home.html lists the Home pages (like the performer page's mix picker),
 // from GET /home-pages: each page, whether it's set up, and who's on today.
@@ -58,14 +59,12 @@ const path = require('path');
 const express = require('express');
 const config = require('./config');
 const pco = require('./pco-client').shared; // 20s shared cache — see pco-client.js
+const { teamMatcher } = require('./pco-client');
 const pcoServices = require('./pco-services'); // the main service, or the second one on its day
 
-const ROLES = {
-  foh:          { label: 'FOH Engineer', page: 'FOH Engineer Home', positionKey: 'pcoFohPositionName', teamKey: 'pcoFohTeamId' },
-  propresenter: { label: 'ProPresenter', page: 'ProPresenter Home', positionKey: 'pcoProPresenterPositionName', teamKey: 'pcoProPresenterTeamId' },
-  lighting:     { label: 'Lighting', page: 'Lighting Home', positionKey: 'pcoLightingPositionName', teamKey: 'pcoLightingTeamId' },
-  switcher:     { label: 'Switcher', page: 'Switcher Home', positionKey: 'pcoSwitcherPositionName', teamKey: 'pcoSwitcherTeamId' },
-};
+// Every Home page: JPMixer's own and the church's custom ones (home-roles.js)
+const homeRoles = require('./home-roles');
+const FOH = homeRoles.BUILT_IN.foh;
 
 // ── FOH Home access code ──
 const access = require('./access'); // the codes, and this computer's own pass
@@ -118,7 +117,7 @@ function mountFoh(app, status) {
     res.json({ ok: true, cards: require('./plugins').cards().map((c) => ({ id: c.cardId, title: c.title, card: c.card, state: c.state })) });
   });
   app.get('/foh-data', async (req, res) => {
-    if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true, role: { id: 'foh', label: ROLES.foh.label, page: ROLES.foh.page } }); return; }
+    if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true, role: { id: 'foh', label: FOH.label, page: FOH.page } }); return; }
     res.json(await roleData('foh', status));
   });
   app.post('/foh-unlock', express.json({ limit: '2kb' }), access.unlock('foh'));
@@ -131,14 +130,14 @@ function mountFoh(app, status) {
   app.get('/home-layout', (req, res) => {
     const roleId = String(req.query.role || '');
     res.set('Cache-Control', 'no-store');
-    if (!Object.hasOwn(ROLES, roleId) || (roleId === 'foh' && !hasFohAccess(req))) { res.status(403).json({ ok: false }); return; }
+    if (!homeRoles.has(roleId) || (roleId === 'foh' && !hasFohAccess(req))) { res.status(403).json({ ok: false }); return; }
     // Theirs for this page, or the one they saved last on another Home page
     const saved = require('./home-layouts').forPerson(roleId, String(req.query.person || ''));
-    res.json({ ok: true, layout: saved ? saved.layout : null, savedAt: saved ? saved.savedAt : null, fromRole: saved ? saved.fromRole : null, fromPage: saved && saved.fromRole !== roleId ? ROLES[saved.fromRole].page : null });
+    res.json({ ok: true, layout: saved ? saved.layout : null, savedAt: saved ? saved.savedAt : null, fromRole: saved ? saved.fromRole : null, fromPage: saved && saved.fromRole !== roleId ? (homeRoles.get(saved.fromRole) || { page: 'another Home page' }).page : null });
   });
   app.post('/home-layout', express.json({ limit: '16kb' }), async (req, res) => {
     const roleId = String(req.body?.role || '');
-    if (!Object.hasOwn(ROLES, roleId)) { res.status(400).json({ ok: false, error: 'Unknown page.' }); return; }
+    if (!homeRoles.has(roleId)) { res.status(400).json({ ok: false, error: 'Unknown page.' }); return; }
     if (roleId === 'foh' && !hasFohAccess(req)) { res.status(403).json({ ok: false, error: 'Enter the FOH Home access code first.' }); return; }
     const data = await roleData(roleId, null).catch(() => null);
     const person = data && data.ok && data.engineer;
@@ -152,7 +151,7 @@ function mountFoh(app, status) {
   // The station picker: every Home page, whether it's set up, and who's on
   app.get('/home-pages', async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    const pages = await Promise.all(Object.entries(ROLES).map(async ([id, role]) => {
+    const pages = await Promise.all(Object.entries(homeRoles.all()).map(async ([id, role]) => {
       const locked = id === 'foh' && !!accessCode();
       // Set up = Planning Center connected and this page's role picked
       const configured = !!(config.get('pcoAppId') && config.get('pcoSecret') && config.get('pcoServiceTypeId') && pcoServices.rolePicked(id));
@@ -164,24 +163,25 @@ function mountFoh(app, status) {
       }
       // Planning Center turned off on purpose: said so, rather than "not set up"
       const note = config.get('pcoEnabled') === false ? 'Planning Center is off' : undefined;
-      return { id, page: role.page, label: role.label, href: `/${id}.html`, configured, person, locked, ...(note ? { note } : {}) };
+      return { id, page: role.page, label: role.label, href: role.href, custom: role.custom, configured, person, locked, ...(note ? { note } : {}) };
     }));
     res.json({ ok: true, pages, plugins: require('./plugins').pages() }); // plugins' own pages, listed after the Home pages
   });
   app.get('/role-data', async (req, res) => {
     const roleId = String(req.query.role || '');
-    if (!Object.hasOwn(ROLES, roleId) || roleId === 'foh') { res.status(404).json({ ok: false, error: 'Unknown page.' }); return; }
+    if (!homeRoles.has(roleId) || roleId === 'foh') { res.status(404).json({ ok: false, error: 'Unknown page.' }); return; }
     res.json(await roleData(roleId, null));
   });
   const rolePage = path.join(__dirname, '..', 'mixer', 'role.html');
-  for (const roleId of Object.keys(ROLES)) {
-    if (roleId !== 'foh') app.get(`/${roleId}.html`, (req, res) => res.sendFile(rolePage));
-  }
+  // Every Home page but FOH's is role.html; a custom page only while it exists
+  app.get(/^\/((?:propresenter|lighting|switcher|producer)|hp-[0-9a-f]{10})\.html$/, (req, res, next) => {
+    if (homeRoles.has(req.params[0])) res.sendFile(rolePage); else next();
+  });
 }
 
 const lastLiveId = new Map(); // "serviceType:plan" -> the live item id Planning Center last gave
 async function roleData(roleId, status) {
-  const role = ROLES[roleId];
+  const role = homeRoles.get(roleId) || { label: 'Home', page: 'This Home page' };
   const roleInfo = { id: roleId, label: role.label, page: role.page };
   const consoleConnected = !!(status && status.isConsoleConnected && status.isConsoleConnected());
   const connectionCount = (status && status.getConnectionCount) ? status.getConnectionCount() : 0;
@@ -233,11 +233,12 @@ async function roleData(roleId, status) {
     // roster's own team filter, whichever (or both) are actually set —
     // also where the roster card's "Worship Team" heading comes from,
     // rather than a generic "Team" that doesn't say which one.
-    let positionTeam = null;
+    let onRoleTeam = null, onRosterTeam = null;
     let rosterTeamName = null;
     if (fohTeamId || rosterTeamId) {
       const positions = await pco.listPositions(serviceTypeId, creds);
-      positionTeam = new Map(positions.map((p) => [p.name.toLowerCase(), p.teamId]));
+      if (fohTeamId) onRoleTeam = teamMatcher(positions, fohTeamId);
+      if (rosterTeamId) onRosterTeam = teamMatcher(positions, rosterTeamId);
       if (rosterTeamId) {
         const teamMatch = positions.find((p) => p.teamId === rosterTeamId);
         rosterTeamName = teamMatch ? teamMatch.teamName : null;
@@ -251,7 +252,7 @@ async function roleData(roleId, status) {
       if ((m.positionName || '').toLowerCase() !== positionName.toLowerCase()) return false;
       if (m.declined) return false;
       if (!(includeUnconfirmed || m.confirmed)) return false;
-      if (fohTeamId && positionTeam && positionTeam.get((m.positionName || '').toLowerCase()) !== fohTeamId) return false;
+      if (onRoleTeam && !onRoleTeam(m)) return false;
       if (day && m.days.length > 0 && !m.days.includes(day)) return false;
       return true;
     });
@@ -264,7 +265,7 @@ async function roleData(roleId, status) {
       if (m.declined) continue;
       if (!(includeUnconfirmed || m.confirmed)) continue;
       if (hidden.has((m.positionName || '').toLowerCase())) continue;
-      if (rosterTeamId && positionTeam && positionTeam.get((m.positionName || '').toLowerCase()) !== rosterTeamId) continue;
+      if (onRosterTeam && !onRosterTeam(m)) continue;
       if (day && m.days.length > 0 && !m.days.includes(day)) continue;
       const key = m.personId ? `id:${m.personId}` : `name:${String(m.personName || '').toLowerCase()}`;
       const role = m.positionName || 'Team';
@@ -333,4 +334,4 @@ async function roleData(roleId, status) {
   }
 }
 
-module.exports = { mountFoh, ROLES, hasFohAccess };
+module.exports = { mountFoh, hasFohAccess };

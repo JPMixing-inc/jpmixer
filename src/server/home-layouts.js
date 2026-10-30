@@ -1,7 +1,7 @@
 'use strict';
 
 // ── Saved Home page layouts, per team member ────────────────────────────────
-// Each Home page (FOH, ProPresenter, Lighting, Switcher) can save its card
+// Each Home page (FOH, ProPresenter, Lighting, Switcher, Producer and the custom ones) can save its card
 // arrangement for the person Planning Center has scheduled on it (the Save
 // layout button, see foh.js). That person's layout then loads on any device
 // they open the page on. Stored on this computer in home-layouts.json:
@@ -14,7 +14,8 @@ const { app } = require('electron');
 const { writeFileAtomic, loadJsonObject } = require('./safe-write');
 const { toNullProto } = require('./safe-object');
 
-const ROLES = new Set(['foh', 'propresenter', 'lighting', 'switcher']);
+// Any Home page's id (home-roles.js), by its form: a backup can hold a page this computer doesn't have
+const { ROLE_ID } = require('./home-roles');
 const SIZES = new Set(['compact', 'standard', 'wide', 'full']);
 const HEIGHTS = new Set(['auto', 'short', 'tall']);
 const CARD_ID = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -70,7 +71,7 @@ function clean(layout) {
 
 function get(role, personId) {
   load();
-  if (!ROLES.has(role) || !PERSON_ID.test(String(personId || ''))) return null;
+  if (!ROLE_ID.test(String(role)) || !PERSON_ID.test(String(personId || ''))) return null;
   return (store[role] && store[role][personId]) || null;
 }
 
@@ -81,11 +82,11 @@ function get(role, personId) {
 function forPerson(role, personId) {
   const own = get(role, personId);
   if (own) return { ...own, fromRole: role };
-  if (!ROLES.has(role) || !PERSON_ID.test(String(personId || ''))) return null;
+  if (!ROLE_ID.test(String(role)) || !PERSON_ID.test(String(personId || ''))) return null;
   load();
   let best = null;
-  for (const other of ROLES) {
-    if (other === role) continue;
+  for (const other of Object.keys(store)) {
+    if (other === role || !ROLE_ID.test(other)) continue;
     const entry = store[other] && store[other][personId];
     if (entry && (!best || String(entry.savedAt) > String(best.savedAt))) best = { ...entry, fromRole: other };
   }
@@ -107,7 +108,7 @@ function cleanAll(data) {
   const out = Object.create(null); // person ids come from backup files: no prototype to reach
   if (!data || typeof data !== 'object' || Array.isArray(data)) return out;
   for (const [role, byPerson] of Object.entries(data)) {
-    if (!ROLES.has(role) || !byPerson || typeof byPerson !== 'object') continue;
+    if (!ROLE_ID.test(role) || !byPerson || typeof byPerson !== 'object') continue;
     for (const [person, entry] of Object.entries(byPerson)) {
       const layout = PERSON_ID.test(person) && entry && clean(entry.layout);
       if (!layout) continue;
@@ -146,7 +147,7 @@ function replaceAll(data) {
 
 function set(role, personId, name, layout) {
   const tidy = clean(layout);
-  if (!ROLES.has(role) || !PERSON_ID.test(String(personId || '')) || !tidy) return false;
+  if (!ROLE_ID.test(String(role)) || !PERSON_ID.test(String(personId || '')) || !tidy) return false;
   load();
   const previous = store[role];
   store[role] = Object.assign(Object.create(null), previous);
