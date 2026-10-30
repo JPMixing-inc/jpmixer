@@ -13,7 +13,7 @@
   <a href="docs/MANUAL.md"><img alt="User Manual" src="https://img.shields.io/badge/User%20Manual-read%20it-1f2128?style=for-the-badge" /></a>
   <a href="docs/MUSICIAN-GUIDE.md"><img alt="Musician Guide" src="https://img.shields.io/badge/Musician%20Guide-for%20the%20band-1f2128?style=for-the-badge" /></a>
   <img alt="macOS and Windows" src="https://img.shields.io/badge/macOS%20%7C%20Windows-1f2128?style=for-the-badge" />
-  <img alt="DiGiCo, dLive, KLANG, WING, LV1" src="https://img.shields.io/badge/DiGiCo%20%C2%B7%20dLive%20%C2%B7%20KLANG%20%C2%B7%20WING%20%C2%B7%20LV1-1f2128?style=for-the-badge" />
+  <img alt="DiGiCo, dLive, WING, LV1" src="https://img.shields.io/badge/DiGiCo%20%C2%B7%20dLive%20%C2%B7%20WING%20%C2%B7%20LV1-1f2128?style=for-the-badge" />
 </p>
 
 <p align="center">
@@ -351,20 +351,20 @@ Every feature is explained step by step in the **[User Manual](docs/MANUAL.md)**
 
 ## 🎛️ Console support
 
-| | DiGiCo<br/><sub>SD / Quantum / S</sub> | Allen & Heath<br/>dLive | KLANG<br/><sub>paired with dLive</sub> | Behringer<br/>WING | Waves<br/>eMotion LV1 |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **Connection** | OSC (DiGiCo Pad) | MIDI over TCP/IP | OSC to the KLANG processor | OSC, UDP 2223 | MyMon remote, TCP |
-| **Levels, mute & solo** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Per-send pan** | ✅ | ✅ stereo mixes | ✅ stereo mode | ✅ | ✅ stereo mixes |
-| **Names from the console** | ✅ channels, mixes | ✅ channels, mixes | channels* | channels | ✅ channels, mixes |
-| **Counts from the console** | ✅ | mixes | — | — | ✅ |
-| **Ear Scenes** | ✅ by snapshot name | ✅ by scene number | ✅ by scene number | — | ✅ by scene name |
-| **Built-in aux EQ** | ✅ | ✅ PEQ | — | — | ✅ monitor mixes |
-| **Console Controller** | ✅ | ✅ | — | — | ✅ |
-| **Channel processing panel** | ✅ | ✅ high-pass, PEQ, preamp | — | — | ✅ EQ, preamp read-only |
-| **Tested on** | Live services | dLive Director | Protocol only | Protocol only | An LV1 show |
+| | DiGiCo<br/><sub>SD / Quantum / S</sub> | Allen & Heath<br/>dLive | Behringer<br/>WING | Waves<br/>eMotion LV1 |
+|---|:---:|:---:|:---:|:---:|
+| **Connection** | OSC (DiGiCo Pad) | MIDI over TCP/IP | OSC, UDP 2223 | MyMon remote, TCP |
+| **Levels, mute & solo** | ✅ | ✅ | ✅ | ✅ |
+| **Per-send pan** | ✅ | ✅ stereo mixes | ✅ | ✅ stereo mixes |
+| **Names from the console** | ✅ channels, mixes | ✅ channels, mixes | channels | ✅ channels, mixes |
+| **Counts from the console** | ✅ | mixes | — | ✅ |
+| **Ear Scenes** | ✅ by snapshot name | ✅ by scene number | — | ✅ by scene name |
+| **Built-in aux EQ** | ✅ | ✅ PEQ | — | ✅ monitor mixes |
+| **Console Controller** | ✅ | ✅ | — | ✅ |
+| **Channel processing panel** | ✅ | ✅ high-pass, PEQ, preamp | — | ✅ EQ, preamp read-only |
+| **Tested on** | Live services | dLive Director | Protocol only | An LV1 show |
 
-<sub>* From the paired dLive, when its address is entered. Setup for each console: [Connecting your console](docs/MANUAL.md#4-connecting-your-console).</sub>
+<sub>Setup for each console: [Connecting your console](docs/MANUAL.md#4-connecting-your-console).</sub>
 
 Each console runs as its own backend; choosing one never touches another’s connection. Every page works the same whichever console is active.
 
@@ -374,8 +374,8 @@ Each console runs as its own backend; choosing one never touches another’s con
 
 JPMixer runs a web server and a WebSocket bridge inside an Electron app.
 
-- **A musician’s fader move** goes to JPMixer over WebSocket, which sends it to the console and shows it on every other screen. The console link is OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP to a KLANG processor, OSC/UDP for WING, or LV1’s MyMon remote (OSC over TCP).
-- **Mute and solo** on DiGiCo work by driving the send to −∞ and restoring it afterwards. dLive switches the send's own on/off (its level stays on the console), as KLANG, WING and LV1 do with their real per-send mute.
+- **A musician’s fader move** goes to JPMixer over WebSocket, which sends it to the console and shows it on every other screen. The console link is OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP for WING, or LV1’s MyMon remote (OSC over TCP).
+- **Mute and solo** on DiGiCo work by driving the send to −∞ and restoring it afterwards. dLive switches the send's own on/off (its level stays on the console), as WING and LV1 do with their real per-send mute.
 - **Kind to the console:** background queries are paced. A performer’s own moves, mutes and solos go out immediately.
 - **Locked down:** a phone can only touch its own mix’s sends and EQ. A server-side allowlist blocks everything else.
 - **Names stay in JPMixer:** your own names and Planning Center’s performer names are JPMixer labels. The console’s names are never changed, and Planning Center is only read.
@@ -390,4 +390,4 @@ JPMixer runs a web server and a WebSocket bridge inside an Electron app.
 
 <p align="center"><b>🌐 <a href="https://jpmixing.com">jpmixing.com</a></b></p>
 
-<p align="center"><sub>JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer/MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen &amp; Heath Limited. KLANG is a trademark of KLANG:technologies GmbH. WING is a trademark of MUSIC Tribe Global Brands Ltd. Waves and eMotion LV1 are trademarks of Waves Audio Ltd. Planning Center is a trademark of Ministry Centered Technologies.</sub></p>
+<p align="center"><sub>JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, Behringer/MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen &amp; Heath Limited. WING is a trademark of MUSIC Tribe Global Brands Ltd. Waves and eMotion LV1 are trademarks of Waves Audio Ltd. Planning Center is a trademark of Ministry Centered Technologies.</sub></p>
