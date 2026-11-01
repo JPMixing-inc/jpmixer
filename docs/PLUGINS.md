@@ -2,7 +2,7 @@
 
 A plugin adds something to JPMixer that it doesn’t do itself. Today a plugin can:
 
-- put a card on **FOH Home**, which can be moved and resized like any other card;
+- put cards on **FOH Home**, or on every Home page, which can be moved and resized like any other card, with buttons and a text box that reach the plugin (more than one card, buttons, and other Home pages: JPMixer 2.0.19 and later);
 - read the console’s channel, mix and control group names, and whether the console is connected;
 - read the Planning Center plan, what’s live and what’s next;
 - have a page of its own, listed with the Home pages (JPMixer 2.0.13 and later);
@@ -133,6 +133,9 @@ Installing copies the plugin there. You can also put a plugin's folder there you
 | `main` | The JavaScript file to run, inside the folder. Defaults to `index.js`. |
 | `permissions` | What the plugin uses from JPMixer (see below). |
 | `card.title` | The card's heading on FOH Home. Defaults to `name`. |
+| `card.homePages` | `"all"` puts the card on every Home page (ProPresenter, Lighting, Switcher, Producer and those a church adds), not only FOH Home. JPMixer 2.0.19 and later. |
+| `card.size` | Its starting size on the pages: `"standard"` (the default), `"tall"`, `"wide"` or `"large"` (half the page wide, tall enough for a controller). Arrange page can change it. JPMixer 2.0.19 and later. |
+| `cards` | Several cards instead of one: up to 6, each `{ "id", "title", "homePages", "size" }`. `id` is up to 12 lowercase letters, numbers and dashes, starting with a letter, and the plugin's id and a card's id together can be up to 29 characters. JPMixer 2.0.19 and later. |
 | `page.title`, `page.entry` | With the `page` permission: the page's name on the Home pages list (defaults to `name`), and its HTML file inside the folder (defaults to `page/index.html`). |
 | `page.listed` | `false` keeps the page off the Home pages list: it opens from its link, or from its tab in Settings. JPMixer 2.0.16 and later. |
 | `minJPMixer` | The oldest JPMixer version it works with, like `"2.1.0"`. Find plugins won't offer it to older versions. |
@@ -144,10 +147,11 @@ The person turning the plugin on sees this list before it's turned on.
 
 | Permission | Lets the plugin |
 |---|---|
-| `card` | Show a card on FOH Home (`jp.card`) |
+| `card` | Show cards on the Home pages, with buttons that reach the plugin (`jp.card`) |
 | `console` | See channel, control group and mix names, each channel's 48V, and whether the console is connected (`jp.console`) |
 | `planningCenter` | See the plan’s title, what’s live and what’s next (`jp.planningCenter`) |
 | `page` | Show a page of its own, listed with the Home pages (`jp.page`; see "A page of its own"). JPMixer 2.0.13 and later. |
+| `timers` | Show its running timers at the top of every Home page and on the Green Room screen (`jp.timers`). JPMixer 2.0.19 and later. |
 
 A plugin that uses something it didn't ask for gets an error.
 
@@ -192,8 +196,11 @@ module.exports = async (jp) => {
 |---|---|
 | `jp.plugin` | `{ id, name, version, folder, dataFolder }` |
 | `jp.settings` | Its settings, as `{ key: value }` |
-| `jp.card.show(card)` | Sets what's on its FOH Home card (see "The card") |
-| `jp.card.clear()` | Takes everything off the card. The card is hidden until it shows something again. |
+| `jp.card.show(card, id)` | Sets what's on a card (see "The card"). `id` is which of its `cards`; left out, its first or only one. |
+| `jp.card.clear(id)` | Takes everything off that card. The card is hidden until it shows something again. |
+| `jp.timers.show(list)` | Its running timers, at the top of every Home page (under the header) and on the Green Room screen (next to the clock): `[{ name: 'Countdown', time: '4:57', over: false }]`, up to 8. `time` is shown as written; `over: true` shows it in red (past zero). Show `[]` when none is running, and nothing shows. JPMixer 2.0.19 and later. |
+| `jp.card.image(name, data, { card, type })` | A picture for the card's `images` entry `name`: a Buffer of a JPEG, PNG or WebP (`type`, `'image/jpeg'` by default) of up to 600 kB, or `null` to take it away. `card` is which of its cards. The pages fetch each picture once, when it changes. JPMixer 2.0.19 and later. |
+| `jp.card.onPress(fn)` | Calls `fn({ card, button, text })` when someone uses a button or the text box on one of its cards: `card` is the card's `id` (`''` for a plugin's only card), `button` the button's or text box's `id`, and `text` what was typed. JPMixer 2.0.19 and later. |
 | `jp.status(text, level)` | One line on the plugin's tab in Settings. `level` is `'ok'` (the default), `'warn'` or `'error'`. |
 | `jp.console.get()` | A promise of the console's state (see below) |
 | `jp.console.onChange(fn)` | Calls `fn(state)` when that changes. JPMixer checks about every 3 seconds. |
@@ -215,6 +222,20 @@ jp.card.show({
   color: 'green',          // the big text's color: green, yellow, red, blue or gray
   rows: [                  // up to 20 rows: label on the left, value on the right
     { label: 'Battery', value: '80%', color: 'green' },
+    { label: 'Countdown', value: '05:00', buttons: [{ id: 'start', label: 'Start' }] },  // up to 3 small buttons of its own (2.0.19)
+  ],
+  text: 'Verse 1\nLine two', // a block of text, line breaks kept (up to 600 characters)
+  buttons: [               // up to 24 buttons; a press calls jp.card.onPress
+    { id: 'next', label: 'Next', color: 'blue' },          // id: letters, numbers and _ . : -
+    { id: 'live', label: 'Live', active: true },           // active: drawn as on
+    { id: 'off', label: 'Off', disabled: true },           // disabled: can't be pressed
+  ],
+  input: { id: 'msg', placeholder: 'Message', button: 'Send' },  // a text box with its button
+  images: [                // up to 4 pictures side by side (2.0.19), sent with jp.card.image
+    { name: 'current', label: 'Now', caption: 'Verse 1' },
+  ],
+  sections: [              // up to 6 parts with a heading each (2.0.19); each can have
+    { title: 'Controls', buttons: [{ id: 'next', label: 'Next' }] },  // text, rows, images, input, buttons
   ],
   note: 'Updated just now', // small text at the bottom
   title: 'Clock',          // changes the card's heading
@@ -224,13 +245,15 @@ jp.card.show({
 - Every part is optional.
 - Everything is shown as plain text; HTML isn't read.
 - Calling `show` again replaces the whole card.
-- About four updates a second reach FOH Home, and the page checks about every 2 seconds. Each update always carries the latest card.
+- About four updates a second reach the Home pages, and each page checks every second. Each update always carries the latest card.
+- Only a button (or text box) the card is showing at that moment can be pressed, and not a disabled one.
+- On FOH Home, with an FOH code set, the cards and their buttons need the code. The other Home pages are open to the whole team, so a card with `"homePages": "all"` can be used by anyone who can open one. Buttons, text, `text` and `input`: JPMixer 2.0.19 and later.
 
 ### `jp.console.get()`
 
 ```js
 {
-  type: 'digico',          // digico, dlive, klang, wing or lv1
+  type: 'digico',          // digico, dlive, klang, wing, lv1 or m32
   demo: false,             // demo mode's made-up console
   running: true,           // JPMixer's server is running
   connected: true,         // the console is connected

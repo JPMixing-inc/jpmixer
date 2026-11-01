@@ -1,6 +1,6 @@
 # Shure wireless
 
-**A JPMixer Original plugin** · version 1.0.0 · needs JPMixer 2.0.14 or later
+**A JPMixer Original plugin** · version 1.0.1 · needs JPMixer 2.0.14 or later
 
 Each Shure wireless mic's name, battery and transmitter, the way Wireless Workbench shows them. It's on FOH Home's Wireless card, on each musician's phone, in Monitor Engineer next to the mix, and on the Green Room TV.
 

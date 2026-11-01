@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.18 · October 2026**
+**Version 2.0.19 · November 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -202,7 +202,7 @@ DiGiCo gives JPMixer the most: live names and counts, per-send pan, the built-in
 1. On the surface, open **Utility → Control → MIDI** and turn **MIDI/TCP** on. Nothing can connect until it is.
 2. Note the **Main MIDI Channels** shown there. JPMixer’s **Base MIDI Channel** (0 to 11) must match: channel 1 is `0`, channel 12 is `11`.
 3. In JPMixer, enter the **MixRack’s** IP address (not the surface’s), then click **Find** next to Base MIDI Channel: JPMixer asks the console which MIDI channels it’s on and fills it in. It only reads names; nothing on the console changes.
-4. Turn on **Use TLS/SSL** and enter the username and password only if MIDI/TCP is in Secure Mode on the console.
+4. Turn on **Use TLS/SSL** and enter the **User profile** (its number, 1–32, as the console lists it) and password only if MIDI/TCP is in Secure Mode on the console.
 5. Leave **MIDI/TCP Port Override** at `0`. If the console doesn’t answer, try `51328`.
 
 The dLive MixRack accepts many connections at once, so JPMixer runs alongside Director, MixPad and other remotes. JPMixer reads channel and mix names, finds which mono and stereo aux mixes the show has, and runs the Console Controller. Leave **Listen for live send-level updates** and **Poll send levels as a backup** on.
@@ -231,6 +231,16 @@ KLANG can’t report back what it applied, so JPMixer shows its own last-sent va
 ### Behringer WING
 
 Enter the WING’s **Console IP Address** and leave **WING Port Override** at `0` (OSC port 2223). WING confirms it is reachable when it connects, so the status pill is reliable. WING has no scene recall over OSC, so Ear Scenes don’t apply. Check per-send pan the first time you connect: if it doesn’t reach full left and right, tell your JPMixer contact.
+
+### Midas M32 and Behringer X32
+
+New in 2.0.19, and still being tested on real consoles: see [Testing JPMixer on a Midas M32 or Behringer X32](M32-TESTING.md) if you can help.
+
+1. Set **Console Type** to **Midas M32 / Behringer X32**. It covers every M32 (M32, M32R, M32C) and every X32.
+2. Enter the console’s **Console IP Address** (on the console: Setup → Network) and leave **M32 Port Override** at `0` (OSC port 10023). Nothing needs switching on at the console: JPMixer connects the way M32-Edit and the M32 Mix app do.
+3. **Channels** go up to 48: 1–32 are the input channels, 33–40 the aux ins and 41–48 the FX returns. Set 32 to leave the aux ins and FX returns out. **Auxes** are the 16 mix buses.
+
+Channel, mix and DCA names come from the console, and changes made on the desk or in M32-Edit reach the phones. Two mix buses linked on the console are one stereo mix with pan, under the first bus’s number. Ear Scenes follow the console’s scene (or cue or snippet) number. Mix EQ for performers and the channel processing panel aren’t available yet. **OSC Log → Start Logging** records what the console sent, to share if something doesn’t work.
 
 ### Waves eMotion LV1
 
@@ -583,7 +593,7 @@ Each input shows a big reading (LAeq 10 unless you choose another) and a small l
 Plugins add things JPMixer doesn’t do itself, such as a card on FOH Home with a reading from another program or device. Everything to do with them is under **Settings → Plugins**. Each plugin runs on its own, so if one stops working, JPMixer and the console carry on. A plugin can’t read JPMixer’s settings or passwords, or open other programs.
 
 1. Under **Find plugins**, click **Install** on a plugin from JPMixer’s approved list. Each one says what it can do. To install one that isn’t on the list, use **Import plugin…** with its `.jpmplugin` or `.zip` file, drop the file on the page, or double-click it. These are labelled *Not reviewed*: only install them if you trust whoever made them.
-2. Each plugin gets its own tab under Plugins in the sidebar, and starts off. Turn it on there, fill in its settings, and click **Save & Apply**. If it shows a card, the card appears on FOH Home and can be arranged like any other.
+2. Each plugin gets its own tab under Plugins in the sidebar, and starts off. Turn it on there, fill in its settings, and click **Save & Apply**. If it shows cards, they appear on FOH Home (and on every Home page, if the plugin puts them there) and can be arranged like any other. A plugin’s card can have buttons: on FOH Home they need its access code, if one is set.
 
 When a plugin on the approved list has a newer version, a red dot appears next to **Plugins** in the sidebar, and the plugin’s row has an **Update** button. JPMixer looks a minute after it starts, every 6 hours after that, and whenever you open the Plugins page. Updating keeps the plugin’s settings.
 
@@ -593,7 +603,7 @@ To remove a plugin, click **Remove…**: on its row under **Your plugins**, at t
 
 <p align="center"><sub>Fig. 11.4 · Settings → Plugins. JPMixer’s own plugins have a red JPMixer Original badge; each row shows how it’s doing.</sub></p>
 
-JPMixer’s own plugins (Patch, Companion buttons, Smaart SPL and Shure wireless) have a red *JPMixer Original* badge, as long as their files are the approved ones. Companion, Smaart and Shure each get their own tab under Plugins once installed; their row in the list opens that tab.
+JPMixer’s own plugins (Patch, Companion buttons, Smaart SPL, Shure wireless, Custom Pages and ProPresenter) have a red *JPMixer Original* badge, as long as their files are the approved ones. Companion, Smaart and Shure each get their own tab under Plugins once installed; their row in the list opens that tab.
 
 To make a plugin, by hand or with an AI assistant, see the [plugin guide](https://github.com/JPMixing-inc/jpmixer/blob/main/docs/PLUGINS.md) (**Open the plugin guide** on the Plugins page).
 
@@ -622,13 +632,31 @@ To make a plugin, by hand or with an AI assistant, see the [plugin guide](https:
 - **New link** stops the old link and QR code working straight away. A page that’s off shows that it isn’t available.
 - Custom Pages aren’t on the Home pages list: they open only from their links.
 
+### The ProPresenter plugin
+
+**ProPresenter** (2.0.19 and later) puts ProPresenter on every Home page, through ProPresenter’s own network API, the one ProPresenter Control uses. It needs ProPresenter 7.9 or later.
+
+1. In ProPresenter, open **Settings → Network** and turn on **Enable Network**. Note the **IP Address** and **Port** it shows.
+2. Install **ProPresenter** from Find plugins and turn it on. In its tab, enter that address (blank if ProPresenter runs on the JPMixer computer) and the port, then **Save & Apply**. The status line says Connected.
+
+Its cards, on every Home page:
+
+- **ProPresenter**, a controller: pictures of the current slide (**Now**) and the next one (**Next**) with their words, or the image or video from the Media bin that’s on screen; **‹ Previous**, **Next ›**, **Clear slide**, **Clear media** and ProPresenter’s **Clear All**; up to four timers with Start, Stop and Reset; and the **Stage message**, typed and shown on the stage screens.
+- **Timers:** every timer, counting live.
+- **Audience messages:** Show and Hide for each of ProPresenter’s messages, once it has some.
+- **Macros & Looks:** a button for each macro, and each Look with the live one marked.
+
+**Running timers at the top:** while a ProPresenter timer runs, it shows under the header of every Home page and next to the clock on the Green Room screen, red once it’s past zero. Turn it off with **Running timers at the top of the pages** in the plugin’s tab.
+
+Anyone who can open a Home page can use the buttons, as with ProPresenter Control; on FOH Home, its access code covers them too. If ProPresenter closes or the network drops, the cards say so and JPMixer reconnects by itself.
+
 ### The Pages tab and access codes
 
 <p align="center"><img src="manual/img/settings-pages.png" alt="The Pages tab: Home page picker, FOH Home with access code, and the other Home pages"></p>
 
 <p align="center"><sub>Fig. 11.5 · Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</sub></p>
 
-Settings → Pages lists every page JPMixer serves with its direct link. FOH Home and the Console Controller can each have an **Access code**: other devices enter it once, and changing it signs every device out. JPMixer’s own windows, and pages opened from Settings, never need it. Leave it empty to turn it off.
+Settings → Pages lists every page JPMixer serves with its direct link. FOH Home and the Console Controller can each have an **Access code**: other devices enter it once, and changing it signs every device out. JPMixer’s own windows, and pages opened from Settings, never need it. Leave it empty to turn it off. From 2.0.19 the Console Controller’s code also covers the **‹ ›** scene buttons, on the Console Controller and the Monitor Engineer page (which asks for it once).
 
 Up to 2.0.15, a device using the address without a port (the Port 80 helper, which the QR codes use) wasn’t asked for the FOH Home code. From 2.0.16 every other device is asked.
 
@@ -652,6 +680,7 @@ A full-screen, read-only display for a TV or iPad in the green room: who is serv
 - **Mic batteries:** with Shure wireless set up and each mic given a mix ([Chapter 11](#11-production-home-pages)), a person’s card shows their mic’s battery while it’s on: **Good**, **Replace** or **Critical**. The card uses the mix their position is mapped to on the Planning Center tab. Turn off **Show mic batteries** under Settings → Pages → Green Room to hide them.
 - **SPL:** with Smaart SPL set up ([Chapter 11](#11-production-home-pages)), turn on **Show SPL from Smaart** under Settings → Pages → Green Room to show a live sound level beside the clock, in Smaart’s colors and marked *Over the limit* when one of Smaart’s alarms trips. Choose its own **Reading** and **Input** there; Automatic uses LAeq 10 and the first input FOH Home’s SPL card shows.
 - **Now and Up next:** while someone runs the service in Planning Center Live, a strip shows the live item and the next one, with their key and length, and the time left on the live item (red when it runs over), with a bar along the bottom that fills as it goes. It follows Live within about 15 seconds and disappears when Live isn’t running.
+- **ProPresenter timers:** with the ProPresenter plugin, a timer running in ProPresenter shows beside the clock in large numbers, red once it’s past zero ([Chapter 11](#the-propresenter-plugin)).
 - **Service starts in:** under the clock, a countdown to the next service time in Planning Center, from 12 hours before. It hides while a service is on.
 - It shows the team chosen under Planning Center → Your service (or everyone), minus any position marked Hide from Green Room. Someone serving more than one role shows once, with each role under their name.
 - No code is needed. It is information only, not a control surface.
@@ -712,7 +741,7 @@ Protect your setup and everyone’s saved mixes on a schedule, keep copies, and 
 
 ### Automatic backups
 
-Turn on **Automatically back up** and choose how often: every day, 3 days, week, 2 weeks or month. Backups include console settings, channel and mix setup, My Mixes, Ear Scenes, Home page layouts, the Devices stage arrangement, and the console names JPMixer remembers. Backups older than a month are deleted by themselves. **Show in Finder** opens the folder.
+Turn on **Automatically back up** and choose how often: every day, 3 days, week, 2 weeks or month. Backups include console settings, channel and mix setup, My Mixes, Ear Scenes, Home page layouts, the Devices stage arrangement, the console names JPMixer remembers, and which plugins are on with their settings (from 2.0.19). Backups older than a month are deleted by themselves. **Show in Finder** opens the folder.
 
 ### Export a backup
 
@@ -832,19 +861,19 @@ Replace `192.168.1.20` with your JPMixer computer’s address from the Get start
 
 Every page works the same whichever console you use. What changes is what each console lets JPMixer do.
 
-| Feature | DiGiCo | dLive | KLANG | WING | LV1 |
-|---|---|---|---|---|---|
-| Levels, mute and solo | Yes | Yes | Yes | Yes | Yes |
-| Per-send pan | Yes | Stereo mixes | Stereo mode | Yes | Stereo mixes |
-| Names from the console | Channels, mixes | Channels, mixes | Channels* | Channels | Channels, mixes |
-| Counts from the console | Yes | Mixes | No | No | Yes |
-| My Mixes and Devices | Yes | Yes | Yes | Yes | Yes |
-| Ear Scenes | By snapshot name | By scene number | By scene number | No | By scene name |
-| Built-in aux EQ | Yes | Yes (PEQ) | No | No | Monitor mixes |
-| Console Controller | Yes | Yes, with FX, groups, matrices, mains and mute groups | No | No | Yes |
-| Channel processing panel | Yes | High-pass, PEQ, and the preamp from Patch | No | No | EQ, and the preamp read-only |
+| Feature | DiGiCo | dLive | KLANG | WING | LV1 | M32 / X32 |
+|---|---|---|---|---|---|---|
+| Levels, mute and solo | Yes | Yes | Yes | Yes | Yes | Yes |
+| Per-send pan | Yes | Stereo mixes | Stereo mode | Yes | Stereo mixes | Stereo (linked) mixes |
+| Names from the console | Channels, mixes | Channels, mixes | Channels* | Channels | Channels, mixes | Channels, mixes, DCAs |
+| Counts from the console | Yes | Mixes | No | No | Yes | No |
+| My Mixes and Devices | Yes | Yes | Yes | Yes | Yes | Yes |
+| Ear Scenes | By snapshot name | By scene number | By scene number | No | By scene name | By scene number |
+| Built-in aux EQ | Yes | Yes (PEQ) | No | No | Monitor mixes | No |
+| Console Controller | Yes | Yes, with FX, groups, matrices, mains and mute groups | No | No | Yes | Channels, mixes and DCAs |
+| Channel processing panel | Yes | High-pass, PEQ, and the preamp from Patch | No | No | EQ, and the preamp read-only | No |
 
-* KLANG mode reads channel names from the paired dLive, when its address is entered. DiGiCo is in regular use. dLive has been tested against dLive Director, LV1 against an LV1 show, and KLANG and WING against their published protocols; try each on your own console before a service.
+* KLANG mode reads channel names from the paired dLive, when its address is entered. DiGiCo is in regular use. dLive has been tested against dLive Director, LV1 against an LV1 show, and KLANG, WING and the M32 against their published protocols; try each on your own console before a service.
 
 ---
 

@@ -13,7 +13,7 @@
   <a href="docs/MANUAL.md"><img alt="User Manual" src="https://img.shields.io/badge/User%20Manual-read%20it-1f2128?style=for-the-badge" /></a>
   <a href="docs/MUSICIAN-GUIDE.md"><img alt="Musician Guide" src="https://img.shields.io/badge/Musician%20Guide-for%20the%20band-1f2128?style=for-the-badge" /></a>
   <img alt="macOS and Windows" src="https://img.shields.io/badge/macOS%20%7C%20Windows-1f2128?style=for-the-badge" />
-  <img alt="DiGiCo, dLive, WING, LV1" src="https://img.shields.io/badge/DiGiCo%20%C2%B7%20dLive%20%C2%B7%20WING%20%C2%B7%20LV1-1f2128?style=for-the-badge" />
+  <img alt="DiGiCo, dLive, WING, LV1, M32" src="https://img.shields.io/badge/DiGiCo%20%C2%B7%20dLive%20%C2%B7%20WING%20%C2%B7%20LV1%20%C2%B7%20M32-1f2128?style=for-the-badge" />
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
   <a href="#download"><b>⬇️ Download</b></a> &nbsp;·&nbsp;
   <a href="docs/MANUAL.md"><b>📖 User Manual</b></a> &nbsp;·&nbsp;
   <a href="docs/MUSICIAN-GUIDE.md"><b>🎧 Musician Guide</b></a> &nbsp;·&nbsp;
-  <a href="#new-in-2-0-15">What’s new</a> &nbsp;·&nbsp;
+  <a href="#new-in-2-0-19">What’s new</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
   <a href="#features">Features</a> &nbsp;·&nbsp;
   <a href="#plugins">Plugins</a> &nbsp;·&nbsp;
@@ -60,7 +60,7 @@
 |---|---|
 | **[User Manual](docs/MANUAL.md)** | The whole app, chapter by chapter, with screenshots. Start here. |
 | **[Musician Guide](docs/MUSICIAN-GUIDE.md)** | For the band: the phone screen, part by part, and how to mix, save and recall your own mix. Short and phone-friendly. |
-| **[Plugins](docs/plugins/README.md)** | A page for each plugin, with pictures and how to set it up: Patch, Shure wireless, Smaart SPL, Companion buttons, Custom Pages and Console check. |
+| **[Plugins](docs/plugins/README.md)** | A page for each plugin, with pictures and how to set it up: Patch, Shure wireless, Smaart SPL, Companion buttons, Custom Pages, ProPresenter and Console check. |
 | [Musician Guide, designed copy](docs/musician/index.html) | The same guide as a web page made for phones. |
 | [User Manual, designed copy](docs/manual/index.html) | The same manual as a web page to read offline or print. Download the repository and open `docs/manual/index.html`. |
 | [Release notes](https://github.com/JPMixing-inc/jpmixer/releases) | What changed in each version. |
@@ -81,7 +81,20 @@
 
 <a id="new-in-2-0-15"></a>
 
-## 🆕 New in 2.0.18
+## 🆕 New in 2.0.19
+
+| | |
+|---|---|
+| 🎛️ **Midas M32 and Behringer X32** | A sixth console, new and being tested: levels, mute, solo, pan on linked stereo mixes, live names, Ear Scenes by scene number and the Console Controller. [Help test it](docs/M32-TESTING.md). |
+| 📽️ **ProPresenter on every Home page** | A new plugin: a ProPresenter controller with pictures of the current and next slide, next and previous, clear, timers and the stage message, plus cards for audience messages, macros and Looks. |
+| ⏱️ **Running timers at the top** | A ProPresenter timer that's running shows under the header of every Home page and beside the clock on the Green Room screen. |
+| 🧩 **Plugin cards on every Home page** | Plugins can now put several cards on any Home page, with sections, pictures, buttons and a text box. Plugin settings are in backups. |
+| 🛡️ **A review of every console and plugin** | Mutes and solos that hold through a dropped connection on dLive, LV1 and M32, the ‹ › scene buttons behind the Console Controller code on every console, and fixes for Shure wireless and the Monitor and Console pages' reconnect. |
+
+<details>
+<summary><b>Earlier releases: 2.0.18, 2.0.17, 2.0.16, 2.0.15, 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.18
 
 | | |
 |---|---|
@@ -90,9 +103,6 @@
 | 🧭 **Simpler Planning Center and Performers tabs** | Planning Center is five numbered steps with one Connect button, and Saved Mixes shows one performer at a time. |
 | ⚡ **dLive loads faster** | A mix's faders arrive in under a second, stereo mixes say STEREO straight away, and PAN is ready before anyone opens a mix. |
 | 🛡️ **Stability for every console** | From a review of the whole app: LV1 mutes that hold during a recall, DiGiCo snapshots that stop the last Ear Scene, and a role name two Planning Center teams share now finds the right person. |
-
-<details>
-<summary><b>Earlier releases: 2.0.17, 2.0.16, 2.0.15, 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
 
 ### 2.0.16 and 2.0.17
 
@@ -309,6 +319,7 @@ Install only what you use, from **Settings → Plugins → Find plugins**. Each 
 | <a href="docs/plugins/smaart.md"><img src="docs/plugins/img/smaart-card.png" width="150" alt="Smaart SPL" /></a> | **[Smaart SPL](docs/plugins/smaart.md)** | Live sound levels from Rational Acoustics Smaart on FOH Home and the Green Room, in Smaart's own colors. Only reads. |
 | <a href="docs/plugins/companion.md"><img src="docs/plugins/img/companion-card.png" width="150" alt="Companion buttons" /></a> | **[Companion buttons](docs/plugins/companion.md)** | Bitfocus Companion buttons on each Home page, live. Tap to press, hold to hold. |
 | <a href="docs/plugins/custom-pages.md"><img src="docs/plugins/img/custom-pages-phone.png" width="150" alt="Custom Pages" /></a> | **[Custom Pages](docs/plugins/custom-pages.md)** | Link-only pages for a youth night or an event: just the faders that group needs, each with its own highest level, plus mutes and Companion buttons if you want them. |
+| <a href="docs/plugins/propresenter.md"><img src="docs/plugins/img/propresenter-cards.png" width="150" alt="ProPresenter" /></a> | **[ProPresenter](docs/plugins/propresenter.md)** | A ProPresenter controller on every Home page: the current and next slide's pictures, next and previous, clear, timers and the stage message, plus audience messages, macros and Looks. Running timers show at the top of the pages. |
 | <a href="docs/plugins/console-check.md"><img src="docs/plugins/img/console-check-card.png" width="150" alt="Console check" /></a> | **[Console check](docs/plugins/console-check.md)** | Whether the console is connected, on FOH Home. The example to start from if you're making a plugin of your own. |
 
 <p align="center"><img src="docs/plugins/img/patch-stage-box.png" alt="Patch: a stage box with every socket named and patched" width="880" /></p>
@@ -351,18 +362,18 @@ Every feature is explained step by step in the **[User Manual](docs/MANUAL.md)**
 
 ## 🎛️ Console support
 
-| | DiGiCo<br/><sub>SD / Quantum / S</sub> | Allen & Heath<br/>dLive | Behringer<br/>WING | Waves<br/>eMotion LV1 |
-|---|:---:|:---:|:---:|:---:|
-| **Connection** | OSC (DiGiCo Pad) | MIDI over TCP/IP | OSC, UDP 2223 | MyMon remote, TCP |
-| **Levels, mute & solo** | ✅ | ✅ | ✅ | ✅ |
-| **Per-send pan** | ✅ | ✅ stereo mixes | ✅ | ✅ stereo mixes |
-| **Names from the console** | ✅ channels, mixes | ✅ channels, mixes | channels | ✅ channels, mixes |
-| **Counts from the console** | ✅ | mixes | — | ✅ |
-| **Ear Scenes** | ✅ by snapshot name | ✅ by scene number | — | ✅ by scene name |
-| **Built-in aux EQ** | ✅ | ✅ PEQ | — | ✅ monitor mixes |
-| **Console Controller** | ✅ | ✅ | — | ✅ |
-| **Channel processing panel** | ✅ | ✅ high-pass, PEQ, preamp | — | ✅ EQ, preamp read-only |
-| **Tested on** | Live services | dLive Director | Protocol only | An LV1 show |
+| | DiGiCo<br/><sub>SD / Quantum / S</sub> | Allen & Heath<br/>dLive | Behringer<br/>WING | Waves<br/>eMotion LV1 | Midas M32<br/><sub>and Behringer X32</sub> |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Connection** | OSC (DiGiCo Pad) | MIDI over TCP/IP | OSC, UDP 2223 | MyMon remote, TCP | OSC, UDP 10023 |
+| **Levels, mute & solo** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Per-send pan** | ✅ | ✅ stereo mixes | ✅ | ✅ stereo mixes | ✅ linked mixes |
+| **Names from the console** | ✅ channels, mixes | ✅ channels, mixes | channels | ✅ channels, mixes | ✅ channels, mixes, DCAs |
+| **Counts from the console** | ✅ | mixes | — | ✅ | — |
+| **Ear Scenes** | ✅ by snapshot name | ✅ by scene number | — | ✅ by scene name | ✅ by scene number |
+| **Built-in aux EQ** | ✅ | ✅ PEQ | — | ✅ monitor mixes | — |
+| **Console Controller** | ✅ | ✅ | — | ✅ | ✅ |
+| **Channel processing panel** | ✅ | ✅ high-pass, PEQ, preamp | — | ✅ EQ, preamp read-only | — |
+| **Tested on** | Live services | dLive Director | Protocol only | An LV1 show | Protocol only ([help test](docs/M32-TESTING.md)) |
 
 <sub>Setup for each console: [Connecting your console](docs/MANUAL.md#4-connecting-your-console).</sub>
 
@@ -374,8 +385,8 @@ Each console runs as its own backend; choosing one never touches another’s con
 
 JPMixer runs a web server and a WebSocket bridge inside an Electron app.
 
-- **A musician’s fader move** goes to JPMixer over WebSocket, which sends it to the console and shows it on every other screen. The console link is OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP for WING, or LV1’s MyMon remote (OSC over TCP).
-- **Mute and solo** on DiGiCo work by driving the send to −∞ and restoring it afterwards. dLive switches the send's own on/off (its level stays on the console), as WING and LV1 do with their real per-send mute.
+- **A musician’s fader move** goes to JPMixer over WebSocket, which sends it to the console and shows it on every other screen. The console link is OSC/UDP for DiGiCo, MIDI/TCP for dLive, OSC/UDP for WING and the M32, or LV1’s MyMon remote (OSC over TCP).
+- **Mute and solo** on DiGiCo work by driving the send to −∞ and restoring it afterwards. dLive switches the send's own on/off (its level stays on the console), as WING, LV1 and the M32 do with their real per-send mute.
 - **Kind to the console:** background queries are paced. A performer’s own moves, mutes and solos go out immediately.
 - **Locked down:** a phone can only touch its own mix’s sends and EQ. A server-side allowlist blocks everything else.
 - **Names stay in JPMixer:** your own names and Planning Center’s performer names are JPMixer labels. The console’s names are never changed, and Planning Center is only read.
@@ -390,4 +401,4 @@ JPMixer runs a web server and a WebSocket bridge inside an Electron app.
 
 <p align="center"><b>🌐 <a href="https://jpmixing.com">jpmixing.com</a></b></p>
 
-<p align="center"><sub>JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, Behringer/MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen &amp; Heath Limited. WING is a trademark of MUSIC Tribe Global Brands Ltd. Waves and eMotion LV1 are trademarks of Waves Audio Ltd. Planning Center is a trademark of Ministry Centered Technologies.</sub></p>
+<p align="center"><sub>JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, Behringer/Midas/MUSIC Tribe, Waves Audio, Renewed Vision, Bitfocus or Planning Center. DiGiCo is a trademark of DiGiCo UK Ltd. dLive is a trademark of Allen &amp; Heath Limited. WING is a trademark of MUSIC Tribe Global Brands Ltd. Waves and eMotion LV1 are trademarks of Waves Audio Ltd. Midas and M32 are trademarks of MUSIC Tribe Global Brands Ltd. ProPresenter is a trademark of Renewed Vision. Planning Center is a trademark of Ministry Centered Technologies.</sub></p>
