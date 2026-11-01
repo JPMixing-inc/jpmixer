@@ -79,12 +79,12 @@ async function main() {
   assert.deepEqual(received[0], { address: '/ch/2/send/1/lvl', args: -11 });
   console.log('ok - a fader move sends the exact WING send-level message (mix=aux=bus, ch=channel)');
 
-  // ── Pan move -> real per-send pan message, scaled from 0..1 to -90..90 ──
+  // ── Pan move -> real per-send pan message, scaled from 0..1 to WING's -100..100 ──
   received.length = 0;
   ws.send(JSON.stringify({ address: '/Input_Channels/2/Aux_Send/1/send_pan', args: [0] })); // full left
   await new Promise((r) => setTimeout(r, 150));
-  assert.deepEqual(received[0], { address: '/ch/2/send/1/pan', args: -90 });
-  console.log('ok - a full-left pan move sends pan -90');
+  assert.deepEqual(received[0], { address: '/ch/2/send/1/pan', args: -100 });
+  console.log('ok - a full-left pan move sends pan -100');
 
   // ── set-mute uses WING's real send.on flag, not a level-zeroing trick ───
   received.length = 0;

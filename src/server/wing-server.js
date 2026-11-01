@@ -90,7 +90,7 @@ const silencedSends = new Map();
 const recentReleases = new Map();
 
 function levelKey(ch, aux) { return `${ch}:${aux}`; }
-function sliderToAzimuth(v) { return (v - 0.5) * 180; } // matches klang-server.js's own convention
+function sliderToAzimuth(v) { return (v - 0.5) * 200; } // WING's pan runs -100 (left) to +100 (right); KLANG's ±90 is an angle
 
 // Tracks the real round-trip result from checkConnected(), not just whether
 // the local UDP socket opened (wing.ready) — see the 'open' handler in
@@ -326,7 +326,8 @@ function start(cfg) {
     broadcastDevicesUpdate();
   }, 25000);
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    require('./access').noteSocket(ws, req); // for the Console Controller's code (the ‹ › scene buttons)
     logEvent('client-connect', `total:${connections.length + 1}`);
     ws._lastPong = Date.now();
     ws.on('pong', () => { ws._lastPong = Date.now(); });
@@ -345,6 +346,8 @@ function start(cfg) {
       try { msg = JSON.parse(raw); } catch (_) { return; }
 
       if (msg.type === 'pong') { ws._lastPong = Date.now(); return; }
+      // The Console Controller's messages (here, the ‹ › scene buttons) need its code (Settings → Pages)
+      if (!require('./access').consoleMessageAllowed(ws, msg)) return;
 
       if (msg.type === 'request-aux-levels') {
         const chCount = serverCfg.channels || 40;
@@ -418,6 +421,7 @@ function start(cfg) {
           for (const [chStr, sliderVal] of Object.entries(shared.plainMap(msg.levels))) {
             const ch = parseInt(chStr, 10);
             if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
+            if (!shared.channelOnMix(serverCfg, aux, ch)) continue; // hidden from this mix's phones
             const db = shared.sliderToDb(sliderVal);
             levelCache.set(levelKey(ch, aux), db);
             outLevels[chStr] = sliderVal;
@@ -425,7 +429,7 @@ function start(cfg) {
           }
           for (const [chStr, panVal] of Object.entries(shared.plainMap(msg.pans))) {
             const ch = parseInt(chStr, 10);
-            if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(panVal) || panVal < 0 || panVal > 1) continue;
+            if (!Number.isInteger(ch) || ch < 1 || ch > chMax || !Number.isFinite(panVal) || panVal < 0 || panVal > 1 || !shared.channelOnMix(serverCfg, aux, ch)) continue;
             panCache.set(levelKey(ch, aux), panVal);
             outPans[chStr] = panVal;
             pacer.write(`pan:${ch}:${aux}`, () => wing && wing.setSendPan(ch, aux, sliderToAzimuth(panVal)));

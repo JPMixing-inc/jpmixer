@@ -133,7 +133,9 @@ function mountConsoleAccess(appExpress) {
   appExpress.get('/console-access', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ ok: true, needCode: !hasAccess(req, 'console') }); });
   appExpress.post('/console-unlock', express.json({ limit: '2kb' }), unlock('console'));
 }
-const CONSOLE_MESSAGES = new Set(['request-console-state', 'console-fader', 'console-mute', 'console-solo', 'aux-fader', 'aux-mute', 'cg-fader', 'cg-mute', 'cg-solo', 'console-param', 'request-channel-detail', 'extra-fader', 'extra-mute']);
+// fire-snapshot too: the ‹ › scene buttons (Console Controller and Monitor
+// Engineer) recall a whole desk scene
+const CONSOLE_MESSAGES = new Set(['request-console-state', 'console-fader', 'console-mute', 'console-solo', 'aux-fader', 'aux-mute', 'cg-fader', 'cg-mute', 'cg-solo', 'console-param', 'request-channel-detail', 'extra-fader', 'extra-mute', 'fire-snapshot']);
 // The WebSocket's own upgrade request carries the cookies
 function noteSocket(ws, req) { ws._accessHeaders = { cookie: (req && req.headers && req.headers.cookie) || '' }; }
 // true when the message may go ahead; a locked one is answered with console-locked

@@ -42,7 +42,9 @@
     live: [8, 34], team: [8, 34], order: [8, 34], plans: [8, 40], chat: [8, 40], companion: [8, 40],
     monitor: [8, 20], devices: [8, 20], console: [8, 20], spl: [8, 34], wireless: [8, 34],
   };
-  const sizeOf = (id) => DEFAULT_SIZE[id] || [8, 30];
+  // A plugin's card can ask for a bigger start (plugin.json "size")
+  const PLUGIN_SIZE = { standard: [8, 30], tall: [8, 60], wide: [16, 34], large: [12, 82] };
+  const sizeOf = (id) => DEFAULT_SIZE[id] || PLUGIN_SIZE[document.querySelector(`[data-fh-card="${id}"]`)?.dataset.fhSize] || [8, 30];
   const isPhone = () => innerWidth <= PHONE;
   // A card the page has turned off (Companion while it's off) takes no space
   // in a new layout; it's placed when it first appears.
@@ -206,6 +208,16 @@
       // auto: parked while off; moved into a free spot when it turns on (see placeWhenOn)
       layout.cards[id] = { hidden: c ? c.hidden : false, x: 0, y: bottom, w, h, auto: true };
       placed.push(layout.cards[id]);
+    }
+    // A plugin card that starts bigger (the ProPresenter controller), in a
+    // layout saved when it was the standard size (8 × 30), is shown at its
+    // own size: whichever layout it comes from (this browser's, or a team
+    // member's from the server). One resized by hand to any other size keeps it.
+    for (const id of ids) {
+      const size = nodes.get(id).dataset.fhSize;
+      const want = size && size !== 'standard' ? PLUGIN_SIZE[size] : null;
+      const c = layout.cards[id];
+      if (want && c && c.w === 8 && c.h === 30) { c.w = want[0]; c.h = want[1]; }
     }
     for (const c of Object.values(layout.cards)) { delete c.fresh; fit(c); }
     settle(layout.cards, null);

@@ -20,7 +20,7 @@ const SIZES = new Set(['compact', 'standard', 'wide', 'full']);
 const HEIGHTS = new Set(['auto', 'short', 'tall']);
 const CARD_ID = /^[a-z][a-z0-9_-]{0,31}$/;
 const PERSON_ID = /^[A-Za-z0-9_-]{1,40}$/;
-const MAX_CARDS = 24;
+const MAX_CARDS = 48; // the page's own cards and every plugin's (up to 6 each)
 
 let store = Object.create(null);
 let loaded = false;

@@ -248,10 +248,32 @@ function sendSolo(auxRaw, chRaw, on) {
   return true;
 }
 
+// LV1's show has fewer channels or mixes than the mutes and solos made before
+// it was reported (from Settings' counts): those are dropped, as no phone
+// could release them, and the mixes they were in are worked out again
+function dropOutOfRange() {
+  // Every mix with a mute or solo: one count may have grown (a solo made with
+  // Settings' 16 must also silence LV1's channels 17 on)
+  const touched = new Set([...Object.keys(muteState), ...Object.keys(soloState)].map(Number).filter((a) => a <= auxCount()));
+  for (const state of [muteState, soloState]) {
+    for (const auxKey of Object.keys(state)) {
+      const aux = Number(auxKey);
+      if (aux > auxCount()) { delete state[auxKey]; continue; }
+      for (const ch of Object.keys(state[auxKey])) if (Number(ch) > chCount()) { delete state[auxKey][ch]; touched.add(aux); }
+    }
+  }
+  for (const key of [...silencedSends.keys()]) {
+    const [ch, aux] = key.split(':').map(Number);
+    if (ch > chCount() || aux > auxCount()) silencedSends.delete(key); // nothing on LV1 to switch back on
+  }
+  for (const aux of touched) { applySilencing(aux); applyMuteSolo(aux); }
+}
+
 // Re-derives every channel's send on/off in this mix from mute/solo. LV1
 // reports each send's on/off, so (unlike WING) there's nothing to ask first.
 function applySilencing(aux) {
-  const anySolo = Object.values(soloState[aux] || {}).some(Boolean);
+  // Only channels LV1 has: a solo left on one past its count can't be released
+  const anySolo = Object.entries(soloState[aux] || {}).some(([ch, on]) => on && Number(ch) <= chCount());
   for (let ch = 1; ch <= chCount(); ch++) {
     const key = levelKey(ch, aux);
     const silenced = !!muteState[aux]?.[ch] || (anySolo && !soloState[aux]?.[ch]);
@@ -299,6 +321,45 @@ function flushRelease(key) {
 // it. Sent again when LV1 is back; switching a send on twice does nothing.
 const recentReleases = new Map(); // key -> { entry, at }
 const RELEASE_RESEND_MS = 10000;
+// Releases that couldn't reach LV1 before JPMixer stopped (quit, or a Save &
+// Apply restart while LV1 was away) are kept in a file and sent the next time
+// JPMixer connects to LV1, within 12 hours: otherwise those sends stayed off
+// on LV1 with nothing on any phone to show it.
+const unsentFile = () => path.join(app.getPath('userData'), 'lv1-unsent-releases.json');
+const UNSENT_KEEP_MS = 12 * 60 * 60 * 1000;
+let carried = new Map(); // key -> { wasOn, level } from the file, sent on connect
+// linkWasUp: JPMixer stopped while connected, so what stop() itself just sent
+// arrived and isn't kept (it would be sent again over the engineer's later
+// changes). While LV1 was away, the releases sent just before the drop was
+// noticed are kept too, as they may not have arrived.
+function saveUnsentReleases(linkWasUp) {
+  const releases = {};
+  const now = Date.now();
+  const add = (key, entry) => {
+    if (!entry || (!entry.wasOn && !entry.levelHeld)) return;
+    releases[key] = { wasOn: !!entry.wasOn, ...(entry.levelHeld && levelCache.has(key) ? { level: levelCache.get(key) } : {}) };
+  };
+  for (const [key, entry] of pendingReleases) add(key, entry);
+  if (!linkWasUp) for (const [key, { entry, at }] of recentReleases) if (now - at < RELEASE_RESEND_MS && !releases[key]) add(key, entry);
+  // And those kept from before the last stop that haven't reached LV1 yet
+  for (const [key, r] of carried) if (!releases[key]) releases[key] = { wasOn: r.wasOn, ...(r.level !== undefined ? { level: r.level } : {}) };
+  try {
+    if (Object.keys(releases).length) { fs.writeFileSync(unsentFile(), JSON.stringify({ savedAt: now, releases })); logEvent('releases-kept', `${Object.keys(releases).length} unmute(s) LV1 couldn't be sent, kept for when it's back`); }
+    else fs.rmSync(unsentFile(), { force: true });
+  } catch (_) {}
+}
+function loadUnsentReleases() {
+  carried = new Map();
+  try {
+    const data = JSON.parse(fs.readFileSync(unsentFile(), 'utf8'));
+    fs.rmSync(unsentFile(), { force: true });
+    if (!data || !(Date.now() - data.savedAt < UNSENT_KEEP_MS)) return;
+    for (const [key, r] of Object.entries(data.releases || {})) {
+      if (!/^\d{1,4}:\d{1,4}$/.test(key) || !r) continue;
+      carried.set(key, { wasOn: r.wasOn === true, level: Number.isFinite(r.level) ? r.level : undefined });
+    }
+  } catch (_) { /* none kept */ }
+}
 
 // A send level from a phone, preset or Ear Scene: straight to LV1 (or
 // paced, for a batch), or held while a mute/solo has the send switched off
@@ -344,6 +405,7 @@ function pushSceneValues(auxStr, values) {
     const ch = parseInt(chStr, 10);
     // Recall/preset payloads come from clients: skip anything that isn't a real slider position
     if (!Number.isInteger(ch) || ch < 1 || ch > chCount() || !Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
+    if (!shared.channelOnMix(serverCfg, aux, ch)) continue; // hidden from this mix's phones
     levels[chStr] = sliderVal;
     writeLevel(ch, aux, shared.sliderToDb(sliderVal), true);
   }
@@ -599,6 +661,7 @@ function onLv1Message(m) {
       dcas = [];
       for (const t of all) if (t.type === P.TRACK.DCA) dcas[t.index] = t.name;
       for (let i = 0; i < dcas.length; i++) if (dcas[i] === undefined) dcas[i] = '';
+      dropOutOfRange();
       pushLayoutSoon();
       return;
     }
@@ -606,6 +669,7 @@ function onLv1Message(m) {
       const list = P.parseAuxTracks(a);
       mixes.length = 0;
       for (const mix of list) mixes.push({ name: mix.name, kind: mix.kind, index: mix.index });
+      dropOutOfRange();
       pushLayoutSoon();
       requestAllSends();
       requestAllEq();
@@ -1097,7 +1161,7 @@ function start(cfg) {
           Object.assign(outLevels, pushSceneValues(String(aux), shared.plainMap(msg.levels)));
           for (const [chStr, panVal] of Object.entries(shared.plainMap(msg.pans))) {
             const ch = parseInt(chStr, 10);
-            if (!Number.isInteger(ch) || ch < 1 || ch > chCount() || !Number.isFinite(panVal) || panVal < 0 || panVal > 1) continue;
+            if (!Number.isInteger(ch) || ch < 1 || ch > chCount() || !Number.isFinite(panVal) || panVal < 0 || panVal > 1 || !shared.channelOnMix(serverCfg, aux, ch)) continue;
             panCache.set(levelKey(ch, aux), panVal);
             outPans[chStr] = panVal;
             noteWrite(`pan:${levelKey(ch, aux)}`, P.panFromSlider(panVal));
@@ -1215,6 +1279,7 @@ function start(cfg) {
     return target;
   };
   loadLastFound();
+  loadUnsentReleases();
   const client = new Lv1Client({ resolveTarget, deviceName: 'JPMixer', deviceId: deviceId() });
   lv1 = client;
   client.on('connected', () => {
@@ -1234,10 +1299,25 @@ function start(cfg) {
       if (Date.now() - at < RELEASE_RESEND_MS && !silencedSends.has(key) && !pendingReleases.has(key)) pendingReleases.set(key, entry);
     }
     recentReleases.clear();
+    // And those that couldn't reach LV1 before JPMixer last stopped
+    for (const [key, r] of carried) {
+      if (silencedSends.has(key) || pendingReleases.has(key)) continue;
+      if (r.level !== undefined) levelCache.set(key, r.level);
+      pendingReleases.set(key, { wasOn: r.wasOn, levelHeld: r.level !== undefined });
+    }
+    if (carried.size) logEvent('releases-sent', `${carried.size} unmute(s) kept from before JPMixer last stopped`);
+    carried = new Map();
     for (const key of pendingReleases.keys()) pacer.write(`rel:${key}`, () => flushRelease(key), true);
   });
   client.on('disconnected', () => {
     if (lv1 !== client) return;
+    // Releases written in the moments before the drop was noticed may not have
+    // arrived: kept for the reconnect however long LV1 is away (the 10 s
+    // window used to be counted at the reconnect, so a longer drop lost them)
+    for (const [key, { entry, at }] of [...recentReleases]) {
+      if (Date.now() - at < RELEASE_RESEND_MS && !silencedSends.has(key) && !pendingReleases.has(key)) pendingReleases.set(key, entry);
+      recentReleases.delete(key);
+    }
     consoleConnected = false;
     logEvent('console-error', 'connection to LV1 lost — reconnecting');
     if (onConsoleStatusChange) onConsoleStatusChange(false);
@@ -1256,7 +1336,9 @@ function stop() {
   // out too — they're what the performer last asked for.
   if (lv1) {
     for (const [key, entry] of silencedSends) pendingReleases.set(key, entry);
+    const linkWasUp = !!lv1.connected;
     for (const key of [...pendingReleases.keys()]) flushRelease(key);
+    saveUnsentReleases(linkWasUp); // what couldn't reach LV1, for the next time JPMixer connects to it
     const closing = lv1;
     lv1 = null;
     closing.disconnect(); // graceful: the writes above go out first

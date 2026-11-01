@@ -57,6 +57,9 @@ test('Shure wireless as a plugin: the pages read it through JPMixer, as before',
     assert.deepEqual(await integrations.ensureInstalled('shure'), { ok: true, from: 'bundled' });
     // The config as integrations.js hands it over, plus the stand-in's port (tests only)
     const settings = { wirelessEnabled: true, wirelessKnown: [], wirelessReceivers: [{ ip: '127.0.0.1' }], wirelessAux: { '127.0.0.1/1': 3 }, _testCommandPort: port, _testNoDiscovery: true };
+    // …and in the config, as Settings saved it (what the plugin learns is put into these)
+    const config = require('./config');
+    config.save({ ...config.getAll(), wirelessEnabled: true, wirelessKnown: [], wirelessReceivers: [{ ip: '127.0.0.1' }], wirelessAux: { '127.0.0.1/1': 3 } });
     wireless.applyConfig(settings);
     await plugins.setIntegrations({ shure: { enabled: true, settings } });
 

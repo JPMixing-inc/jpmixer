@@ -52,6 +52,13 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
 
 /* "Your mix" QR code (greenroom.js): on a TV only; a phone is already there */
 .gr-qr { display: none; }
+/* Plugins' running timers (plugin-timers.js), next to the clock */
+.gr-timers { display: flex; gap: 12px; flex-shrink: 0; align-self: center; }
+.gr-timer { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 10px 16px; border: 1px solid var(--jp-edge); border-radius: 12px; background: var(--jp-card); min-width: 150px; }
+.gr-timer .tm-name { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--jp-secondary); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gr-timer .tm-time { font-size: 40px; font-weight: 650; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.gr-timer.is-over { border-color: #ff453a; background: rgba(255, 69, 58, .14); }
+.gr-timer.is-over .tm-time { color: #ff453a; }
 .gr-qr-code svg { display: block; width: 100%; height: 100%; border-radius: 8px; }
 .gr-qr-text { display: flex; flex-direction: column; gap: .3em; min-width: 0; }
 .gr-qr-text strong { font-weight: 650; color: var(--text); }
@@ -118,6 +125,10 @@ h1 { font-size: 34px; line-height: 1.15; font-weight: 650; letter-spacing: -.5px
   .gr-spl-value { font-size: 6vh; }
   .gr-spl-unit { font-size: 2vh; }
   .gr-spl-input { font-size: 1.5vh; max-width: 24vh; }
+  .gr-timers { gap: 1.2vh; }
+  .gr-timer { padding: 1.2vh 1.5vh; border-radius: 1.3vh; min-width: 17vh; gap: .3vh; }
+  .gr-timer .tm-name { font-size: 1.25vh; max-width: 28vh; }
+  .gr-timer .tm-time { font-size: 6vh; }
   .gr-qr-code { width: 13vh; height: 13vh; flex-shrink: 0; }
   .gr-qr-text { font-size: 1.6vh; max-width: 22vh; }
   .gr-qr-text strong { font-size: 2.3vh; }

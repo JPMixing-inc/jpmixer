@@ -42,9 +42,35 @@ let reconnectTimer = null;
 
 // ── WebSocket ─────────────────────────────────────────────────────────────
 
+// Nothing from the server for 35 s (it pings every 25), or for 30 s when
+// the page comes back to the front: the socket is dead, though it may not
+// know it yet (a half-open connection, a tablet that slept). It's dropped and
+// a new one opened at once, as the phone mixer does: asking the old one to
+// close and waiting for its close event took much longer.
+let lastMessageAt = 0;
 function resetHeartbeat() {
+  lastMessageAt = Date.now();
   clearTimeout(heartbeatTimer);
-  heartbeatTimer = setTimeout(() => { if (ws) ws.close(); }, 35000);
+  heartbeatTimer = setTimeout(dropDeadSocket, 35000);
+}
+function dropDeadSocket() {
+  const dead = ws;
+  if (!dead) return;
+  ws = null; // its own late close event is ignored (sock !== ws)
+  try { dead.close(); } catch (_) {}
+  lostConnection();
+}
+function lostConnection() {
+  clearTimeout(heartbeatTimer);
+  document.getElementById('connDot').classList.remove('connected');
+  document.getElementById('conConnectionLabel').textContent = 'Reconnecting';
+  clearTimeout(disconnectTimer);
+  disconnectTimer = setTimeout(() => {
+    document.body.classList.add('disconnected');
+    if (hasConnected) document.getElementById('overlayMsg').textContent = 'Reconnecting…';
+  }, 2500);
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connect, ws ? 1000 : 0);
 }
 
 function connect() {
@@ -76,15 +102,7 @@ function connect() {
 
   sock.addEventListener('close', () => {
     if (sock !== ws) return;
-    clearTimeout(heartbeatTimer);
-    document.getElementById('connDot').classList.remove('connected');
-    document.getElementById('conConnectionLabel').textContent = 'Reconnecting';
-    clearTimeout(disconnectTimer);
-    disconnectTimer = setTimeout(() => {
-      document.body.classList.add('disconnected');
-      if (hasConnected) document.getElementById('overlayMsg').textContent = 'Reconnecting…';
-    }, 2500);
-    reconnectTimer = setTimeout(connect, 1000);
+    lostConnection();
   });
 
   sock.addEventListener('message', e => {
@@ -972,5 +990,6 @@ document.getElementById('snapNextBtn').addEventListener('click', () => send({ ty
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) connect();
+    else if (ws.readyState === WebSocket.OPEN && Date.now() - lastMessageAt > 30000) dropDeadSocket(); // slept: likely dead
   }
 });

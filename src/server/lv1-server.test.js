@@ -591,6 +591,41 @@ test('LV1 backend end to end', async (t) => {
     assert.ok(await until(() => fake.state.on['2:0'] === true));
     assert.ok(await until(() => fake.state.on['1:0'] === true && fake.state.level['1:0'] === -33), 'the held level went out on stop');
     assert.equal(fake.state.on['3:1'], false, 'still leaves the engineer\'s own off send alone');
+    assert.ok(!fs.existsSync(path.join(process.env.JPM_TEST_USERDATA, 'lv1-unsent-releases.json')), 'LV1 got them: nothing kept to send again at the next start');
   });
   a.close(); b.close();
+});
+
+test('an unmute LV1 couldn\'t be sent before JPMixer stopped reaches it the next time JPMixer connects', async (t) => {
+  const fake = fakeLv1();
+  await new Promise(r => fake.server.listen(0, '127.0.0.1', r));
+  const lv1Port = fake.server.address().port;
+  let connected = null;
+  server.setConsoleStatusCallback(s => { connected = s; });
+  const serverPort = 18241;
+  const cfg = { serverPort, deskIp: '127.0.0.1', lv1Port, channels: 16, auxes: 8 };
+  server.start(cfg);
+  t.after(async () => { await server.stop(); for (const s of fake.sockets) s.destroy(); fake.server.close(); });
+  assert.ok(await until(() => connected === true));
+  const a = phone(serverPort);
+  await a.opened;
+  assert.ok(await until(() => a.got.some(j => j.config)));
+  a.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 4, muted: true }));
+  assert.ok(await until(() => fake.state.on['3:0'] === false));
+  // LV1 goes away (and stays away), the musician unmutes, and JPMixer stops
+  await new Promise(r => fake.server.close(r));
+  for (const s of fake.sockets) s.destroy();
+  assert.ok(await until(() => connected === false, 8000));
+  a.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 4, muted: false }));
+  await wait(150);
+  a.close();
+  await server.stop();
+  assert.equal(fake.state.on['3:0'], false, 'it couldn\'t reach LV1');
+  assert.ok(fs.existsSync(path.join(process.env.JPM_TEST_USERDATA, 'lv1-unsent-releases.json')), 'kept for later');
+  // LV1 is back; JPMixer starts again and connects: the unmute goes out
+  await new Promise(r => fake.server.listen(lv1Port, '127.0.0.1', r));
+  server.start(cfg);
+  assert.ok(await until(() => connected === true, 8000));
+  assert.ok(await until(() => fake.state.on['3:0'] === true), 'the unmute landed');
+  assert.ok(!fs.existsSync(path.join(process.env.JPM_TEST_USERDATA, 'lv1-unsent-releases.json')), 'and isn\'t kept any more');
 });

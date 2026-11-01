@@ -1397,7 +1397,7 @@ function applyMuteSolo(baseN, aux) {
     if (!levelCache.has(key)) {
       // Fetch the real level before silencing an uncached send so unmute
       // can restore it. The reply handler applies the active mute/solo.
-      if (silenced) enqueuePrime(() => requestSendLevel(ch, aux, inputCoord, snd));
+      if (silenced) enqueuePrimeFirst([() => requestSendLevel(ch, aux, inputCoord, snd)]); // ahead of background reads
       continue;
     }
 
@@ -1430,11 +1430,37 @@ function applyMuteSoloBySendOff(baseN, aux) {
 // One send: off while it's silenced, keeping the console's own on/off; that
 // back after. A send whose on/off isn't known yet is asked for first (the
 // answer comes back through here).
+// A mute's question about a send's on/off: ahead of the background reads (a
+// solo of a big mix used to wait seconds behind names and colours), and asked
+// again every 2 s until answered (a reply lost, or asked while the console
+// was away, used to leave the send audible with the phone showing it muted)
+const assignAsks = new Map(); // "ch:aux" -> times asked
+let assignAskTimer = null;
+function askAssign(ch, aux, src, snd) {
+  const key = levelKey(ch, aux);
+  if (!assignAsks.has(key)) assignAsks.set(key, 0);
+  enqueuePrimeFirst([() => client && client.requestSendAssign(src, snd)]);
+  if (!assignAskTimer) assignAskTimer = setInterval(() => {
+    for (const [k, tries] of assignAsks) {
+      const [c, a] = k.split(':').map(Number);
+      if (assignCache.has(k) || !isSilenced(a, c) || !muteBySendOff()) { assignAsks.delete(k); continue; }
+      if (!client || !client.connected) continue; // asked again once it's back
+      if (tries >= 10) { assignAsks.delete(k); logEvent('assign-unanswered', `ch ${c} mix ${a}: the console didn't say whether the send is on`); continue; }
+      const s2 = sourceCoord(moduleBaseN, c), d2 = auxCoord(moduleBaseN, a);
+      assignAsks.set(k, tries + 1);
+      if (s2 && d2) enqueuePrimeFirst([() => client && client.requestSendAssign(s2, d2)]);
+    }
+    if (primeQueue.length) startPriming();
+    if (!assignAsks.size) { clearInterval(assignAskTimer); assignAskTimer = null; }
+  }, 2000);
+}
+function stopAssignAsks() { clearInterval(assignAskTimer); assignAskTimer = null; assignAsks.clear(); }
+
 function sendOffFor(ch, aux, src, snd) {
   const key = levelKey(ch, aux);
   if (isSilenced(aux, ch)) {
     if (!ownAssign.has(key)) {
-      if (!assignCache.has(key)) { enqueuePrime(() => client && client.requestSendAssign(src, snd)); return; }
+      if (!assignCache.has(key)) { askAssign(ch, aux, src, snd); return; }
       ownAssign.set(key, assignCache.get(key));
     }
     if (ownAssign.get(key) && assignCache.get(key) !== false) pacedSendAssign(ch, aux, src, snd, false, true);
@@ -1452,13 +1478,19 @@ function releaseAllSilencing(baseN) {
   for (const aux of auxes) {
     const snd = auxCoord(baseN, aux);
     if (!snd || !client) continue;
-    for (const [ch, db] of Object.entries(premuteState[aux] || {})) { const input = sourceCoord(baseN, Number(ch)); if (input) client.setSendLevel(input, snd, db); }
+    // Paced (solos on a few big mixes are hundreds of writes), to the console
+    // places worked out now, under the layout they were made with, and kept
+    // apart from the new layout's own writes (their mix numbers mean other mixes)
+    for (const [ch, db] of Object.entries(premuteState[aux] || {})) {
+      const input = sourceCoord(baseN, Number(ch));
+      if (input) pacer.write(`rel-lvl:${ch}:${aux}`, () => client && client.setSendLevel(input, snd, db), true);
+    }
   }
   for (const [key, own] of ownAssign) {
     if (!own || !client) continue;
     const [ch, aux] = key.split(':').map(Number);
     const input = sourceCoord(baseN, ch), snd = auxCoord(baseN, aux);
-    if (input && snd) client.setSendAssign(input, snd, true);
+    if (input && snd) pacer.write(`rel-asg:${ch}:${aux}`, () => client && client.setSendAssign(input, snd, true), true);
   }
   clearMuteSolo();
   for (const aux of auxes) broadcastToClients({ type: 'mute-solo-state', aux, mutes: {}, solos: {}, levels: {} });
@@ -1499,8 +1531,13 @@ function reassertSilencing(baseN) {
       if (!isSilenced(aux, ch)) continue;
       const input = sourceCoord(baseN, ch);
       if (!input) continue;
-      if (!muteBySendOff()) pacedSendLevel(ch, aux, input, snd, -Infinity, true);
-      else if (ownAssign.get(levelKey(ch, aux))) pacedSendAssign(ch, aux, input, snd, false, true);
+      if (!muteBySendOff()) {
+        // Only where its level was kept: pulling an unknown one to -inf had the
+        // read-back -inf kept as the level to restore, so the unmute stayed silent
+        if (premuteState[aux] && premuteState[aux][ch] !== undefined) pacedSendLevel(ch, aux, input, snd, -Infinity, true);
+        else enqueuePrimeFirst([() => requestSendLevel(ch, aux, input, snd)]); // the reply applies the mute
+      } else if (ownAssign.get(levelKey(ch, aux))) pacedSendAssign(ch, aux, input, snd, false, true);
+      else if (!ownAssign.has(levelKey(ch, aux))) askAssign(ch, aux, input, snd); // never answered: asked again
     }
   }
 }
@@ -1565,6 +1602,7 @@ function pushSceneValuesToDesk(baseN, auxStr, values) {
     // to a wire byte (Buffer coerces NaN to 0x00, i.e. a real "-inf" send —
     // wrong, not just unsent). Skip rather than encode garbage.
     if (!Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
+    if (!shared.channelOnMix(serverCfg, aux, ch)) continue; // hidden from this mix's phones
     const db = sliderToDb(sliderVal);
     const muted = !!(muteState[aux]?.[ch]);
     const soloed = !!(soloState[aux]?.[ch]);
@@ -1874,7 +1912,7 @@ function start(cfg) {
         if (panAvailable(aux)) {
           for (const [chStr, val] of Object.entries(shared.plainMap(msg.pans))) {
             const ch = parseInt(chStr, 10);
-            if (Number.isFinite(val) && val >= 0 && val <= 1 && writePan(ch, aux, val)) pans[chStr] = val;
+            if (Number.isFinite(val) && val >= 0 && val <= 1 && shared.channelOnMix(serverCfg, aux, ch) && writePan(ch, aux, val)) pans[chStr] = val;
           }
         }
         broadcastToClients({ type: 'preset-loaded', aux: msg.aux, name: msg.name, levels, pans });
@@ -2014,6 +2052,10 @@ function start(cfg) {
   // before it ever reaches DliveClient.
   const midiPort = Number.isInteger(cfg.dliveMidiPort) && cfg.dliveMidiPort > 0 && cfg.dliveMidiPort <= 65535
     ? cfg.dliveMidiPort : defaultPort;
+  // TLS: the user profile is a number (1-32); a name can't be sent, so it's the first profile
+  if (cfg.dliveTlsEnabled && String(cfg.dliveUsername || '').trim() && !/^\s*\d+\s*$/.test(String(cfg.dliveUsername))) {
+    logEvent('tls-profile', 'the dLive User profile must be a number (1-32), not a name: signing in as profile 1');
+  }
   client = new DliveClient({
     host: cfg.deskIp,
     port: midiPort,
@@ -2280,6 +2322,7 @@ function start(cfg) {
 
 function stop() {
   if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+  stopAssignAsks();
   stopPanLink();
   clearInterval(extraProbeTimer); extraProbeTimer = null; extraProbe = null;
   clearTimeout(extraProbeFinishTimer); extraProbeFinishTimer = null;

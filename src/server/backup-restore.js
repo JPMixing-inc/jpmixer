@@ -8,8 +8,9 @@ const copy = value => JSON.parse(JSON.stringify(value));
 const homeLayoutsModule = () => require('./home-layouts'); // loaded when used
 const deviceStageModule = () => require('./device-stage');
 const consoleNamesModule = () => require('./console-names');
+const pluginsModule = () => require('./plugins');
 const definitions = [
-  ['console', 'Console & network', 'Console type, addresses, ports, and channel/bus counts. Connection changes may restart the server.', ['consoleType','serverPort','deskIp','deskSendPort','deskListenPort','channels','auxes','groups','dliveBaseChannel','dliveTlsEnabled','dliveUsername','dlivePassword','dliveMidiPort','dliveListenSendLevels','dlivePollSendLevels','dliveMuteBySendOff','dlivePan','dliveFxReturns','klangIp','klangPort','wingPort','lv1Port']],
+  ['console', 'Console & network', 'Console type, addresses, ports, and channel/bus counts. Connection changes may restart the server.', ['consoleType','serverPort','deskIp','deskSendPort','deskListenPort','channels','auxes','groups','dliveBaseChannel','dliveTlsEnabled','dliveUsername','dlivePassword','dliveMidiPort','dliveListenSendLevels','dlivePollSendLevels','dliveMuteBySendOff','dlivePan','dliveFxReturns','klangIp','klangPort','wingPort','lv1Port','m32Port']],
   ['channels', 'Channel layout', 'Channel names, icons, order, visibility, and groups.', ['channelGroups','channelOverrides']],
   ['auxes', 'Aux layout & access', 'Mix names, colors, visibility, private links, and EQ access.', ['auxOverrides']],
   ['ipads', 'iPad relay connections', 'Configured OSC relay devices and ports.', ['ipadConnections']],
@@ -27,7 +28,7 @@ const types = {
   channelGroups:'array', ipadConnections:'array', pcoGreenRoomHidden:'array', pcoHomePages:'array', smaartHiddenInputs:'array', wirelessReceivers:'array', wirelessKnown:'array', wirelessAux:'object', channelOverrides:'object', auxOverrides:'object', pcoPositionMapping:'object', pcoAlt:'object'
 };
 const booleans = new Set(['pcoEnabled','greenRoomMics','wirelessEnabled','greenRoomSpl','smaartEnabled','greenRoomQr','autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','dliveMuteBySendOff','dlivePan','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled','companionHome']);
-const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,256],groups:[0,256],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],dliveFxReturns:[0,16],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],smaartPort:[1,65535],autoBackupIntervalDays:[1,365] };
+const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,256],groups:[0,256],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],dliveFxReturns:[0,16],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],m32Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],smaartPort:[1,65535],autoBackupIntervalDays:[1,365] };
 function validateConfig(config) {
   if (!object(config)) throw new Error('Invalid configuration in this backup.');
   for (const key of definitions.flatMap(d => d[3])) {
@@ -61,12 +62,13 @@ function normalize(data, filename) {
   let result;
   if (data?.app === 'JPMixer') {
     if (!['backup','mix-backup'].includes(data.type) || !Number.isInteger(data.version) || data.version < 1 || data.version > (data.type === 'backup' ? 2 : 1)) throw new Error('This backup format is not supported. Update JPMixer if it came from a newer version.');
-    result = { kind: data.type === 'backup' ? 'JPMixer backup' : 'My Mixes backup', appVersion: data.appVersion, config: data.config, presets: data.presets, presetAliases: data.presetAliases, scenes: data.scenes, homeLayouts: data.type === 'backup' ? data.homeLayouts : undefined, deviceStage: data.type === 'backup' ? data.deviceStage : undefined, consoleNames: data.type === 'backup' ? data.consoleNames : undefined };
+    result = { kind: data.type === 'backup' ? 'JPMixer backup' : 'My Mixes backup', appVersion: data.appVersion, config: data.config, presets: data.presets, presetAliases: data.presetAliases, scenes: data.scenes, homeLayouts: data.type === 'backup' ? data.homeLayouts : undefined, deviceStage: data.type === 'backup' ? data.deviceStage : undefined, consoleNames: data.type === 'backup' ? data.consoleNames : undefined, plugins: data.type === 'backup' ? data.plugins : undefined };
   } else if (filename.toLowerCase() === 'config.json' || (object(data) && ['consoleType','serverPort','pcoAppId','channelOverrides'].some(key => own(data,key)))) result = { kind:'Extracted configuration', config:data };
   else if (filename.toLowerCase() === 'scenes.json') result = { kind:'Extracted Ear Scenes', scenes:data };
   else if (filename.toLowerCase() === 'home-layouts.json') result = { kind:'Extracted Home page layouts', homeLayouts:data };
   else if (filename.toLowerCase() === 'device-stage.json') result = { kind:'Extracted Devices stage', deviceStage:data };
   else if (filename.toLowerCase() === 'console-names.json') result = { kind:'Extracted console names', consoleNames:data };
+  else if (filename.toLowerCase() === 'plugins.json') result = { kind:'Extracted plugins', plugins:data };
   else {
     let isScenes = false;
     if (object(data) && Object.keys(data).length) { try { validateScenes(data); isScenes = true; } catch {} }
@@ -77,7 +79,7 @@ function normalize(data, filename) {
   // them: the rest of the file can still be restored, with a note
   if (result.config !== undefined) {
     try { validateConfig(result.config); } catch (e) {
-      const others = ['presets','scenes','homeLayouts','deviceStage','consoleNames'].some(key => result[key] !== undefined);
+      const others = ['presets','scenes','homeLayouts','deviceStage','consoleNames','plugins'].some(key => result[key] !== undefined);
       if (!others) throw e;
       result.config = undefined; result.configProblem = e.message;
     }
@@ -92,7 +94,8 @@ function normalize(data, filename) {
   if (result.homeLayouts !== undefined) result.homeLayouts = homeLayoutsModule().cleanAll(result.homeLayouts);
   if (result.deviceStage !== undefined) result.deviceStage = deviceStageModule().cleanAll(result.deviceStage);
   if (result.consoleNames !== undefined) result.consoleNames = consoleNamesModule().cleanAll(result.consoleNames);
-  if (result.config === undefined && result.presets === undefined && result.scenes === undefined && result.homeLayouts === undefined && result.deviceStage === undefined && result.consoleNames === undefined) throw new Error('No recognizable backup content was found.');
+  if (result.plugins !== undefined) result.plugins = pluginsModule().cleanBackup(result.plugins);
+  if (result.config === undefined && result.presets === undefined && result.scenes === undefined && result.homeLayouts === undefined && result.deviceStage === undefined && result.consoleNames === undefined && result.plugins === undefined) throw new Error('No recognizable backup content was found.');
   return result;
 }
 async function read(file) {
@@ -103,16 +106,16 @@ async function read(file) {
     try {
       parsed[name] = JSON.parse(text);
       if (parsed[name]?.app === 'JPMixer') exported.push(name);
-    } catch { if (['config.json','presets.json','preset-aliases.json','scenes.json','home-layouts.json','device-stage.json','console-names.json'].includes(name)) throw new Error('Invalid JSON in ' + name); }
+    } catch { if (['config.json','presets.json','preset-aliases.json','scenes.json','home-layouts.json','device-stage.json','console-names.json','plugins.json'].includes(name)) throw new Error('Invalid JSON in ' + name); }
   }
-  const raw = ['config.json','presets.json','scenes.json','home-layouts.json','device-stage.json','console-names.json'].filter(name => own(parsed,name));
+  const raw = ['config.json','presets.json','scenes.json','home-layouts.json','device-stage.json','console-names.json','plugins.json'].filter(name => own(parsed,name));
   if (exported.length) {
     if (exported.length !== 1 || raw.length) throw new Error('This ZIP contains multiple backups. Choose a single backup file.');
     return normalize(parsed[exported[0]], exported[0]);
   }
   if (!raw.length) throw new Error('No JPMixer settings, saved mixes, or Ear Scenes were found in this ZIP.');
   const data = { app:'JPMixer',type:'backup',version:2 };
-  for (const [name,key] of [['config.json','config'],['presets.json','presets'],['preset-aliases.json','presetAliases'],['scenes.json','scenes'],['home-layouts.json','homeLayouts'],['device-stage.json','deviceStage'],['console-names.json','consoleNames']]) if (own(parsed,name)) data[key] = parsed[name];
+  for (const [name,key] of [['config.json','config'],['presets.json','presets'],['preset-aliases.json','presetAliases'],['scenes.json','scenes'],['home-layouts.json','homeLayouts'],['device-stage.json','deviceStage'],['console-names.json','consoleNames'],['plugins.json','plugins']]) if (own(parsed,name)) data[key] = parsed[name];
   const result = normalize(data, 'archive'); result.kind = 'Extracted JPMixer files (ZIP)'; return result;
 }
 function describe(data, filename) {
@@ -132,6 +135,7 @@ function describe(data, filename) {
   if (data.homeLayouts !== undefined) { const n = homeLayoutsModule().count(data.homeLayouts); if (n.layouts) sections.push({ id:'homeLayouts',label:'Home page layouts',description:`${n.layouts} saved layout(s) for ${n.people} team member(s). Replaces the same person’s layout on the same page; everyone else’s are kept.` }); }
   if (data.deviceStage !== undefined) { const n = deviceStageModule().count(data.deviceStage); if (n.arrangements) sections.push({ id:'deviceStage',label:'Devices stage arrangement',description:`Where each phone’s card sits on the Devices page (${n.cards} card(s)). Replaces the arrangement for the same number of mixes; any other is kept.` }); }
   if (data.consoleNames !== undefined) { const n = consoleNamesModule().count(data.consoleNames); if (n.channels || n.auxes) sections.push({ id:'consoleNames',label:'Console names',description:`The channel and mix names the console last reported (${n.channels} channel(s), ${n.auxes} mix(es)), shown while it’s off. Replaces them for the same console type; names typed in JPMixer are part of Channel and Aux layout.` }); }
+  if (data.plugins !== undefined) { const n = pluginsModule().countBackup(data.plugins); if (n.plugins) sections.push({ id:'plugins',label:'Plugins',description:`Which plugins are on (${n.on} of ${n.plugins}) and their settings. Replaces them for the same plugins; others are kept. A plugin that isn’t installed on this Mac takes its settings once it’s installed.` }); }
   if (data.scenes !== undefined) sections.push({ id:'scenes',label:'Ear Scenes',description:`${Object.keys(data.scenes).length} snapshot(s). Session data; cleared on app restart. Snapshot recall may use these when snapshots change.` });
   if (data.configProblem && sections.length) sections[0] = { ...sections[0], description: `${sections[0].description} This backup’s settings can’t be restored (${data.configProblem.replace(/\.$/, '')}); the rest of it can.` };
   if (!sections.length) throw new Error('No supported restore sections were found.');
@@ -144,17 +148,18 @@ function plan(data, selected, mode, current) {
   if (!['merge','replace'].includes(mode)) throw new Error('Choose how to restore My Mixes.');
   const config = copy(current); let configSelected = false;
   for (const [id,,,fields] of definitions) if (selected.includes(id)) for (const key of fields) if (own(data.config,key)) { config[key] = copy(data.config[key]); configSelected = true; }
-  return { config,configSelected,mixes:selected.includes('mixes'),scenes:selected.includes('scenes'),homeLayouts:selected.includes('homeLayouts'),deviceStage:selected.includes('deviceStage'),consoleNames:selected.includes('consoleNames'),mode,selected:[...new Set(selected)] };
+  return { config,configSelected,mixes:selected.includes('mixes'),scenes:selected.includes('scenes'),homeLayouts:selected.includes('homeLayouts'),deviceStage:selected.includes('deviceStage'),consoleNames:selected.includes('consoleNames'),plugins:selected.includes('plugins'),mode,selected:[...new Set(selected)] };
 }
 async function apply(data, selected, mode, deps) {
   const { config,presets,scenes,autoBackup } = deps;
   const homeLayouts = deps.homeLayouts || homeLayoutsModule();
   const deviceStage = deps.deviceStage || deviceStageModule();
   const consoleNames = deps.consoleNames || consoleNamesModule();
+  const plugins = deps.plugins || pluginsModule();
   const previous = { config:copy(config.getAll()),presets:copy(presets.getAll()),aliases:copy(presets.getAliases()),scenes:copy(scenes.getAll()),homeLayouts:homeLayouts.getAll(),deviceStage:deviceStage.getAll(),consoleNames:consoleNames.getAll() };
   const work = plan(data,selected,mode,previous.config);
   const safetyBackup = await autoBackup.writeBackup('before-selected-restore');
-  let wroteConfig = false, wroteMixes = false, wroteScenes = false, wroteLayouts = false, wroteStage = false, wroteNames = false, mixes;
+  let wroteConfig = false, wroteMixes = false, wroteScenes = false, wroteLayouts = false, wroteStage = false, wroteNames = false, pluginsBefore = null, mixes;
   try {
     if (work.configSelected) { if (!config.save(work.config)) throw new Error('Could not save the selected settings.'); wroteConfig = true; }
     if (work.mixes) {
@@ -166,9 +171,11 @@ async function apply(data, selected, mode, deps) {
     if (work.homeLayouts) { if (!homeLayouts.importAll(data.homeLayouts)) throw new Error('Could not restore Home page layouts.'); wroteLayouts = true; }
     if (work.deviceStage) { if (!deviceStage.importAll(data.deviceStage)) throw new Error('Could not restore the Devices stage arrangement.'); wroteStage = true; }
     if (work.consoleNames) { if (!consoleNames.importAll(data.consoleNames)) throw new Error('Could not restore the console names.'); wroteNames = true; }
-    return { ok:true,selected:work.selected,configChanged:wroteConfig,scenesChanged:wroteScenes,mixes,previousConfig:previous.config,safetyBackup };
+    if (work.plugins) { pluginsBefore = plugins.restoreBackup(data.plugins); if (!pluginsBefore) throw new Error('Could not restore the plugins.'); }
+    return { ok:true,selected:work.selected,configChanged:wroteConfig,scenesChanged:wroteScenes,pluginsChanged:!!pluginsBefore,mixes,previousConfig:previous.config,safetyBackup };
   } catch (error) {
     const rollback = [];
+    if (pluginsBefore) rollback.push(plugins.replaceState(pluginsBefore));
     if (wroteNames) rollback.push(consoleNames.replaceAll(previous.consoleNames));
     if (wroteStage) rollback.push(deviceStage.replaceAll(previous.deviceStage));
     if (wroteLayouts) rollback.push(homeLayouts.replaceAll(previous.homeLayouts));

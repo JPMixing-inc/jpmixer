@@ -23,8 +23,14 @@
   }
   const hours = (min) => min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min` : `${min} min`;
 
+  // In the order of the mixes they're assigned to (Aux 1 first), so Vox 1's
+  // mic is above Vox 2's; mics on no mix last. Mics on the same mix, and the
+  // unassigned ones, keep the receivers' order.
+  const auxOf = (ch) => { const n = Number(ch && ch.aux); return Number.isInteger(n) && n > 0 ? n : Infinity; };
+  const byMix = (list) => list.map((ch, i) => [ch, i]).sort((a, b) => (auxOf(a[0]) - auxOf(b[0])) || (a[1] - b[1])).map(([ch]) => ch);
+
   function render(data) {
-    const channels = data && data.ok && data.enabled ? data.channels || [] : [];
+    const channels = byMix(data && data.ok && data.enabled ? data.channels || [] : []);
     card.classList.toggle('fh-card-off', !channels.length);
     body.removeAttribute('aria-busy');
     body.textContent = '';

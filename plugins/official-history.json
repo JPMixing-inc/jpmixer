@@ -134,6 +134,33 @@
           }
         ]
       }
+    ],
+    "shure": [
+      {
+        "version": "1.0.0",
+        "files": [
+          {
+            "path": "index.js",
+            "size": 2815,
+            "sha256": "703b38df3d86150cc7ccccbd23b2d3964fd98f6ba9139d0723f8040bdad39471"
+          },
+          {
+            "path": "plugin.json",
+            "size": 563,
+            "sha256": "c601b5acd76f7c87479e690f42eb8af5b9329e8d9a6f55774c3159f6ee851549"
+          },
+          {
+            "path": "README.md",
+            "size": 685,
+            "sha256": "6355e6c6a39e64484bc2a9dc22bd63b52a2defcd5aa9b0ef333259a4f01976e9"
+          },
+          {
+            "path": "shure.js",
+            "size": 22405,
+            "sha256": "20d4a41f8920fc226772ba396e95aac96f5f2b6c5098ac22e5aafc707b984e84"
+          }
+        ]
+      }
     ]
   }
 }

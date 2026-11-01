@@ -82,11 +82,37 @@ const monHdrCache  = new Map(); // aux → badge element
 
 // ── WebSocket ─────────────────────────────────────────────────────────────
 
+// Nothing from the server for 35 s (it pings every 25), or for 30 s when
+// the page comes back to the front: the socket is dead, though it may not
+// know it yet (a half-open connection, a tablet that slept). It's dropped and
+// a new one opened at once, as the phone mixer does: asking the old one to
+// close and waiting for its close event took much longer.
+let lastMessageAt = 0;
 function resetHeartbeat() {
+  lastMessageAt = Date.now();
   clearTimeout(heartbeatTimer);
-  heartbeatTimer = setTimeout(() => {
-    if (ws) { ws.close(); }
-  }, 35000);
+  heartbeatTimer = setTimeout(dropDeadSocket, 35000);
+}
+function dropDeadSocket() {
+  const dead = ws;
+  if (!dead) return;
+  ws = null; // its own late close event is ignored (sock !== ws)
+  try { dead.close(); } catch (_) {}
+  lostConnection();
+}
+function lostConnection() {
+  clearTimeout(heartbeatTimer);
+  document.getElementById('connDot').classList.remove('connected');
+  document.getElementById('monConnectionLabel').textContent = 'Reconnecting';
+  clearTimeout(disconnectShowTimer);
+  disconnectShowTimer = setTimeout(() => {
+    document.body.classList.add('disconnected');
+    if (hasConnected) {
+      document.getElementById('overlayMsg').textContent = 'Reconnecting…';
+    }
+  }, 2500);
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connect, ws ? 1000 : 0);
 }
 
 function connect() {
@@ -108,21 +134,13 @@ function connect() {
     document.getElementById('connDot').classList.add('connected');
     document.getElementById('monConnectionLabel').textContent = 'Server connected';
     resetHeartbeat();
+    // A scene press that waited for the code
+    if (fireAfterUnlock) { const action = fireAfterUnlock; fireAfterUnlock = null; fireSnapshot(action); }
   });
 
   sock.addEventListener('close', () => {
     if (sock !== ws) return;
-    clearTimeout(heartbeatTimer);
-    document.getElementById('connDot').classList.remove('connected');
-    document.getElementById('monConnectionLabel').textContent = 'Reconnecting';
-    clearTimeout(disconnectShowTimer);
-    disconnectShowTimer = setTimeout(() => {
-      document.body.classList.add('disconnected');
-      if (hasConnected) {
-        document.getElementById('overlayMsg').textContent = 'Reconnecting…';
-      }
-    }, 2500);
-    reconnectTimer = setTimeout(connect, 1000);
+    lostConnection();
   });
 
   sock.addEventListener('message', e => {
@@ -140,6 +158,7 @@ function connect() {
 }
 
 function onMessage(json) {
+  if (json.type === 'console-locked') { if (pendingFire) askSceneCode(); return; }
   if (json.config) {
     globalThis.jpmSplash?.done();
     // A new desk session: these levels belong to the old one, and a boost
@@ -588,9 +607,48 @@ function boostAux(auxCh, db) {
 
 // ── Snapshot firing ────────────────────────────────────────────────────────
 
+// The ‹ › buttons recall a whole desk scene, so they need the Console
+// Controller's code when one is set: the server answers console-locked, and
+// this page asks for it once (the browser keeps it), then sends the press again.
+let pendingFire = null, fireAfterUnlock = null;
 function fireSnapshot(action) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  pendingFire = action;
   ws.send(JSON.stringify({ type: 'fire-snapshot', action }));
+  setTimeout(() => { if (pendingFire === action && !sceneLock?.open) pendingFire = null; }, 1500);
+}
+let sceneLock = null;
+function askSceneCode() {
+  if (!sceneLock) {
+    sceneLock = document.createElement('dialog');
+    sceneLock.className = 'mon-lock';
+    sceneLock.setAttribute('aria-labelledby', 'monLockTitle');
+    sceneLock.innerHTML = '<form class="mon-lock-card" method="dialog"><p class="mon-lock-eyebrow">SCENES</p><h2 id="monLockTitle">Enter the Console Controller code</h2><p class="mon-lock-sub">Changing the desk’s scene needs the code set in Settings → Pages. This browser remembers it.</p><input type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32" aria-label="Access code" required /><p class="mon-lock-error" role="alert"></p><div class="mon-lock-actions"><button type="button" value="cancel">Cancel</button><button type="submit" value="ok">Unlock</button></div></form>';
+    document.body.appendChild(sceneLock);
+    const form = sceneLock.querySelector('form'), input = sceneLock.querySelector('input'), error = sceneLock.querySelector('.mon-lock-error');
+    sceneLock.querySelector('button[value="cancel"]').addEventListener('click', () => { pendingFire = null; sceneLock.close(); });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      error.textContent = '';
+      try {
+        const res = await fetch('/console-unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: input.value }), cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!data.ok) { error.textContent = data.error || 'That code isn’t right.'; input.select(); return; }
+        input.value = '';
+        fireAfterUnlock = pendingFire; // sent once the new socket is open (only after an unlock)
+        pendingFire = null;
+        sceneLock.close();
+        // The socket's cookies are read when it opens: a new one carries the code
+        const old = ws;
+        ws = null;
+        if (old) { try { old.close(); } catch (_) {} }
+        connect();
+      } catch (_) { error.textContent = 'Can’t reach JPMixer right now. Check the connection.'; }
+    });
+  }
+  sceneLock.querySelector('.mon-lock-error').textContent = '';
+  if (!sceneLock.open) sceneLock.showModal();
+  setTimeout(() => sceneLock.querySelector('input').focus(), 0);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
@@ -684,6 +742,8 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
       connect();
+    } else if (ws.readyState === WebSocket.OPEN && Date.now() - lastMessageAt > 30000) {
+      dropDeadSocket(); // slept: likely dead
     }
   }
 });

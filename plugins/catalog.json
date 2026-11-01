@@ -183,9 +183,39 @@
       ]
     },
     {
+      "id": "propresenter",
+      "name": "ProPresenter",
+      "version": "1.1.2",
+      "description": "A ProPresenter controller on the Home pages: pictures of the current and next slide, next and previous, clear, timers and the stage message, plus cards for every timer, audience messages, and macros and Looks.",
+      "author": "JPMixer",
+      "permissions": [
+        "card",
+        "timers"
+      ],
+      "minJPMixer": "2.0.19",
+      "path": "propresenter",
+      "files": [
+        {
+          "path": "index.js",
+          "size": 24165,
+          "sha256": "5b17b0f55b63a85ef33bcd4da10169f39045a110aea1a2595aba9006a9a22d72"
+        },
+        {
+          "path": "plugin.json",
+          "size": 1418,
+          "sha256": "8f803e0caebe90384e4003a26e8ecebcf50d6e8a3bef7667c25f350817946a07"
+        },
+        {
+          "path": "README.md",
+          "size": 1204,
+          "sha256": "3159d2541d474f1c46d9ae79708996d32f7b1dd3e4247a884a28025c35c31492"
+        }
+      ]
+    },
+    {
       "id": "shure",
       "name": "Shure wireless",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Each Shure wireless mic's name, battery and transmitter on FOH Home, the musician's phone, Monitor Engineer and the Green Room. Only reads: it never changes a receiver or turns on its meters.",
       "author": "JPMixer",
       "permissions": [
@@ -202,7 +232,7 @@
         {
           "path": "plugin.json",
           "size": 563,
-          "sha256": "c601b5acd76f7c87479e690f42eb8af5b9329e8d9a6f55774c3159f6ee851549"
+          "sha256": "9395a33c377ac239620faa1831738a3302d490aa132e2dbfde35a7b35f8c1236"
         },
         {
           "path": "README.md",
@@ -211,8 +241,8 @@
         },
         {
           "path": "shure.js",
-          "size": 22405,
-          "sha256": "20d4a41f8920fc226772ba396e95aac96f5f2b6c5098ac22e5aafc707b984e84"
+          "size": 23484,
+          "sha256": "9cdd6814c7e7b686a7903fafa96fd99ff12876856779d8614d81c0c10af7e928"
         }
       ]
     },

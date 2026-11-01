@@ -1,0 +1,21 @@
+{
+  "id": "propresenter",
+  "name": "ProPresenter",
+  "version": "1.1.2",
+  "description": "A ProPresenter controller on the Home pages: pictures of the current and next slide, next and previous, clear, timers and the stage message, plus cards for every timer, audience messages, and macros and Looks.",
+  "author": "JPMixer",
+  "main": "index.js",
+  "minJPMixer": "2.0.19",
+  "permissions": ["card", "timers"],
+  "cards": [
+    { "id": "now", "title": "ProPresenter", "homePages": "all", "size": "large" },
+    { "id": "timers", "title": "Timers", "homePages": "all" },
+    { "id": "messages", "title": "Audience messages", "homePages": "all" },
+    { "id": "macros", "title": "Macros & Looks", "homePages": "all" }
+  ],
+  "settings": [
+    { "key": "host", "label": "ProPresenter computer’s address", "type": "text", "default": "", "help": "Its IP address, as ProPresenter shows it under Settings → Network. Leave blank if ProPresenter runs on this computer." },
+    { "key": "port", "label": "Port", "type": "number", "default": 50000, "min": 1, "max": 65535, "help": "The Port under ProPresenter → Settings → Network, with Enable Network on." },
+    { "key": "timersOnTop", "label": "Running timers at the top of the pages", "type": "checkbox", "default": true, "help": "While a ProPresenter timer runs, it shows under the header of every Home page and next to the clock on the Green Room screen." }
+  ]
+}

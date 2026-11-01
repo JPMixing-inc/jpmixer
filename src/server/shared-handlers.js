@@ -165,6 +165,17 @@ function auxChannels(ov) {
   return [...new Set(ov.channels.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 512))].sort((a, b) => a - b);
 }
 
+// Whether a mix's phones show channel n: on the mix's own list, if it has
+// one (which can hold channels hidden from the main list), else on the main
+// list (not hidden in Settings). A saved mix or Ear Scene only changes these:
+// a hidden channel's send is the engineer's, and a phone couldn't undo it.
+function channelOnMix(cfg, aux, ch) {
+  const own = auxChannels(((cfg && cfg.auxOverrides) || {})[String(aux)]);
+  if (own) return own.includes(Number(ch));
+  const ov = ((cfg && cfg.channelOverrides) || {})[String(ch)];
+  return !(ov && ov.enabled === false);
+}
+
 // The phone/monitor channel list, the same on every console: Settings'
 // overrides applied, sorted by group then custom order, with each group's
 // name as a heading on its first channel. `consoleName(n)` gives the desk's
@@ -226,4 +237,4 @@ const plainMap = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {
 // a few kB. The default (100 MB) let one message tie the server up.
 const MAX_PAYLOAD = 1024 * 1024;
 
-module.exports = { plainMap, MAX_PAYLOAD, handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb, guarded, buildChannelList, auxGroupNames, auxChannels, consoleNameOr };
+module.exports = { channelOnMix, plainMap, MAX_PAYLOAD, handleSharedMessage, broadcastActivity, pushDevicePresets, relabel, sliderToDb, guarded, buildChannelList, auxGroupNames, auxChannels, consoleNameOr };

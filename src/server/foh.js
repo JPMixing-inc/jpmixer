@@ -104,17 +104,47 @@ function mountFoh(app, status) {
   // Plugins' own pages, sandboxed, and their calls to their plugin (plugins.js)
   require('./plugins').mountPluginPages(app);
   // Plugins' cards (plugins.js). The page loads the list as a script before
-  // foh-layout.js, so the cards are there to arrange like any other; what's
-  // on them needs FOH's access code.
+  // foh-layout.js, so the cards are there to arrange like any other. On FOH
+  // Home, what's on them (and their buttons) needs FOH's access code. The
+  // other Home pages are open to the team: they get only the cards a plugin
+  // put on every Home page, and those cards' buttons work there without one.
+  // ?page=<Home page id>; FOH's if left out.
+  const cardPage = (req) => { const id = String((req.query && req.query.page) || (req.body && req.body.page) || 'foh'); return homeRoles.has(id) ? id : 'foh'; };
   app.get('/plugin-cards.js', (req, res) => {
-    const list = require('./plugins').cards().map((c) => ({ id: c.cardId, title: c.title }));
+    const list = require('./plugins').cards().map((c) => ({ id: c.cardId, title: c.title, everyPage: c.everyPage, size: c.size }));
     res.set('Cache-Control', 'no-store');
     res.type('application/javascript').send(`window.JPM_PLUGIN_CARDS = ${JSON.stringify(list).replace(/</g, '\\u003c')};\n`);
   });
   app.get('/plugin-cards', (req, res) => {
     res.set('Cache-Control', 'no-store');
-    if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true }); return; }
-    res.json({ ok: true, cards: require('./plugins').cards().map((c) => ({ id: c.cardId, title: c.title, card: c.card, state: c.state })) });
+    const foh = cardPage(req) === 'foh';
+    if (foh && !hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true }); return; }
+    res.json({ ok: true, cards: require('./plugins').cards().filter((c) => foh || c.everyPage).map((c) => ({ id: c.cardId, title: c.title, card: c.card, state: c.state })) });
+  });
+  // Plugins' running timers (a ProPresenter countdown), at the top of every
+  // Home page and the Green Room screen. Names and times only, so no code:
+  // the Green Room has none.
+  app.get('/plugin-timers', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ ok: true, timers: require('./plugins').runningTimers().map(({ name, time, over }) => ({ name, time, over })) });
+  });
+  // A card's picture (a ProPresenter slide), at an address made from what's in
+  // it, so a browser fetches each one once (and Next becoming Now is instant)
+  app.get(/^\/plugin-cards\/image\/(p-[a-z][a-z0-9-]{1,29}(?:_[a-z][a-z0-9-]{0,11})?)\/([0-9a-f]{16})$/, (req, res) => {
+    const foh = cardPage(req) === 'foh';
+    if (foh && !hasFohAccess(req)) { res.status(401).end(); return; }
+    const img = require('./plugins').cardImage(req.params[0], req.params[1], { foh });
+    if (!img) { res.status(404).end(); return; }
+    res.set({ 'Content-Type': img.type, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" });
+    res.end(img.buf);
+  });
+  app.post('/plugin-cards/press', express.json({ limit: '4kb' }), (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const foh = cardPage(req) === 'foh';
+    if (foh && !hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true }); return; }
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const out = require('./plugins').pressCard(String(body.id || ''), body.button, body.text, { foh });
+    res.status(out.ok ? 200 : out.status || 400).json(out.ok ? { ok: true } : { ok: false, error: out.error });
   });
   app.get('/foh-data', async (req, res) => {
     if (!hasFohAccess(req)) { res.status(401).json({ ok: false, needCode: true, role: { id: 'foh', label: FOH.label, page: FOH.page } }); return; }

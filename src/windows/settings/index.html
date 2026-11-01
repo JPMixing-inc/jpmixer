@@ -80,7 +80,7 @@
         <div class="settings-heading"><h2>Setting up JPMixer</h2><p class="sub">Work down the list. Each step opens the right place; the optional ones only matter if you use them.</p></div>
         <div class="setup-names-note">
           <strong>Names fill themselves in.</strong>
-          <p>Once your console is connected, JPMixer reads its channel names, mix names, and control groups (DCAs on dLive and LV1) straight from the console, so there’s nothing to type in. When the console changes a name, JPMixer follows, and it remembers the names, so they’re still here while the console is off. (KLANG and WING send channel names only, so name their mixes on the Aux mixes tab.)</p>
+          <p>Once your console is connected, JPMixer reads its channel names, mix names, and control groups (DCAs on dLive, LV1 and the M32) straight from the console, so there’s nothing to type in. When the console changes a name, JPMixer follows, and it remembers the names, so they’re still here while the console is off. (KLANG and WING send channel names only, so name their mixes on the Aux mixes tab.)</p>
           <p>Want a different name? Type your own on the <button type="button" class="settings-text-link" data-settings-target="channels">Channels</button> or <button type="button" class="settings-text-link" data-settings-target="auxes">Aux mixes</button> tab. It overrides the console’s name in JPMixer only (the console isn’t changed), and clearing it goes back to the console’s name. Control group and DCA names always come from the console.</p>
         </div>
         <ol class="setup-steps" id="setupSteps"></ol>
@@ -148,6 +148,7 @@
             <option value="klang">KLANG (paired with dLive)</option>
             <option value="wing">Behringer WING</option>
             <option value="lv1">Waves eMotion LV1</option>
+            <option value="m32">Midas M32 / Behringer X32</option>
           </select>
         </div>
 
@@ -212,6 +213,16 @@
           <div class="sub">LV1 picks a new port each time it starts and announces it on the network. Leave this at 0.</div>
         </div>
 
+        <div class="settings-stack" id="m32FieldsRow" style="display:none">
+          <div class="sub">⚠️ M32 and X32 support is new and hasn’t been tried on a real console yet. Aux send levels, mute, solo, pan on stereo mixes, live channel and mix names, Ear Scenes (by scene number) and the Console Controller (channel, mix and DCA faders, mutes and solos, and the ‹ › scene buttons) work. Mix EQ for performers and the channel processing panel aren’t available yet. If something doesn’t work, OSC Log → Start Logging records what the console sent, to share with us.</div>
+          <details class="settings-help"><summary>Setting up the console</summary><div class="settings-help-body"><div class="sub">Enter the console’s IP address (on the console: Setup → Network). JPMixer connects the way M32-Edit and the M32 Mix app do, so there’s nothing to switch on. Channels 1–32 are the input channels, 33–40 the aux ins and 41–48 the FX returns: set Channels to 32 to leave the aux ins and FX returns out. Mixes are the 16 mix buses. Two mix buses linked on the console are one stereo mix with pan, under the first bus’s number.</div></div></details>
+          <div class="field-row">
+            <label for="m32Port">M32 Port Override</label>
+            <input type="number" id="m32Port" min="0" max="65535" placeholder="Leave 0 for default (10023)" />
+          </div>
+          <div class="sub">Leave at 0 to use the console’s own port. The Console status above shows whether the console is answering.</div>
+        </div>
+
         <div class="settings-stack" id="dliveFieldsRow" style="display:none">
           <div class="settings-notice sub" id="dliveWarningText">⚠️ dLive support has been tested against dLive Director running offline, not yet a real MixRack. Aux send levels, mute, solo, scene recall, Ear Scenes, live names, a mix’s EQ for its musicians, FX returns in the mixes, pan on the stereo mixes and the Console Controller (faders and mutes of channels, auxes, DCAs, FX, groups, matrices, mains and mute groups, and each channel’s preamp, high-pass and EQ) work. To try it without a console, run dLive Director offline with System → Offline → “Enable Director Connections to MixRack IP Controllers” ticked, and use this computer’s address with Director’s MIDI channel.</div>
           <details class="settings-help"><summary>Enable MIDI control on the dLive console</summary><div class="settings-help-body"><div class="sub"><strong>On the console:</strong> Utility → Control → MIDI has its own On/Off/Secure Mode switch for MIDI/TCP — it must be turned on there before JPMixer (or anything else) can connect, the same way DiGiCo consoles need DiGiCo Pad enabled. Unlike DiGiCo Pad, though, dLive doesn't limit this to one connection at a time — JPMixer can run alongside Director, MixPad, and other control apps without conflict.</div></div></details>
@@ -238,8 +249,8 @@
           <details class="settings-help"><summary>Port troubleshooting</summary><div class="settings-help-body"><div class="sub">Leave at 0 to use the documented default. If the console doesn't respond, try 51328 (the alternate port some tools use) — see JPMixer's dLive notes for why this isn't fully settled yet.</div></div></details>
           <div class="field-row two-col" id="dliveAuthRow" style="display:none">
             <div>
-              <label for="dliveUsername">Username</label>
-              <input type="text" id="dliveUsername" autocomplete="off" />
+              <label for="dliveUsername">User profile (1–32)</label>
+              <input type="text" id="dliveUsername" inputmode="numeric" autocomplete="off" placeholder="1 = the first user profile" />
             </div>
             <div>
               <label for="dlivePassword">Password</label>
@@ -932,7 +943,7 @@
   </main>
 
   <footer>
-    <div class="footer-meta"><span class="version">v2.0.18</span><span>Changes apply when you save.</span></div>
+    <div class="footer-meta"><span class="version">v2.0.19</span><span>Changes apply when you save.</span></div>
     <button class="btn btn-primary" id="saveBtn">Save &amp; Apply</button>
   </footer>
 

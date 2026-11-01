@@ -319,3 +319,49 @@ test('a plugin’s page is served sandboxed, and only its own page can call it',
     await plugins.stopAll();
   }
 });
+
+test('several cards, on every Home page or only FOH, with buttons and a text box that reach the plugin', async () => {
+  // plugin.json: card ids checked
+  const bad = (cards) => plugins.readManifest(makePlugin(`cards-bad-${Math.random().toString(36).slice(2, 7)}`, { id: 'cards-bad', name: 'Bad', main: 'index.js', permissions: ['card'], cards, settings: [{ key: 'a', label: 'A', type: 'text' }] }, 'module.exports = () => {};'));
+  assert.match(bad([{ id: 'Now' }]).error, /up to 12 lowercase/);
+  assert.match(bad([{ id: 'now' }, { id: 'now' }]).error, /Two cards use the id "now"/);
+  for (const name of fs.readdirSync(path.join(userData, 'plugins'))) if (name.startsWith('cards-bad-')) fs.rmSync(path.join(userData, 'plugins', name), { recursive: true });
+
+  makePlugin('stage', {
+    id: 'stage', name: 'Stage', version: '1.0.0', main: 'index.js', permissions: ['card'],
+    cards: [{ id: 'now', title: 'Now showing', homePages: 'all' }, { id: 'engineer', title: 'Engineer only' }],
+    settings: [{ key: 'a', label: 'A', type: 'text' }],
+  }, `
+    module.exports = (jp) => {
+      let slide = 1, message = '';
+      const draw = () => jp.card.show({ value: String(slide), text: 'Line one\\nLine two', buttons: [{ id: 'next', label: 'Next' }, { id: 'off', label: 'Off', disabled: true }], input: { id: 'msg', placeholder: 'Message', button: 'Show' }, note: message }, 'now');
+      draw();
+      jp.card.show({ value: 'secret', buttons: [{ id: 'reset', label: 'Reset' }] }, 'engineer');
+      jp.card.onPress(({ card, button, text }) => {
+        if (card === 'now' && button === 'next') slide++;
+        if (card === 'now' && button === 'msg') message = text;
+        draw();
+      });
+    };
+  `);
+  plugins.save({ stage: { enabled: true } });
+  await plugins.apply();
+  const now = () => plugins.cards().find((c) => c.cardId === 'p-stage_now');
+  await until(() => now()?.card && plugins.cards().find((c) => c.cardId === 'p-stage_engineer')?.card);
+  assert.deepEqual(plugins.cards().filter((c) => c.id === 'stage').map((c) => [c.cardId, c.title, c.everyPage]), [['p-stage_now', 'Now showing', true], ['p-stage_engineer', 'Engineer only', false]]);
+  assert.equal(now().card.text, 'Line one\nLine two', 'line breaks kept');
+  assert.deepEqual(now().card.buttons.map((b) => [b.id, b.disabled]), [['next', false], ['off', true]]);
+
+  // A press reaches the plugin, which updates its card
+  assert.deepEqual(plugins.pressCard('p-stage_now', 'next', undefined, { foh: false }), { ok: true });
+  await until(() => now().card.value === '2');
+  assert.deepEqual(plugins.pressCard('p-stage_now', 'msg', 'Two minutes', { foh: false }), { ok: true });
+  await until(() => now().card.note === 'Two minutes');
+  // Only what the card shows, and an FOH-only card only from FOH Home
+  assert.equal(plugins.pressCard('p-stage_now', 'delete-everything', undefined, { foh: true }).ok, false);
+  assert.equal(plugins.pressCard('p-stage_now', 'off', undefined, { foh: true }).ok, false, 'a disabled button');
+  assert.equal(plugins.pressCard('p-stage_engineer', 'reset', undefined, { foh: false }).ok, false, 'not on the other Home pages');
+  assert.equal(plugins.pressCard('p-stage_engineer', 'reset', undefined, { foh: true }).ok, true);
+  plugins.save({ stage: { enabled: false } });
+  await plugins.apply();
+});

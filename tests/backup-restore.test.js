@@ -6,12 +6,12 @@ const sample={ app:'JPMixer',type:'backup',version:2,appVersion:'1.8.0',config:{
 function harness(t){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'jpm-selected-restore-')); t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   const stores={};
-  function load(name){ const context={module:{exports:{}},console:{error(){}},setTimeout,clearTimeout,require(request){if(request==='electron')return {app:{getPath:()=>dir,getVersion:()=> '1.8.0'}};if(request.startsWith('./')&&stores[request.slice(2)])return stores[request.slice(2)];return require(request.startsWith('./')?path.join(root,'src/server',request):request);}};vm.runInNewContext(fs.readFileSync(path.join(root,'src/server',name+'.js'),'utf8'),context);return context.module.exports; }
-  const config=stores.config=load('config'),presets=stores.presets=load('presets'),scenes=stores.scenes=load('scenes'),homeLayouts=stores['home-layouts']=load('home-layouts'),deviceStage=stores['device-stage']=load('device-stage'),consoleNames=stores['console-names']=load('console-names'),autoBackup=stores['auto-backup']=load('auto-backup');
+  function load(name){ const context={module:{exports:{}},console:{error(){},log(){}},setTimeout,clearTimeout,setInterval,clearInterval,setImmediate,process,Buffer,__dirname:path.join(root,'src/server'),require(request){if(request==='electron')return {app:{getPath:()=>dir,getVersion:()=> '1.8.0'}};if(request.startsWith('./')&&stores[request.slice(2)])return stores[request.slice(2)];return require(request.startsWith('./')?path.join(root,'src/server',request):request);}};vm.runInNewContext(fs.readFileSync(path.join(root,'src/server',name+'.js'),'utf8'),context);return context.module.exports; }
+  const config=stores.config=load('config'),presets=stores.presets=load('presets'),scenes=stores.scenes=load('scenes'),homeLayouts=stores['home-layouts']=load('home-layouts'),deviceStage=stores['device-stage']=load('device-stage'),consoleNames=stores['console-names']=load('console-names'),plugins=stores.plugins=load('plugins'),autoBackup=stores['auto-backup']=load('auto-backup');
   config.save({...config.getAll(),pcoAppId:'current-app',pcoSecret:'current-secret',pcoServiceTypeId:'current-service',apiToken:'current-token'});
   presets.savePreset('existing','Keep',{1:0.2},{1:0.3});presets.replaceAll(plain(presets.getAll()),{});scenes.saveScene('Current',1,{1:0.3});
   const files=()=>Object.fromEntries(['config.json','presets.json','preset-aliases.json','scenes.json'].map(name=>[name,fs.readFileSync(path.join(dir,name),'utf8')]));
-  return {dir,config,presets,scenes,homeLayouts,deviceStage,consoleNames,autoBackup,files};
+  return {dir,config,presets,scenes,homeLayouts,deviceStage,consoleNames,plugins,autoBackup,files};
 }
 function failWriteOnce(match,fn){ const original=fs.writeFileSync; let failed=false;fs.writeFileSync=function(file,...args){if(!failed&&String(file).includes(match)){failed=true;throw Error('simulated disk failure');}return original.call(this,file,...args);};return Promise.resolve().then(fn).finally(()=>{fs.writeFileSync=original;}); }
 
@@ -272,4 +272,31 @@ test('a home-layouts.json copied out of the app folder restores as layouts, not 
   const data=restore.normalize({lighting:{777:{name:'Lee',savedAt:'2026-10-01T00:00:00Z',layout:{order:['chat']}}}},'home-layouts.json');
   assert.equal(data.kind,'Extracted Home page layouts');
   assert.deepEqual(restore.describe(data,'').sections.map(s=>s.id),['homeLayouts']);
+});
+
+test('which plugins are on, and their settings, are in backups (without passwords when asked), and a restore puts them back',async t=>{
+  const h=harness(t);
+  // A plugin installed here, with a password setting
+  const folder=path.join(h.dir,'plugins','stage-clock');fs.mkdirSync(folder,{recursive:true});
+  fs.writeFileSync(path.join(folder,'plugin.json'),JSON.stringify({id:'stage-clock',name:'Stage clock',main:'index.js',permissions:['card'],settings:[{key:'host',label:'Address',type:'text'},{key:'pass',label:'Password',type:'password'}]}));
+  fs.writeFileSync(path.join(folder,'index.js'),'module.exports=()=>{};');
+  assert.equal(h.plugins.save({'stage-clock':{enabled:true,settings:{host:'10.0.0.8',pass:'s3cret'}}}).ok,true);
+  const full=plain(h.autoBackup.buildBackupData());
+  assert.deepEqual(full.plugins,{'stage-clock':{enabled:true,settings:{host:'10.0.0.8',pass:'s3cret'}}});
+  const noPasswords=plain(h.autoBackup.buildBackupData({includeCredentials:false}));
+  assert.deepEqual(noPasswords.plugins['stage-clock'].settings,{host:'10.0.0.8'},'its password left out');
+  // Since then: turned off and moved
+  h.plugins.save({'stage-clock':{enabled:false,settings:{host:'10.0.0.9',pass:'s3cret'}}});
+  const bad=plain(full);bad.plugins['../evil']={enabled:true};bad.plugins.shure={enabled:true};
+  const data=restore.normalize(bad,'backup.json');
+  assert.deepEqual(Object.keys(data.plugins),['stage-clock'],'junk and JPMixer’s own integrations are left out');
+  assert.match(restore.describe(data,'').sections.find(s=>s.id==='plugins').description,/1 of 1/);
+  const result=await restore.apply(data,['plugins'],'merge',h);
+  assert.equal(result.ok,true);assert.equal(result.pluginsChanged,true);
+  const saved=JSON.parse(fs.readFileSync(path.join(h.dir,'plugins.json'),'utf8'))['stage-clock'];
+  assert.equal(saved.enabled,true);assert.equal(saved.settings.host,'10.0.0.8');
+  // A backup without passwords keeps the one set here
+  await restore.apply(restore.normalize(noPasswords,'backup.json'),['plugins'],'merge',h);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(h.dir,'plugins.json'),'utf8'))['stage-clock'].settings.pass,'s3cret');
+  assert.equal(h.config.get('pcoSecret'),'current-secret','only the chosen section is restored');
 });

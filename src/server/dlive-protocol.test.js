@@ -205,7 +205,7 @@ t('nearestColourIndex picks exact matches', () => {
 // ── TLS auth message — no literal comma byte, just profile + password ASCII ──
 t('buildTlsAuthMessage: profile byte directly followed by password bytes', () => {
   const msg = P.buildTlsAuthMessage(3, 'hunter2');
-  assert.deepEqual(msg, [3, ...Buffer.from('hunter2', 'ascii')]);
+  assert.deepEqual(msg, [2, ...Buffer.from('hunter2', 'ascii')], 'user profile 3 (as people count) is byte 02');
   assert.ok(!msg.includes(0x2C), 'must not contain a literal comma byte (0x2C) — that was the bug');
 });
 t('buildTlsAuthMessage: empty password is just the profile byte', () => {
@@ -214,6 +214,9 @@ t('buildTlsAuthMessage: empty password is just the profile byte', () => {
 t('buildTlsAuthMessage: clamps profile to the documented 00-1F range', () => {
   assert.equal(P.buildTlsAuthMessage(999, 'x')[0], 0x1F);
   assert.equal(P.buildTlsAuthMessage(-5, 'x')[0], 0x00);
+});
+t('the TLS user profile: 1-32 as Settings asks for it, the first for 0, a name or nothing', () => {
+  assert.deepEqual([1, 32, '7', 0, '', 'Engineer'].map(P.tlsProfileByte), [0, 0x1F, 6, 0, 0, 0]);
 });
 
 // ── Preamps, PEQ and HPF (the V1.9 spec's sections and tables) ──────────

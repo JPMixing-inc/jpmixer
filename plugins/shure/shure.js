@@ -148,17 +148,35 @@ function parseAnnouncement(buf, fromIp) {
   return { ip, model, cid, id: idFromCid(cid) };
 }
 
+// The announcement group is joined on every network the computer has, and
+// checked again every 30 s: a network that comes up later (the audio
+// network's cable, a USB adapter) is heard too, not only those there at start.
+// After a socket error it starts again 10 s later.
+let discoveryJoined = new Set(), discoveryTimer = null, discoveryRetry = null;
+function joinGroups(sock) {
+  const addresses = Object.values(os.networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address);
+  const now = new Set(addresses.length ? addresses : ['']);
+  for (const k of [...discoveryJoined]) if (!now.has(k)) discoveryJoined.delete(k); // gone: joined again if it comes back
+  for (const k of now) {
+    if (discoveryJoined.has(k)) continue;
+    try { sock.addMembership(DISCOVERY_GROUP, k || undefined); discoveryJoined.add(k); } catch (_) {}
+  }
+}
 function startDiscovery() {
   if (discoverySocket) return;
+  clearTimeout(discoveryRetry); discoveryRetry = null;
   const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   discoverySocket = sock;
-  sock.on('error', (e) => { console.error('[JPMixer/Wireless] discovery:', e.message); stopDiscovery(); });
+  sock.on('error', (e) => {
+    console.error('[JPMixer/Wireless] discovery:', e.message);
+    stopDiscovery();
+    discoveryRetry = setTimeout(() => { discoveryRetry = null; if (enabled && !noDiscovery) startDiscovery(); }, 10000);
+  });
   sock.on('message', (msg, rinfo) => onAnnouncement(msg, rinfo.address));
   sock.bind(DISCOVERY_PORT, () => {
-    const addresses = Object.values(os.networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address);
-    for (const address of addresses.length ? addresses : [undefined]) {
-      try { sock.addMembership(DISCOVERY_GROUP, address); } catch (_) {}
-    }
+    if (discoverySocket !== sock) return;
+    joinGroups(sock);
+    discoveryTimer = setInterval(() => { if (discoverySocket === sock) joinGroups(sock); }, 30000);
   });
 }
 function onAnnouncement(msg, fromIp) {
@@ -172,6 +190,8 @@ function onAnnouncement(msg, fromIp) {
   if (!seen) onChange();
 }
 function stopDiscovery() {
+  clearInterval(discoveryTimer); discoveryTimer = null;
+  discoveryJoined = new Set();
   if (!discoverySocket) return;
   try { discoverySocket.close(); } catch (_) {}
   discoverySocket = null;
@@ -404,7 +424,7 @@ function mixesForPages() {
   return mixes;
 }
 
-function stop() { if (saveTimer) saveNow(); for (const r of watched.values()) r.close(); watched.clear(); stopDiscovery(); discovered.clear(); }
+function stop() { if (saveTimer) saveNow(); for (const r of watched.values()) r.close(); watched.clear(); clearTimeout(discoveryRetry); discoveryRetry = null; stopDiscovery(); discovered.clear(); }
 
 module.exports = {
   applyConfig, getStatus, channelsForPages, mixesForPages, stop, parseAnnouncement, applyValue,

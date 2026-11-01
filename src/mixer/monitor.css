@@ -370,3 +370,17 @@ body.disconnected .overlay { display: flex; }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* The Console Controller code, asked for when a scene button needs it (monitor.js) */
+.mon-lock { margin: auto; border: 0; padding: 0; background: transparent; color: inherit; max-width: calc(100vw - 32px); } /* centred: the page resets margins */
+.mon-lock::backdrop { background: rgba(0, 0, 0, .6); }
+.mon-lock-card { width: min(380px, calc(100vw - 32px)); display: grid; gap: 12px; padding: 26px; border: 1px solid var(--jp-edge, #3a404b); border-radius: 16px; background: var(--jp-card, #1c1e23); color: var(--text, #f2f2f5); }
+.mon-lock-eyebrow { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: 1.4px; color: var(--accent, #e8003c); }
+.mon-lock-card h2 { margin: 0; font-size: 20px; font-weight: 650; }
+.mon-lock-sub { margin: 0; color: var(--jp-secondary, #8b92a5); font-size: 13px; line-height: 1.5; }
+.mon-lock-card input { height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--jp-edge, #3a404b); background: var(--jp-deep, #111316); color: inherit; font: inherit; font-size: 18px; letter-spacing: 3px; }
+.mon-lock-card input:focus { outline: none; border-color: var(--accent, #e8003c); }
+.mon-lock-error { margin: 0; min-height: 1em; font-size: 12px; font-weight: 600; color: #ff9f0a; }
+.mon-lock-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.mon-lock-actions button { height: 42px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--jp-edge, #3a404b); background: transparent; color: inherit; font: inherit; font-weight: 650; cursor: pointer; }
+.mon-lock-actions button[value="ok"] { border: 0; background: var(--accent, #e8003c); color: #fff; }

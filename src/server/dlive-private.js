@@ -62,7 +62,14 @@ class DlivePrivate extends EventEmitter {
 
   _open() {
     const udp = dgram.createSocket('udp4');
-    udp.on('message', (m, from) => { this._lastPing = Date.now(); try { udp.send(m, from.port, from.address); } catch (_) {} });
+    // The console's pings, echoed: only from the console this link is open to
+    // (anything else isn't echoed, and doesn't count as the console's ping)
+    udp.on('message', (m, from) => {
+      const peer = this._sock && this._sock.remoteAddress ? this._sock.remoteAddress.replace(/^::ffff:/, '') : null;
+      if (peer && from.address !== peer) return;
+      this._lastPing = Date.now();
+      try { udp.send(m, from.port, from.address); } catch (_) {}
+    });
     let bound = false;
     udp.on('error', () => { if (!bound) { try { udp.close(); } catch (_) {} this._later(); } });
     udp.bind(0, () => {
@@ -104,6 +111,9 @@ class DlivePrivate extends EventEmitter {
     clearInterval(this._watch); this._watch = null;
     clearInterval(this._pacer); this._pacer = null; this._queue = [];
     if (this._lookup) { const l = this._lookup; this._lookup = null; l.resolve(null); }
+    // And one still queued, not sent yet: every later lookup waits behind it,
+    // so left unanswered the pan link never came back after a drop
+    if (this._lookupQueued) { const l = this._lookupQueued; this._lookupQueued = null; l.resolve(null); }
   }
   // Out of step or quiet: closed, and opened again
   _drop() { if (this._sock) { try { this._sock.destroy(); } catch (_) {} } }
@@ -182,10 +192,12 @@ class DlivePrivate extends EventEmitter {
       let timer = null;
       const entry = { resolve: (v) => { clearTimeout(timer); resolve(v); } };
       const frame = this._frame(0, 1, T.LOOKUP, Buffer.from(String(name) + '\0', 'latin1'));
+      this._lookupQueued = entry;
       if (!this._paced(frame, () => {
+        if (this._lookupQueued === entry) this._lookupQueued = null;
         this._lookup = entry;
         timer = setTimeout(() => { if (this._lookup === entry) { this._lookup = null; resolve(null); this._drop(); } }, timeoutMs);
-      })) resolve(null);
+      })) { if (this._lookupQueued === entry) this._lookupQueued = null; resolve(null); }
     });
     const p = this._lookupChain.then(run, run);
     this._lookupChain = p.then(() => {}, () => {});

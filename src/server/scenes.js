@@ -56,11 +56,15 @@ function persist() {
 // Keeps only { channel: fader position 0..1 } entries — what the phone
 // sends. A stored null or junk value made every later recall of that
 // snapshot throw part-way through, so later auxes never got theirs.
+// Bounds on what a phone can store (it's sent by clients): far past any real
+// show, but a loop of made-up scene names or channels can't grow scenes.json
+// (rewritten on every save, and sent to every page) without end
+const MAX_SNAPSHOT_NAME = 64, MAX_SNAPSHOTS = 1000, MAX_CHANNEL = 512, MAX_AUX = 256;
 function cleanValues(values) {
   if (!values || typeof values !== 'object' || Array.isArray(values)) return null;
   const out = {};
   for (const [ch, v] of Object.entries(values)) {
-    if (/^[1-9]\d*$/.test(ch) && Number.isFinite(v) && v >= 0 && v <= 1) out[ch] = v;
+    if (/^[1-9]\d{0,2}$/.test(ch) && Number(ch) <= MAX_CHANNEL && Number.isFinite(v) && v >= 0 && v <= 1) out[ch] = v;
   }
   return out;
 }
@@ -70,9 +74,10 @@ function cleanValues(values) {
 // scenes.json, and from there into every auto-backup, which Restore then
 // refused as a whole — settings and My Mixes included.
 function saveScene(snapshot, aux, values) {
-  if (!snapshot) return false;
+  if (!snapshot || typeof snapshot !== 'string' || snapshot.length > MAX_SNAPSHOT_NAME) return false;
   const auxKey = String(aux);
-  if (!/^[1-9]\d*$/.test(auxKey)) return false;
+  if (!/^[1-9]\d{0,2}$/.test(auxKey) || Number(auxKey) > MAX_AUX) return false;
+  if (!_scenes[snapshot] && Object.keys(_scenes).length >= MAX_SNAPSHOTS) return false;
   values = cleanValues(values);
   if (!values) return false;
   if (!_scenes[snapshot]) _scenes[snapshot] = Object.create(null);

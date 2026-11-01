@@ -283,6 +283,13 @@ function queueDeskQueries(addresses, urgent = false) {
   }, 100);
 }
 
+// Takes a query still waiting off the queue (not one already sent)
+function cancelDeskQuery(query) {
+  if (!deskQueryQueued.has(query)) return;
+  deskQueryQueued.delete(query);
+  for (const lane of [deskQueryQueue, deskQueryUrgent]) { const i = lane.indexOf(query); if (i >= 0) lane.splice(i, 1); }
+}
+
 function clearDeskQueries() {
   if (deskQueryTimer) { clearInterval(deskQueryTimer); deskQueryTimer = null; }
   deskQueryQueue.length = 0;
@@ -400,10 +407,10 @@ function generateColour(total, index) {
 // mutes at once (a desk that came back), which can be hundreds of writes.
 function applyMuteSolo(aux, { paced = false } = {}) {
   const write = paced ? (key, args) => sendToDeskPaced(key, args, true) : sendToDesk;
-  const anySolo = Object.values(soloState[aux] || {}).some(v => v);
   const chCount = cache.has('/Console/Input_Channels')
     ? cache.get('/Console/Input_Channels').args[0]
     : (serverCfg.channels || 48);
+  const anySolo = soloActive(aux); // only solos a phone can release
 
   if (!premuteState[aux]) premuteState[aux] = {};
 
@@ -497,6 +504,15 @@ function setSolo(auxRaw, chRaw, soloed) {
 // via config.js's targeted updateOverride() (not the full save-config path,
 // which would restart this backend), and broadcasts to already-connected
 // browser clients so labels update live with no reconnect.
+// Whether a solo is on in this mix: only on channels the desk has (a solo
+// made before it reported its count can't be released) and that the mix's
+// phones still show (a channel hidden since can't be un-soloed from them).
+// Otherwise that solo would hold every other send in the mix at -inf.
+function soloActive(aux) {
+  const chMax = liveChannelCount();
+  return Object.entries(soloState[aux] || {}).some(([ch, on]) => on && Number(ch) <= chMax && shared.channelOnMix(serverCfg, aux, Number(ch)));
+}
+
 // Live relabeling (Control API / Planning Center) — see shared-handlers.js.
 // The desk's own counts bound the number once they're known.
 function liveChannelCount() {
@@ -532,7 +548,7 @@ function processDeskSendLevel(msg) {
   if (!match) return msg;
   const [, ch, aux] = match;
   const silenced = muteState[aux]?.[ch]
-    || (Object.values(soloState[aux] || {}).some(Boolean) && !soloState[aux]?.[ch]);
+    || (soloActive(aux) && !soloState[aux]?.[ch]);
   if (!silenced) return msg;
   if (!premuteState[aux]) premuteState[aux] = {};
   const db = msg.args[0];
@@ -555,14 +571,16 @@ const sliderToDb = shared.sliderToDb; // one clamped copy for every backend
 function pushSceneValuesToDesk(auxStr, values) {
   const levels = {};
   const aux = parseInt(auxStr);
-  const chMax = serverCfg.channels || 48, auxMax = serverCfg.auxes || 16;
+  // The desk's own counts once it has reported them (a session can have more
+  // channels or mixes than Settings says, or fewer); Settings' until then
+  const chMax = liveChannelCount(), auxMax = liveAuxCount();
   // aux/values come straight from client-controlled recall-scene/apply-preset
   // payloads — an arbitrary object with arbitrary keys/values, not
   // necessarily produced by mixer.js's own UI. Reject rather than build an
   // OSC address (and cache key) from an out-of-range or non-finite input —
   // same lesson as the dLive/KLANG backends' equivalent functions.
   if (isNaN(aux) || aux < 1 || aux > auxMax) return levels;
-  const anySolo = Object.values(soloState[aux] || {}).some(v => v);
+  const anySolo = soloActive(aux);
   if (!premuteState[aux]) premuteState[aux] = {};
 
   for (const [chStr, sliderVal] of Object.entries(values)) {
@@ -570,6 +588,7 @@ function pushSceneValuesToDesk(auxStr, values) {
     // 0..1 only, and the address from the parsed numbers: "3x" or a negative
     // position used to go to the desk as a malformed address or a NaN level.
     if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(sliderVal) || sliderVal < 0 || sliderVal > 1) continue;
+    if (!shared.channelOnMix(serverCfg, aux, ch)) continue; // hidden from this mix's phones
     const address = `/Input_Channels/${ch}/Aux_Send/${aux}/send_level`;
     const db = sliderToDb(sliderVal);
     const muted    = !!(muteState[aux]?.[ch]);
@@ -739,6 +758,9 @@ const deskSetUrgent = new Map();
 let deskSetTimer    = null;
 
 function sendToDeskPaced(address, args, urgent = false) {
+  // A read of this address still waiting (a dropped Ear Scene's re-read) would
+  // answer with the old value and put phones back to it: the write supersedes it
+  cancelDeskQuery(`${address}/?`);
   // An address already waiting in the urgent lane stays there: a bulk write
   // to the same send (a recall) must not push a pending mute to the back.
   urgent = urgent || deskSetUrgent.has(address);
@@ -1318,16 +1340,16 @@ function startWebSocketServer() {
         if (msg.type === 'apply-preset') {
           const auxStr = String(msg.aux);
           const auxNum = parseInt(auxStr);
-          if (isNaN(auxNum) || auxNum < 1 || auxNum > (serverCfg.auxes || 16)) return;
+          if (isNaN(auxNum) || auxNum < 1 || auxNum > liveAuxCount()) return;
           const levels = pushSceneValuesToDesk(auxStr, shared.plainMap(msg.levels));
           // Same reasoning as pushSceneValuesToDesk — ch/val come straight
           // from a client-controlled msg.pans object, not the allowlisted
           // OSC-address path below, so nothing else validates them.
-          const chMax = serverCfg.channels || 48;
+          const chMax = liveChannelCount();
           const pans = {}; // what was sent, for the phones
           for (const [chStr, rawPan] of Object.entries(shared.plainMap(msg.pans))) {
             const ch = parseInt(chStr);
-            if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(rawPan)) continue;
+            if (isNaN(ch) || ch < 1 || ch > chMax || !Number.isFinite(rawPan) || !shared.channelOnMix(serverCfg, auxNum, ch)) continue;
             const val = Math.max(0, Math.min(1, rawPan)); // a pan is 0..1, as the other backends enforce
             const addr = `/Input_Channels/${ch}/Aux_Send/${auxNum}/send_pan`;
             sendToDeskPaced(addr, [val]);
@@ -1340,7 +1362,7 @@ function startWebSocketServer() {
         }
         if (msg.type === 'request-aux-eq') {
           const auxNum = parseInt(msg.aux);
-          if (isNaN(auxNum) || auxNum < 1 || auxNum > (serverCfg.auxes || 16)) return;
+          if (isNaN(auxNum) || auxNum < 1 || auxNum > liveAuxCount()) return;
           // The parsed number, not msg.aux as sent: "3abc" passed the check
           // above and went to the desk as /Aux_Outputs/3abc/EQ/…
           const prefix = `/Aux_Outputs/${auxNum}/EQ/`;
@@ -1556,7 +1578,10 @@ function startWebSocketServer() {
 
         // Allowlist of OSC addresses browser clients are permitted to send/query.
         // Rejects snapshot fires, name changes, or other console-level commands.
-        const ALLOWED_OSC_RE = /^\/(?:Input_Channels\/\d+\/Aux_Send\/\d+\/send_(?:level|pan)|Aux_Outputs\/\d+\/EQ\/(?:eq_(?:gain|freq|Q)_\d+|eq_in))(\/\?)?$/;
+        // Numbers without leading zeros and EQ bands 1-8: the address is then
+        // exactly the desk's own, so "/Input_Channels/0001/…" or
+        // "eq_gain_99999" can't reach the desk or grow the cache
+        const ALLOWED_OSC_RE = /^\/(?:Input_Channels\/[1-9]\d{0,3}\/Aux_Send\/[1-9]\d{0,3}\/send_(?:level|pan)|Aux_Outputs\/[1-9]\d{0,3}\/EQ\/(?:eq_(?:gain|freq|Q)_[1-8]|eq_in))(\/\?)?$/;
 
         // The allowlist regex only checks *shape*, not range — \d+ accepts
         // any digit string, so without this a client can address a channel/
@@ -1650,7 +1675,7 @@ function startWebSocketServer() {
         if (msMatch) {
           const ch = parseInt(msMatch[1]), aux = parseInt(msMatch[2]);
           const muted   = !!(muteState[aux]?.[ch]);
-          const anySolo = Object.values(soloState[aux] || {}).some(v => v);
+          const anySolo = soloActive(aux);
           const soloed  = !!(soloState[aux]?.[ch]);
           const silenced = muted || (anySolo && !soloed);
           if (silenced) {
@@ -1909,7 +1934,7 @@ function start(cfg) {
       if (iPadMsMatch) {
         const ch = parseInt(iPadMsMatch[1]), aux = parseInt(iPadMsMatch[2]);
         const muted    = !!(muteState[aux]?.[ch]);
-        const anySolo  = Object.values(soloState[aux] || {}).some(v => v);
+        const anySolo  = soloActive(aux);
         const soloed   = !!(soloState[aux]?.[ch]);
         const silenced = muted || (anySolo && !soloed);
         if (silenced) {
@@ -2223,10 +2248,15 @@ function setServerErrorCallback(cb) { onServerError = cb; }
 // to every connected page. Mixer pages refill their faders from the server
 // cache on a liveUpdate config, so this sends nothing to the desk.
 function applyConfigLive(cfg) {
+  const soloWas = {};
+  for (const aux of Object.keys(soloState)) soloWas[aux] = soloActive(aux);
   serverCfg = cfg;
   registerIpads(cfg);
   logEvent('config-live', `pushed to ${connections.length} clients`);
   if (wss) broadcastToClients(buildConfig({ liveUpdate: true }));
+  // A soloed channel hidden from its mix (or shown again) changes whether that
+  // solo holds the rest of the mix silent: worked out again, paced
+  for (const aux of Object.keys(soloWas)) if (soloActive(aux) !== soloWas[aux]) applyMuteSolo(aux, { paced: true });
 }
 
 // After Settings merges device groups — see shared-handlers.js

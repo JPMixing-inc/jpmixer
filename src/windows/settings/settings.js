@@ -115,6 +115,7 @@ const fields = {
   klangPort:        { el: $('klangPort'),        key: 'klangPort',        parse: Number },
   wingPort:         { el: $('wingPort'),         key: 'wingPort',         parse: Number },
   lv1Port:          { el: $('lv1Port'),          key: 'lv1Port',          parse: Number },
+  m32Port:          { el: $('m32Port'),          key: 'm32Port',          parse: Number },
   apiPort:          { el: $('apiPort'),          key: 'apiPort',          parse: Number },
   apiToken:         { el: $('apiToken'),          key: 'apiToken',        parse: String },
   pcoAppId:         { el: $('pcoAppId'),          key: 'pcoAppId',        parse: v => String(v).trim() },
@@ -139,18 +140,21 @@ function updateConsoleTypeFields() {
   const isKlang = consoleType === 'klang';
   const isWing  = consoleType === 'wing';
   const isLv1   = consoleType === 'lv1';
+  const isM32   = consoleType === 'm32';
   isDliveType = isDlive;
   isConsoleControllerUnsupported = isKlang || isWing; // DiGiCo, dLive and LV1 have one
 
-  $('digicoPortsRow').style.display = (isDlive || isKlang || isWing || isLv1) ? 'none' : '';
-  // Control Groups: DiGiCo's, or dLive's DCAs (up to 24). LV1 reports its own.
-  $('groupsField').style.display = (isKlang || isWing || isLv1) ? 'none' : '';
+  $('digicoPortsRow').style.display = (isDlive || isKlang || isWing || isLv1 || isM32) ? 'none' : '';
+  // Control Groups: DiGiCo's, or dLive's DCAs (up to 24). LV1 reports its
+  // own, and the M32 always has 8.
+  $('groupsField').style.display = (isKlang || isWing || isLv1 || isM32) ? 'none' : '';
   $('groups').max = isDlive ? '24' : '64';
   if (isDlive && Number($('groups').value) > 24) $('groups').value = '24';
   $('klangIpRow').style.display     = isKlang ? '' : 'none';
   $('klangFieldsRow').style.display = isKlang ? '' : 'none';
   $('wingFieldsRow').style.display  = isWing ? '' : 'none';
   $('lv1FieldsRow').style.display   = isLv1 ? '' : 'none';
+  $('m32FieldsRow').style.display   = isM32 ? '' : 'none';
   // WING is self-contained (reuses Console IP Address directly, like plain
   // dLive) — it never touches the dLive-specific fields block at all.
   $('dliveFieldsRow').style.display = (isDlive || isKlang) ? '' : 'none';
@@ -167,17 +171,20 @@ function updateConsoleTypeFields() {
   // catching it here means nobody has to find that out by hitting it. KLANG
   // and WING have no documented equivalent ceiling, so their channel/aux
   // counts stay at the generic defaults.
-  $('channels').max = isDlive ? '128' : '256';
-  $('auxes').max     = isDlive ? '62'  : '64';
+  // The M32 has 48 sources that send to its 16 mix buses.
+  $('channels').max = isDlive ? '128' : isM32 ? '48' : '256';
+  $('auxes').max     = isDlive ? '62'  : isM32 ? '16' : '64';
   if (isDlive && Number($('channels').value) > 128) $('channels').value = '128';
   if (isDlive && Number($('auxes').value) > 62)      $('auxes').value = '62';
+  if (isM32 && Number($('channels').value) > 48) $('channels').value = '48';
+  if (isM32 && Number($('auxes').value) > 16)    $('auxes').value = '16';
   renderAuxes();
   setStatus(isRunning);
 }
 $('consoleType').addEventListener('change', updateConsoleTypeFields);
 $('dliveTlsEnabled').addEventListener('change', updateConsoleTypeFields);
 
-for (const id of ['wingPort', 'lv1Port']) {
+for (const id of ['wingPort', 'lv1Port', 'm32Port']) {
   $(id).addEventListener('change', () => {
     const raw = Number($(id).value) || 0;
     $(id).value = (raw === 0) ? 0 : Math.max(1, Math.min(65535, raw));
@@ -804,6 +811,29 @@ function loadPcoAlt(saved) {
 // receiver's channels can be given a mix (wirelessAux { "id/channel": aux }).
 let wirelessReceivers = [];
 let wirelessAuxMap = {};
+// What was saved when this window loaded them: the Shure plugin saves both
+// too while Settings is open (a receiver at a new address, a mic's mix moved
+// to its receiver's id), so a save only puts what was changed here over
+// what's saved now (mergeWireless)
+let loadedWireless = { receivers: [], aux: {} };
+function mergeWireless(fresh) {
+  const freshRx = (Array.isArray(fresh.wirelessReceivers) ? fresh.wirelessReceivers : []).filter(r => r && WIRELESS_IP.test(String(r.ip || '')));
+  const wasIps = new Set(loadedWireless.receivers.map(r => r.ip));
+  const nowIps = new Set(wirelessReceivers.map(r => r.ip));
+  const removed = loadedWireless.receivers.filter(r => !nowIps.has(r.ip));
+  const removedIds = new Set(removed.map(r => r.id).filter(Boolean));
+  const receivers = freshRx.filter(r => !removed.some(x => x.ip === r.ip) && !(r.id && removedIds.has(r.id))).map(r => (r.id ? { ip: r.ip, id: r.id } : { ip: r.ip }));
+  for (const r of wirelessReceivers) {
+    if (wasIps.has(r.ip)) continue; // not added here
+    if (!receivers.some(x => x.ip === r.ip || (r.id && x.id === r.id))) receivers.push(r.id ? { ip: r.ip, id: r.id } : { ip: r.ip });
+  }
+  const aux = { ...(fresh.wirelessAux && typeof fresh.wirelessAux === 'object' ? fresh.wirelessAux : {}) };
+  for (const key of new Set([...Object.keys(loadedWireless.aux), ...Object.keys(wirelessAuxMap)])) {
+    if (loadedWireless.aux[key] === wirelessAuxMap[key]) continue; // not changed here
+    if (wirelessAuxMap[key] === undefined) delete aux[key]; else aux[key] = wirelessAuxMap[key];
+  }
+  return { receivers, aux };
+}
 const wirelessForget = new Set(); // remembered receivers to forget on the next save
 let wirelessLive = { enabled: false, discovered: [], receivers: [] };
 const WIRELESS_IP = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
@@ -868,6 +898,9 @@ function renderWireless() {
         // A mix chosen while only the address was known moves to the hardware id
         const byIp = `${ip}/${c.n}`;
         if (key !== byIp && wirelessAuxMap[byIp] && !wirelessAuxMap[key]) { wirelessAuxMap[key] = wirelessAuxMap[byIp]; delete wirelessAuxMap[byIp]; }
+        // The saved state it's compared with moves the same way, so "No mix"
+        // chosen after the move is seen as a change and saved (mergeWireless)
+        if (key !== byIp && loadedWireless.aux[byIp] !== undefined && loadedWireless.aux[key] === undefined) { loadedWireless.aux[key] = loadedWireless.aux[byIp]; delete loadedWireless.aux[byIp]; }
         const mix = document.createElement('div');
         mix.className = 'wireless-mix';
         mix.innerHTML = `<label for="wlMix-${escHtml(key)}">${channels.length > 1 ? `Channel ${c.n}` : 'Mix'}${c.name ? ` · ${escHtml(c.name)}` : ''}</label><select id="wlMix-${escHtml(key)}" data-wireless-key="${escHtml(key)}">${wirelessMixOptions(wirelessAuxMap[key])}</select>`;
@@ -1736,7 +1769,7 @@ const perfDuration = (sec) => {
   return m ? `${m} min` : `${sec} s`;
 };
 const PERF_THERMAL = { nominal: 'Normal', fair: 'Warm', serious: 'Hot', critical: 'Very hot', unknown: 'Not reported' };
-const PERF_CONSOLE = { digico: 'DiGiCo', dlive: 'Allen & Heath dLive', klang: 'KLANG', wing: 'Behringer WING', lv1: 'Waves LV1' };
+const PERF_CONSOLE = { digico: 'DiGiCo', dlive: 'Allen & Heath dLive', klang: 'KLANG', wing: 'Behringer WING', lv1: 'Waves LV1', m32: 'Midas M32 / Behringer X32' };
 function perfEl(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
 function perfTile(label, value, sub, level) {
   const t = perfEl('div', 'perf-tile' + (level ? ' is-' + level : ''));
@@ -2052,13 +2085,13 @@ function renderAuxes() {
   const list    = $('auxesList');
   list.innerHTML = '';
   const auxCount = parseInt($('auxes').value) || 16;
-  // KLANG and WING don't implement per-send EQ (their backends' buildConfig
+  // KLANG, WING and the M32 don't implement per-send EQ (their backends' buildConfig
   // report eqEnabled: false for every aux regardless of this per-aux
   // setting) — disable the toggle so it doesn't look like a live control
   // that silently does nothing. LV1 and dLive have it: each mix's own EQ on
   // the console (a mix LV1 says has no EQ, such as an FX return, offers none).
   const consoleType = $('consoleType').value;
-  const eqDisabled = ['klang', 'wing'].includes(consoleType);
+  const eqDisabled = ['klang', 'wing', 'm32'].includes(consoleType);
 
   // Column headings once, at the top of the list
   const head = document.createElement('div');
@@ -2831,6 +2864,7 @@ function applyConfig(cfg) {
   $('wirelessEnabled').checked = !!cfg.wirelessEnabled;
   wirelessReceivers = Array.isArray(cfg.wirelessReceivers) ? cfg.wirelessReceivers.filter(r => r && WIRELESS_IP.test(String(r.ip || ''))).map(r => (r.id ? { ip: r.ip, id: r.id } : { ip: r.ip })) : [];
   wirelessAuxMap = cfg.wirelessAux && typeof cfg.wirelessAux === 'object' ? { ...cfg.wirelessAux } : {};
+  loadedWireless = JSON.parse(JSON.stringify({ receivers: wirelessReceivers, aux: wirelessAuxMap }));
   wirelessForget.clear();
   renderWireless();
   pcoGreenRoomHidden = Array.isArray(cfg.pcoGreenRoomHidden) ? [...cfg.pcoGreenRoomHidden] : [];
@@ -2911,6 +2945,9 @@ function collectConfig() {
   }
   if (out.lv1Port !== 0 && (!Number.isInteger(out.lv1Port) || out.lv1Port < 1 || out.lv1Port > 65535)) {
     out.lv1Port = 0; // 0 = find LV1's port
+  }
+  if (out.m32Port !== 0 && (!Number.isInteger(out.m32Port) || out.m32Port < 1 || out.m32Port > 65535)) {
+    out.m32Port = 0; // 0 = the console's own port (10023)
   }
   if (out.apiPort !== undefined && (!Number.isInteger(out.apiPort) || out.apiPort < 1 || out.apiPort > 65535)) {
     out.apiPort = 9096; // documented default
@@ -3646,6 +3683,8 @@ $('saveBtn').addEventListener('click', async () => {
   out.auxOverrides     = mergeExternalLabels(out.auxOverrides, loadedOverrides.aux, fresh.auxOverrides);
   // Receivers JPMixer has seen since this window opened are kept (shure-wireless.js saves them), minus any forgotten here
   out.wirelessKnown = (Array.isArray(fresh.wirelessKnown) ? fresh.wirelessKnown : []).filter(k => !wirelessForget.has(k.id));
+  // The receivers to read and each mic's mix: only this window's changes, over what the plugin has saved meanwhile
+  { const merged = mergeWireless(fresh); out.wirelessReceivers = merged.receivers; out.wirelessAux = merged.aux; }
   // The SPL card's own options, unless changed here (see loadSmaart)
   out.smaartHiddenInputs = Array.isArray(fresh.smaartHiddenInputs) ? fresh.smaartHiddenInputs : [];
   if (!$('smaartMetric').dataset.touched) out.smaartMetric = fresh.smaartMetric || '';
@@ -3682,6 +3721,9 @@ $('saveBtn').addEventListener('click', async () => {
   channelOverrides = out.channelOverrides;
   auxOverrides     = result.auxNamesCleared ? ((await window.jpm.getConfig()).auxOverrides || {}) : out.auxOverrides;
   loadedOverrides  = JSON.parse(JSON.stringify({ channel: channelOverrides, aux: auxOverrides }));
+  wirelessReceivers = out.wirelessReceivers.map(r => ({ ...r }));
+  wirelessAuxMap    = { ...out.wirelessAux };
+  loadedWireless    = JSON.parse(JSON.stringify({ receivers: wirelessReceivers, aux: wirelessAuxMap }));
   pcoSavedServiceTypeId = out.pcoServiceTypeId;
   pcoSavedTeamId        = out.pcoTeamId;
   pcoSavedRolePicks = rolePicksFrom(out);

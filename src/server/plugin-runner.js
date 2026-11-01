@@ -7,7 +7,14 @@
 // docs/PLUGINS.md for what a plugin author sees):
 //   jp.plugin              { id, name, version, folder, dataFolder }
 //   jp.settings            its settings from Settings → Plugins
-//   jp.card.show(card)     the FOH Home card; jp.card.clear()
+//   jp.card.show(card, id) a card on the Home pages (id: which of its "cards";
+//                          left out, its first); jp.card.clear(id)
+//   jp.card.onPress(fn)    a button or text box pressed on one: fn({ card, button, text })
+//   jp.card.image(name, data, { card, type })  a picture for a card's images
+//                          (a Buffer; null takes it away), shown where the card
+//                          lists { name }
+//   jp.timers.show(list)   its running timers, at the top of the Home pages and
+//                          the Green Room: [{ name, time: '4:57', over }] ([] for none)
 //   jp.status(text, level) the line under it in Settings ('ok' | 'warn' | 'error')
 //   jp.console.get()       Promise of the console's names; .onChange(fn)
 //   jp.planningCenter.get() Promise of the plan, live and next; .onChange(fn)
@@ -54,6 +61,7 @@ const stopHandlers = [];
 const pageHandlers = new Map(); // call name -> fn(body)
 const integrationHandlers = new Map(); // JPMixer's own call name -> fn(body)
 const settingsHandlers = [];
+const pressHandlers = [];
 let currentSettings = Object.freeze({});
 const listeners = { console: new Set(), planningCenter: new Set(), faders: new Set() };
 const pending = new Map();  // request id -> { resolve, reject, timer }
@@ -73,20 +81,25 @@ function request(what, extra = {}, type = 'request') {
   });
 }
 
-// The card: at most four updates a second reach JPMixer, always the latest
-let cardTimer = null, cardWaiting = null, cardLast = 0;
-function sendCard() {
-  cardTimer = null;
-  cardLast = Date.now();
-  send(cardWaiting);
-  cardWaiting = null;
+// Each card: at most four updates a second reach JPMixer, always the latest
+const cardQueues = new Map(); // card id ('' = its first) -> { timer, waiting, last }
+function sendCard(q) {
+  q.timer = null;
+  q.last = Date.now();
+  send(q.waiting);
+  q.waiting = null;
 }
-function queueCard(msg) {
-  cardWaiting = msg;
-  if (cardTimer) return;
-  const wait = Math.max(0, 250 - (Date.now() - cardLast));
-  cardTimer = setTimeout(sendCard, wait);
+// (A picture waits at most 50 ms: it changes only with a slide, and the
+// page is waiting for it)
+function queueCard(key, msg) {
+  if (!cardQueues.has(key)) cardQueues.set(key, { timer: null, waiting: null, last: 0 });
+  const q = cardQueues.get(key);
+  q.waiting = { key, ...msg }; // a message's own key (a picture's card) wins over its queue's
+  if (q.timer) return;
+  const gap = msg.type === 'card-image' ? 50 : 250;
+  q.timer = setTimeout(() => sendCard(q), Math.max(0, gap - (Date.now() - q.last)));
 }
+const cardKey = (id) => (id === undefined || id === null ? '' : String(id));
 
 function source(what, permission, label) {
   return {
@@ -122,12 +135,36 @@ function makeApi(info, settings) {
       send({ type: 'settings-live' }); // JPMixer sends new settings here instead of restarting it
     },
     card: Object.freeze({
-      show(card) {
+      show(card, id) {
         needs('card', 'jp.card.show()');
         if (!card || typeof card !== 'object') throw new TypeError('jp.card.show() needs an object, like { value: "12", label: "minutes" }.');
-        queueCard({ type: 'card', card: JSON.parse(JSON.stringify(card)) });
+        queueCard(cardKey(id), { type: 'card', card: JSON.parse(JSON.stringify(card)) });
       },
-      clear() { queueCard({ type: 'card-clear' }); },
+      clear(id) { queueCard(cardKey(id), { type: 'card-clear' }); },
+      image(name, data, opts = {}) {
+        needs('card', 'jp.card.image()');
+        const o = opts && typeof opts === 'object' ? opts : {};
+        let b64 = null;
+        if (data !== null && data !== undefined) {
+          if (typeof data === 'string') b64 = data;
+          else if (data instanceof Uint8Array) b64 = Buffer.from(data).toString('base64');
+          else throw new TypeError('jp.card.image() needs a Buffer of the picture (or null to take it away).');
+        }
+        const mime = String(o.type || 'image/jpeg');
+        queueCard(`\u0001img:${cardKey(o.card)}/${name}`, { type: 'card-image', key: cardKey(o.card), name: String(name), mime, data: b64 });
+      },
+      onPress(fn) {
+        needs('card', 'jp.card.onPress()');
+        if (typeof fn !== 'function') throw new TypeError('jp.card.onPress() needs a function.');
+        pressHandlers.push(fn);
+      },
+    }),
+    timers: Object.freeze({
+      show(list) {
+        needs('timers', 'jp.timers.show()');
+        if (!Array.isArray(list)) throw new TypeError('jp.timers.show() needs a list, like [{ name: "Countdown", time: "4:57" }].');
+        queueCard('\u0000timers', { type: 'timers', list: JSON.parse(JSON.stringify(list)) });
+      },
     }),
     status(text, level = 'ok') { send({ type: 'status', text: String(text ?? ''), level }); },
     console: Object.freeze(source('console', 'console', 'jp.console')),
@@ -193,7 +230,7 @@ async function stop(code = 0) {
   stopping = true;
   const deadline = new Promise((r) => setTimeout(r, 1500));
   await Promise.race([Promise.allSettled(stopHandlers.map((fn) => Promise.resolve().then(fn))), deadline]);
-  if (cardTimer) { clearTimeout(cardTimer); sendCard(); }
+  for (const q of cardQueues.values()) if (q.timer) { clearTimeout(q.timer); sendCard(q); }
   if (shareTimer) { clearTimeout(shareTimer); pumpShares(); }
   // Out only once JPMixer has had everything (what the Shure plugin saves as it stops)
   const out = () => process.exit(code);
@@ -272,6 +309,14 @@ process.on('message', (msg) => {
     })
       .then((result) => { try { reply({ result: result === undefined ? null : JSON.parse(JSON.stringify(result)) }); } catch (e) { reply({ error: 'The plugin’s answer wasn’t JSON.' }); } })
       .catch((e) => { if (!(e && e.quiet)) console.error((e && e.stack) || e); reply({ error: (e && e.message) || String(e) }); });
+    return;
+  }
+  // A button or text box on one of its cards. An error is logged, and doesn't stop the plugin.
+  if (msg.type === 'card-press') {
+    const press = Object.freeze({ card: String(msg.key || ''), button: String(msg.button || ''), text: typeof msg.text === 'string' ? msg.text : undefined });
+    whenStarted().then(() => {
+      for (const fn of pressHandlers) Promise.resolve().then(() => fn(press)).catch((e) => console.error((e && e.stack) || e));
+    });
     return;
   }
   if (msg.type === 'settings') {

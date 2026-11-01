@@ -480,13 +480,21 @@ class NrpnReassembler {
 // "User Profile" column mapping Dec 1-32 to Hex 00-1F. That confirms
 // UserProfile really is a numeric profile index, not a username string —
 // this isn't just inferred from wording anymore.
+// Settings asks for the profile as people count it, 1-32 (the first is 1),
+// sent as 00-1F; 0 is taken as the first too. A name isn't a profile number:
+// it's the first profile (dlive-server.js says so in the event log).
+function tlsProfileByte(userProfile) {
+  const n = Number(String(userProfile ?? '').trim());
+  if (!Number.isInteger(n) || n < 1) return 0;
+  return Math.min(0x1F, n - 1);
+}
 function buildTlsAuthMessage(userProfile, password) {
-  const profile = Math.max(0, Math.min(0x1F, Number(userProfile) || 0));
+  const profile = tlsProfileByte(userProfile);
   return [profile, ...Buffer.from(String(password || ''), 'ascii')];
 }
 
 module.exports = {
-  SYSEX_HEADER, SYSEX_END, PARAM, COLOURS, SOLO, buildSoloSet,
+  SYSEX_HEADER, SYSEX_END, PARAM, COLOURS, SOLO, buildSoloSet, tlsProfileByte,
   coordinate, dbToLv, lvToDb, nearestColourIndex,
   buildFaderSet, buildFaderGet, buildMuteOn, buildMuteOff, buildMuteGet,
   buildSendLevelSet, buildSendLevelGet, buildNameSet, buildNameGet,

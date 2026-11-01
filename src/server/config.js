@@ -67,6 +67,9 @@ const DEFAULTS = {
   // LV1 computer (blank = this computer). LV1 picks its MyMon port at launch,
   // so 0 finds it; a number pins it. See lv1-server.js.
   lv1Port: 0,
+  // Midas M32 / Behringer X32 — only read when consoleType is 'm32'. deskIp
+  // is the console. See m32-server.js.
+  m32Port: 0, // 0 = the console's own OSC port (10023)
   // External Control API (Companion/Stream Deck/Planning Center) — a
   // separate always-on server, independent of the console backend. See
   // api-server.js. Off by default; apiToken is generated on first enable.
@@ -158,11 +161,12 @@ const DEFAULTS = {
   smaartHiddenInputs: [] // "device/channel" of Smaart inputs left off the card (its options button)
 };
 
-// Console types with a backend. Settings once offered X32/M32, Yamaha and
-// Custom OSC too, which quietly ran the DiGiCo backend — a config (or
-// restored backup) still naming one of those is read as DiGiCo, which is
-// what it was actually running.
-const CONSOLE_TYPES = ['digico', 'dlive', 'klang', 'wing', 'lv1'];
+// Console types with a backend. Settings once offered X32/M32 ('x32'),
+// Yamaha and Custom OSC too, which quietly ran the DiGiCo backend — a config
+// (or restored backup) still naming one of those is read as DiGiCo, which is
+// what it was actually running. The real M32/X32 backend is 'm32', so an old
+// 'x32' config doesn't switch backends by itself.
+const CONSOLE_TYPES = ['digico', 'dlive', 'klang', 'wing', 'lv1', 'm32'];
 
 function normalize(cfg) {
   if (!CONSOLE_TYPES.includes(cfg.consoleType)) cfg.consoleType = 'digico';

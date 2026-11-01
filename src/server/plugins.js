@@ -31,7 +31,12 @@
 // A plugin never gets the config. It gets its own settings, and only the
 // data its plugin.json asks for (PERMISSIONS below), from the providers
 // main.js hands to start(). It talks to JPMixer only through messages:
-//   card      a card on FOH Home (title, a big value, rows, a note)
+//   card      a card on FOH Home (title, a big value, rows, text, a note,
+//             buttons and a text box); a plugin can have several ("cards" in
+//             plugin.json), and one marked for every Home page shows on the
+//             other Home pages too. A press on a card goes back to the plugin.
+//   timers    its running timers, shown at the top of every Home page and
+//             the Green Room screen
 //   status    one line shown under it in Settings
 //   request   the console's names or the Planning Center plan, once
 // and JPMixer pushes 'console' / 'planningCenter' when they change.
@@ -59,10 +64,11 @@ const { toNullProto } = require('./safe-object');
 const ID = /^[a-z][a-z0-9-]{1,29}$/;
 const KEY = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 const PERMISSIONS = {
-  card: 'Show a card on FOH Home',
+  card: 'Show cards on the Home pages, with buttons that reach the plugin',
   console: 'See channel, control group and mix names, each channel’s 48V, and whether the console is connected',
   planningCenter: 'See the plan’s title, what’s live and what’s next from Planning Center',
   page: 'Show a page of its own, listed with the Home pages',
+  timers: 'Show its running timers at the top of the Home pages and the Green Room screen',
   integration: 'Feed JPMixer’s own pages and Settings (official JPMixer plugins only)',
   faders: 'Move the console’s channel and control group faders and mutes (official JPMixer plugins only)',
   companion: 'Show Companion buttons through the Companion buttons plugin (official JPMixer plugins only)',
@@ -72,13 +78,20 @@ const PERMISSIONS = {
 // the approved list (or from the copy that comes with JPMixer). An integration (Shure, Smaart, Companion) also has its
 // on/off and settings in JPMixer's config, in its own Settings tab
 // (integrations.js hands them over), not in plugins.json.
-const OFFICIAL = { patch: {}, shure: { integration: true }, smaart: { integration: true }, companion: { integration: true }, 'custom-pages': { faders: true, companion: true } };
+const OFFICIAL = { patch: {}, shure: { integration: true }, smaart: { integration: true }, companion: { integration: true }, 'custom-pages': { faders: true, companion: true }, propresenter: {} };
 const canFaders = (id) => !!(Object.hasOwn(OFFICIAL, id) && OFFICIAL[id].faders);
 const isIntegrationId = (id) => !!(Object.hasOwn(OFFICIAL, id) && OFFICIAL[id].integration);
 const FIELD_TYPES = new Set(['text', 'password', 'number', 'checkbox', 'select']);
 const COLORS = new Set(['green', 'yellow', 'red', 'blue', 'gray']);
 const LEVELS = new Set(['ok', 'warn', 'error']);
 const MAX_SETTINGS = 24, MAX_ROWS = 20, LOG_LINES = 200;
+// A plugin's cards: up to MAX_CARDS, each with up to MAX_BUTTONS buttons.
+// A card's id on the page is p-<plugin id> (its first or only card) or
+// p-<plugin id>_<card id>, and a saved layout keeps ids of up to 32 characters.
+const MAX_CARDS = 6, MAX_BUTTONS = 24, MAX_IMAGE_BYTES = 600 * 1024;
+const CARD_KEY = /^[a-z][a-z0-9-]{0,11}$/;
+const BUTTON_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
+const cardDomId = (pluginId, key) => (key ? `p-${pluginId}_${key}` : `p-${pluginId}`);
 const RESTART_DELAYS_MS = [2000, 5000, 15000, 30000, 60000];
 const CRASH_WINDOW_MS = 10 * 60 * 1000, MAX_CRASHES = 5;
 const STOP_GRACE_MS = 2000;
@@ -164,6 +177,25 @@ function readManifest(folder) {
   // Every plugin has its own tab under Plugins in Settings, with its settings
   if (!settings.length) return { ok: false, error: 'plugin.json needs "settings" with at least one setting. They make the plugin’s own tab in Settings, under Plugins.' };
   const name = text(raw.name, 40) || id;
+  // Its cards: "cards": [{ id, title, homePages }] for several, else "card": { title, homePages }.
+  // homePages "all": on every Home page, not only FOH Home.
+  const cards = [];
+  if (asked.includes('card')) {
+    const everyPage = (c) => !!(c && c.homePages === 'all');
+    // Its starting size on the pages (Arrange page can change it)
+    const size = (c) => (c && ['tall', 'wide', 'large'].includes(c.size) ? c.size : 'standard');
+    if (Array.isArray(raw.cards) && raw.cards.length) {
+      for (const c of raw.cards.slice(0, MAX_CARDS)) {
+        const key = String((c && c.id) || '');
+        if (!CARD_KEY.test(key)) return { ok: false, error: `A card's "id" must be up to 12 lowercase letters, numbers and dashes, starting with a letter: ${text(key, 40) || '(none)'}.` };
+        if (cards.some((x) => x.key === key)) return { ok: false, error: `Two cards use the id "${key}".` };
+        if (cardDomId(id, key).length > 32) return { ok: false, error: `The card id "${key}" is too long for this plugin's id. Plugin id and card id together can be up to 29 characters.` };
+        cards.push({ key, title: text(c.title, 40) || name, everyPage: everyPage(c), size: size(c) });
+      }
+    } else {
+      cards.push({ key: '', title: text(raw.card && raw.card.title, 40) || name, everyPage: everyPage(raw.card), size: size(raw.card) });
+    }
+  }
   // Its page: an .html file inside its folder (page/index.html unless it says)
   let page = null;
   if (asked.includes('page')) {
@@ -184,7 +216,8 @@ function readManifest(folder) {
       homepage: /^https:\/\/[^\s]{1,200}$/.test(String(raw.homepage || '')) ? String(raw.homepage) : '',
       permissions: [...new Set(asked)],
       settings,
-      cardTitle: text(raw.card && raw.card.title, 40) || name,
+      cardTitle: cards.length ? cards[0].title : name,
+      cards,
       page,
     },
   };
@@ -377,7 +410,7 @@ function startOne(entry) {
   const run = {
     id: manifest.id, entry, settings, fp: fingerprint(entry, settings), files: filesPrint(entry), live: false,
     official: isOfficial(entry, { fresh: true }), // checked as it starts: the code it runs is what it loaded then
-    child: null, card: null, cardAt: null, status: { level: 'ok', text: 'Starting…' },
+    child: null, cards: new Map(), images: new Map(), cardAt: null, timers: [], status: { level: 'ok', text: 'Starting…' },
     log: [], stopping: false, restartTimer: null, startedAt: Date.now(), lastPush: { console: '', planningCenter: '', faders: '' },
   };
   running.set(manifest.id, run);
@@ -419,34 +452,115 @@ function send(run, msg) {
   try { run.child.send(msg); return true; } catch (_) { return false; }
 }
 
+// Line breaks kept (a slide's lyrics), other control characters dropped
+const longText = (v, max) => (typeof v === 'string' ? v.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, max) : '');
+// A card: a big value with its label, then its parts — text, rows (each can
+// have up to 3 small buttons: a timer's Start and Reset), pictures, a text
+// box and buttons — then up to 6 sections, each a heading with the same
+// parts (a controller: On screen, Controls, Timers…), and a note at the bottom.
+const IMAGE_NAME = /^[a-z0-9][a-z0-9-]{0,23}$/;
 function cleanCard(card) {
   if (!card || typeof card !== 'object') return null;
   const color = (c) => (COLORS.has(c) ? c : '');
+  const buttonId = (v) => (BUTTON_ID.test(String(v ?? '')) ? String(v) : '');
+  const cleanButtons = (list, max) => (Array.isArray(list) ? list : []).slice(0, max)
+    .filter((b) => b && typeof b === 'object' && buttonId(b.id))
+    .map((b) => ({ id: buttonId(b.id), label: text(b.label, 30) || buttonId(b.id), color: color(b.color), active: b.active === true, disabled: b.disabled === true }));
+  const part = (p) => ({
+    rows: (Array.isArray(p.rows) ? p.rows : []).slice(0, MAX_ROWS)
+      .filter((r) => r && typeof r === 'object')
+      .map((r) => ({ label: text(r.label, 40), value: text(r.value, 40), color: color(r.color), ...(Array.isArray(r.buttons) && r.buttons.length ? { buttons: cleanButtons(r.buttons, 3) } : {}) })),
+    text: longText(p.text, 600),
+    // Pictures the plugin sends with jp.card.image(name, …); src is added when the card is read
+    images: (Array.isArray(p.images) ? p.images : []).slice(0, 4)
+      .filter((i) => i && typeof i === 'object' && IMAGE_NAME.test(String(i.name || '')))
+      .map((i) => ({ name: String(i.name), label: text(i.label, 24), caption: longText(i.caption, 160) })),
+    buttons: cleanButtons(p.buttons, MAX_BUTTONS),
+    input: p.input && typeof p.input === 'object' && buttonId(p.input.id) ? {
+      id: buttonId(p.input.id),
+      placeholder: text(p.input.placeholder, 60),
+      value: text(p.input.value, 200),
+      button: text(p.input.button, 20) || 'Send',
+    } : null,
+  });
   return {
     title: text(card.title, 40),
     value: text(card.value, 24),
     unit: text(card.unit, 12),
     label: text(card.label, 80),
     color: color(card.color),
-    rows: (Array.isArray(card.rows) ? card.rows : []).slice(0, MAX_ROWS)
-      .filter((r) => r && typeof r === 'object')
-      .map((r) => ({ label: text(r.label, 40), value: text(r.value, 40), color: color(r.color) })),
+    ...part(card),
+    sections: (Array.isArray(card.sections) ? card.sections : []).slice(0, 6)
+      .filter((x) => x && typeof x === 'object')
+      .map((x) => ({ title: text(x.title, 40), ...part(x) })),
     note: text(card.note, 200),
   };
+}
+// Everything on a card that can be pressed: its buttons, its rows' buttons
+// and its text boxes, in it and in its sections
+function pressables(card) {
+  const out = [];
+  for (const p of [card, ...(card.sections || [])]) {
+    out.push(...p.buttons, ...p.rows.flatMap((r) => r.buttons || []));
+    if (p.input) out.push({ ...p.input, isInput: true });
+  }
+  return out;
+}
+// A card as the pages get it: each picture with its address, if the plugin has sent it
+function withImages(run, cardId, card) {
+  if (!card) return null;
+  const fill = (list) => list.map((i) => {
+    const img = run && run.images.get(`${cardId}/${i.name}`);
+    // By what's in it: Next becoming Now is a picture the browser already has
+    return img ? { ...i, src: `/plugin-cards/image/${cardId}/${img.hash}` } : i;
+  });
+  return { ...card, images: fill(card.images), sections: card.sections.map((x) => ({ ...x, images: fill(x.images) })) };
+}
+// Running timers for the top of the pages: up to 8, each { name, time, over }
+// (over: past zero, shown in red). time is shown as the plugin writes it.
+function cleanTimers(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 8)
+    .filter((t) => t && typeof t === 'object' && text(t.time, 16))
+    .map((t) => ({ name: text(t.name, 40), time: text(t.time, 16), over: t.over === true }));
+}
+// Which of its cards a message is about: its id, or the first card
+function cardKeyOf(run, key) {
+  const list = run.entry.manifest.cards || [];
+  if (key === undefined || key === null || key === '') return list.length ? list[0].key : null;
+  return list.some((c) => c.key === key) ? key : null;
 }
 
 async function onMessage(run, msg, addLog) {
   if (!msg || typeof msg !== 'object' || running.get(run.id) !== run) return;
   const can = (p) => run.entry.manifest.permissions.includes(p);
   switch (msg.type) {
-    case 'card':
+    case 'card': case 'card-clear': {
       if (!can('card')) { addLog('error', 'card.show: plugin.json doesn’t ask for the "card" permission.'); return; }
-      run.card = cleanCard(msg.card);
+      const key = cardKeyOf(run, msg.key);
+      if (key === null) { addLog('error', `card.show: plugin.json has no card with the id "${text(String(msg.key), 40)}".`); return; }
+      if (msg.type === 'card') run.cards.set(key, cleanCard(msg.card)); else run.cards.delete(key);
       run.cardAt = new Date().toISOString();
       return;
-    case 'card-clear':
-      run.card = null;
-      run.cardAt = new Date().toISOString();
+    }
+    // A picture for a card (jp.card.image): kept here, and fetched by the
+    // pages once per change from /plugin-cards/image/…, not sent every second
+    case 'card-image': {
+      if (!can('card')) return;
+      const key = cardKeyOf(run, msg.key);
+      const name = String(msg.name || '');
+      if (key === null || !IMAGE_NAME.test(name)) { addLog('error', `card.image: no card "${text(String(msg.key), 40)}", or a name that isn't lowercase letters, numbers and dashes.`); return; }
+      const slot = `${cardDomId(run.id, key)}/${name}`;
+      if (msg.data === null) { run.images.delete(slot); return; }
+      const type = ['image/jpeg', 'image/png', 'image/webp'].includes(msg.mime) ? msg.mime : null;
+      const buf = typeof msg.data === 'string' ? Buffer.from(msg.data, 'base64') : null;
+      if (!type || !buf || !buf.length || buf.length > MAX_IMAGE_BYTES) { addLog('error', 'card.image: a JPEG, PNG or WebP of up to 600 kB.'); return; }
+      if (!run.images.has(slot) && run.images.size >= 16) { addLog('error', 'card.image: up to 16 pictures at once.'); return; }
+      run.images.set(slot, { type, buf, hash: crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16) });
+      return;
+    }
+    case 'timers':
+      if (!can('timers')) { addLog('error', 'timers.show: plugin.json doesn’t ask for the "timers" permission.'); return; }
+      run.timers = cleanTimers(msg.list);
       return;
     case 'status':
       run.status = { level: LEVELS.has(msg.level) ? msg.level : 'ok', text: text(msg.text, 160) };
@@ -954,15 +1068,60 @@ function scanSoon() {
   if (Date.now() - scanned.at > 2000) scanned = { at: Date.now(), list: scan() };
   return scanned.list;
 }
+// Every card of each one (a plugin can have several): { id (the plugin),
+// key (the card's own id, '' for a plugin's only card), cardId (its id on
+// the page), title, card, state, everyPage (on every Home page, not only FOH) }
 function cards() {
   loadState();
   return scanSoon()
     .filter((e) => e.manifest && e.manifest.permissions.includes('card') && !isIntegrationId(e.id) && wantsRun(e))
-    .map((e) => {
+    .flatMap((e) => {
       const run = running.get(e.id);
       const stateName = run ? (run.gaveUp ? 'crashed' : run.child ? 'running' : 'restarting') : 'starting';
-      return { id: e.id, cardId: `p-${e.id}`, title: e.manifest.cardTitle, card: run ? run.card : null, state: stateName };
+      return (e.manifest.cards || []).map((c) => {
+        const cardId = cardDomId(e.id, c.key);
+        return { id: e.id, key: c.key, cardId, title: c.title, card: withImages(run, cardId, (run && run.cards.get(c.key)) || null), state: stateName, everyPage: c.everyPage, size: c.size || 'standard' };
+      });
     });
+}
+
+// A card's picture for the pages (GET /plugin-cards/image/<card>/<hash>, or
+// by its name): only for a card shown on that page (FOH Home: any; the
+// others: every-page cards)
+function cardImage(cardId, nameOrHash, { foh = true } = {}) {
+  const card = cards().find((c) => c.cardId === cardId && (foh || c.everyPage));
+  const run = card && running.get(card.id);
+  if (!run) return null;
+  const want = String(nameOrHash);
+  const byName = run.images.get(`${cardId}/${want}`);
+  if (byName) return byName;
+  for (const [slot, img] of run.images) if (slot.startsWith(`${cardId}/`) && img.hash === want) return img;
+  return null;
+}
+
+// Every running plugin's running timers, for the top of the Home pages and
+// the Green Room: [{ plugin, name, time, over }]
+function runningTimers() {
+  const out = [];
+  for (const run of running.values()) {
+    if (!run.child || !run.entry.manifest.permissions.includes('timers')) continue;
+    for (const t of run.timers) out.push({ plugin: run.id, ...t });
+  }
+  return out.slice(0, 12);
+}
+
+// A button or text box pressed on a card (POST /plugin-cards/press): only
+// one the card is showing now, sent on to the plugin's jp.card.onPress
+function pressCard(cardId, button, value, { foh = true } = {}) {
+  const card = cards().find((c) => c.cardId === cardId && (foh || c.everyPage));
+  const run = card && running.get(card.id);
+  if (!card || !card.card || !run || !run.child) return { ok: false, status: 404, error: 'That card isn’t available right now.' };
+  const id = String(button || '');
+  const target = pressables(card.card).find((b) => b.id === id);
+  if (!target || target.disabled) return { ok: false, status: 400, error: 'That button isn’t on the card.' };
+  const msg = { type: 'card-press', key: card.key, button: id };
+  if (target.isInput) msg.text = longText(String(value ?? ''), 200);
+  return send(run, msg) ? { ok: true } : { ok: false, status: 503, error: 'The plugin isn’t running right now.' };
 }
 
 // ── Plugin pages ──
@@ -1100,12 +1259,77 @@ function processes() {
   return [...running.values()].filter((r) => r.child && r.child.pid).map((r) => ({ id: r.id, name: r.entry.manifest.name, pid: r.child.pid }));
 }
 
+// ── Backups (auto-backup.js, backup-restore.js) ──
+// Which plugins are on and their settings, as plugins.json keeps them. Not
+// how each was installed: a restore never installs a plugin, so one that isn't
+// on this Mac yet takes its settings once it's installed. JPMixer's own
+// integrations (Shure, Smaart, Companion) are in the config's backup instead.
+// Without passwords: a plugin's password settings are left out, and every
+// setting of one that isn't installed (its fields aren't known).
+function backupAll({ includeCredentials = true } = {}) {
+  loadState();
+  const manifests = new Map(scan().filter((e) => e.manifest).map((e) => [e.id, e.manifest]));
+  const out = {};
+  for (const [id, saved] of Object.entries(state)) {
+    if (!ID.test(id) || isIntegrationId(id) || !saved || typeof saved !== 'object') continue;
+    let settings = saved.settings && typeof saved.settings === 'object' ? { ...saved.settings } : {};
+    if (!includeCredentials) {
+      const m = manifests.get(id);
+      if (!m) settings = {};
+      else for (const f of m.settings) if (f.type === 'password') delete settings[f.key];
+    }
+    out[id] = { enabled: saved.enabled === true, settings };
+  }
+  return out;
+}
+// A backup's plugins, kept to what plugins.json can hold: an id, on or off,
+// and settings of plain values (text, numbers, true/false)
+function cleanBackup(data) {
+  const out = {};
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return out;
+  for (const [id, v] of Object.entries(data).slice(0, 64)) {
+    if (!ID.test(id) || isIntegrationId(id) || !v || typeof v !== 'object') continue;
+    const settings = {};
+    for (const [k, x] of Object.entries(v.settings && typeof v.settings === 'object' ? v.settings : {}).slice(0, MAX_SETTINGS)) {
+      if (!KEY.test(k)) continue;
+      if (typeof x === 'string') settings[k] = x.slice(0, 2000);
+      else if ((typeof x === 'number' && Number.isFinite(x)) || typeof x === 'boolean') settings[k] = x;
+    }
+    out[id] = { enabled: v.enabled === true, settings };
+  }
+  return out;
+}
+const countBackup = (data) => ({ plugins: Object.keys(data || {}).length, on: Object.values(data || {}).filter((v) => v.enabled).length });
+// Restored over what's here, plugin by plugin (its other settings and how
+// it was installed are kept). The whole plugins.json before is returned, for
+// putting back if the rest of the restore fails.
+function restoreBackup(data) {
+  loadState();
+  const before = JSON.parse(JSON.stringify(state));
+  const previous = state;
+  // Built on a copy, kept only once it's saved: a failed write leaves the
+  // plugins as they were, in memory too (the next save would have written it)
+  state = toNullProto(JSON.parse(JSON.stringify(state)));
+  for (const [id, v] of Object.entries(cleanBackup(data))) {
+    const was = state[id] && typeof state[id] === 'object' ? state[id] : {};
+    state[id] = { ...was, enabled: v.enabled, settings: { ...(was.settings || {}), ...v.settings } };
+  }
+  if (saveState()) return before;
+  state = previous;
+  return null;
+}
+function replaceState(saved) {
+  state = toNullProto(JSON.parse(JSON.stringify(saved || {})));
+  return saveState();
+}
+
 module.exports = {
+  backupAll, cleanBackup, countBackup, restoreBackup, replaceState,
   processes, pages, callPage, mountPluginPages, _pageToken: (id) => pageToken(id),
   setIntegrations, noteIntegrationSettings, bundledVersion, onShare, callIntegration, officialState, installBundled, checkBundled, bundledCatalog, isIntegrationId, OFFICIAL, bundledDir,
   isRunning: (id) => { const run = running.get(id); return !!(run && run.child); },
   isInstalled: (id) => scanSoon().some((e) => e.id === id && e.manifest),
-  start, turnOffOthers, apply, restart, stopAll, stopOne, list, getLog, save, forget, cards, readManifest, scan, previewInstall, install,
+  start, turnOffOthers, apply, restart, stopAll, stopOne, list, getLog, save, forget, cards, pressCard, cardImage, runningTimers, readManifest, scan, previewInstall, install,
   pluginsDir, dataDir, PERMISSIONS,
   _cleanCard: cleanCard, _coerce: coerce, _running: running,
   _setRestartDelays: (list) => { RESTART_DELAYS_MS.splice(0, RESTART_DELAYS_MS.length, ...list); },
