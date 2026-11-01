@@ -289,7 +289,7 @@ let config, server, presets, scenes, autoBackup;
 // started — `server` is just a reference picked by console type in
 // startServer(). Each is a fully separate module from the others; picking
 // between them here is the only place any of them meet.
-let oscServer, dliveServer, klangServer, wingServer, lv1Server;
+let oscServer, dliveServer, klangServer, wingServer, lv1Server, m32Server;
 // External Control API (Companion/Stream Deck/Planning Center) — a
 // separate, always-on server independent of the console backend above.
 // See api-server.js's file header for why it's kept entirely decoupled.
@@ -356,13 +356,14 @@ app.whenReady().then(async () => {
   klangServer = require('./src/server/klang-server');
   wingServer  = require('./src/server/wing-server');
   lv1Server   = require('./src/server/lv1-server');
+  m32Server   = require('./src/server/m32-server');
   server     = oscServer;
   givePassToOwnWindows();
   presets    = require('./src/server/presets');
   scenes     = require('./src/server/scenes');
   autoBackup = require('./src/server/auto-backup');
   autoBackup.start();
-  for (const s of [oscServer, dliveServer, klangServer, wingServer, lv1Server]) {
+  for (const s of [oscServer, dliveServer, klangServer, wingServer, lv1Server, m32Server]) {
     s.setConsoleStatusCallback(broadcastConsoleStatus);
     s.setConnectionCountCallback(broadcastConnectionCount);
     s.setServerErrorCallback(handleServerError);
@@ -505,7 +506,7 @@ function openView(page, title, width, height) {
   win.loadURL(`http://localhost:${config.get('serverPort')}/${page}`);
 }
 
-const CONSOLE_NAMES = { digico: 'DiGiCo', dlive: 'dLive', klang: 'KLANG', wing: 'WING', lv1: 'LV1' };
+const CONSOLE_NAMES = { digico: 'DiGiCo', dlive: 'dLive', klang: 'KLANG', wing: 'WING', lv1: 'LV1', m32: 'M32' };
 
 function rebuildTrayMenu() {
   const port = config.get('serverPort');
@@ -549,9 +550,11 @@ function rebuildTrayMenu() {
 // LV1 by its own scene names. LV1 is a scheme of its own although it also
 // uses names: a DiGiCo snapshot and an LV1 scene can share a name ("SONG 1")
 // and mean different channel layouts, so switching between the two clears
-// Ear Scenes (after a backup) like any other scheme change.
+// Ear Scenes (after a backup) like any other scheme change. The M32 keys by
+// its own scene numbers, which aren't a dLive's scene numbers either.
 function sceneKeySchemeFor(consoleType) {
   if (consoleType === 'lv1') return 'lv1-name';
+  if (consoleType === 'm32') return 'm32-number';
   return ['dlive', 'klang', 'wing'].includes(consoleType) ? 'number' : 'name';
 }
 
@@ -561,7 +564,7 @@ function startServer({ pcoSync = true, atLaunch = false } = {}) {
   // the second bind's error then stopped the first server too.
   if (serverRunning || serverStopping) return;
   const consoleType = config.get('consoleType');
-  const family = ['dlive', 'klang', 'wing', 'lv1'].includes(consoleType) ? consoleType : 'digico';
+  const family = ['dlive', 'klang', 'wing', 'lv1', 'm32'].includes(consoleType) ? consoleType : 'digico';
   // Ear Scenes are keyed by snapshot *name* for DiGiCo and scene *number*
   // for dLive/KLANG (KLANG's backend reuses the paired dLive console's scene
   // number for the same reason the plain dLive backend does) — two
@@ -593,7 +596,7 @@ function startServer({ pcoSync = true, atLaunch = false } = {}) {
   }
   lastSceneKeyScheme = keyScheme;
 
-  server = { dlive: dliveServer, klang: klangServer, wing: wingServer, lv1: lv1Server }[family] || oscServer;
+  server = { dlive: dliveServer, klang: klangServer, wing: wingServer, lv1: lv1Server, m32: m32Server }[family] || oscServer;
   try {
     server.start(config.getAll());
     serverRunning = true;
@@ -1045,9 +1048,9 @@ const RESTART_KEYS = [
   // (ipadConnections is applied live by osc-server — adding or fixing an iPad
   // mid-service no longer drops every phone)
   'serverPort', 'deskIp', 'deskSendPort', 'deskListenPort', 'consoleType', 'demoMode',
-  // dLive / KLANG / WING connection settings
+  // dLive / KLANG / WING / LV1 / M32 connection settings
   'dliveBaseChannel', 'dliveTlsEnabled', 'dliveUsername', 'dlivePassword', 'dliveMidiPort',
-  'dliveListenSendLevels', 'dlivePollSendLevels', 'dliveMuteBySendOff', 'dlivePan', 'dliveFxReturns', 'klangIp', 'klangPort', 'wingPort', 'lv1Port'
+  'dliveListenSendLevels', 'dlivePollSendLevels', 'dliveMuteBySendOff', 'dlivePan', 'dliveFxReturns', 'klangIp', 'klangPort', 'wingPort', 'lv1Port', 'm32Port'
 ];
 // What the aux-name sync reads. The Team filter and the Green Room's hidden
 // positions only shape the Green Room display, which reads Planning Center
@@ -1058,7 +1061,7 @@ function needsRestart(prev, next) {
   if (RESTART_KEYS.some(k => JSON.stringify(prev[k]) !== JSON.stringify(next[k]))) return true;
   const countsChanged = prev.channels !== next.channels || prev.auxes !== next.auxes;
   // Demo mode builds its fake console from these counts at start. dLive,
-  // KLANG and WING fetch names and levels for that many channels and auxes
+  // KLANG, WING and the M32 fetch names and levels for that many channels and auxes
   // when they connect; DiGiCo and LV1 read the counts from the desk itself.
   return countsChanged && (!!next.demoMode || !['digico', 'lv1'].includes(next.consoleType));
 }
@@ -1747,6 +1750,7 @@ ipcMain.handle('restore-backup', async (event, request) => {
       require('./src/server/plugins').apply();
       rebuildTrayMenu();
     } else if (result.scenesChanged && serverRunning && server.applyConfigLive) server.applyConfigLive(config.getAll());
+    if (result.pluginsChanged && !result.configChanged) require('./src/server/plugins').apply(); // which are on, and their settings
     if (result.mixes && serverRunning && server.pushDevicePresets) for (const id of result.mixes.deviceIds) server.pushDevicePresets(id);
     return { ok:true,selected:result.selected,configChanged:result.configChanged,mixes:result.mixes,safetyBackup:result.safetyBackup };
   } catch (error) { return { ok:false,error:dataCommitted ? 'Selected data was saved, but the running connection could not refresh. Restart JPMixer to load the restored data. ' + error.message : error.message }; }
