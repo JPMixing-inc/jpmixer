@@ -81,7 +81,11 @@
 
 <a id="new-in-2-0-15"></a>
 
-## 🆕 New in 2.0.20
+## 🆕 New in 2.0.21
+
+2.0.21 brings back a card that was stuck at the bottom of a Home page. A card that was off when the layout was saved (the Patch card before Patch 1.2.0) now moves into the first free spot when it turns on. The Patch card also gets an **Open Patch** button, and plugins can give their cards a button that opens their own page.
+
+### 2.0.20
 
 | | |
 |---|---|

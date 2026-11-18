@@ -229,6 +229,7 @@ jp.card.show({
     { id: 'next', label: 'Next', color: 'blue' },          // id: letters, numbers and _ . : -
     { id: 'live', label: 'Live', active: true },           // active: drawn as on
     { id: 'off', label: 'Off', disabled: true },           // disabled: can't be pressed
+    { id: 'open', label: 'Open', page: true },             // page: opens the plugin's own page instead of pressing (2.0.21)
   ],
   input: { id: 'msg', placeholder: 'Message', button: 'Send' },  // a text box with its button
   images: [                // up to 4 pictures side by side (2.0.19), sent with jp.card.image
@@ -247,6 +248,7 @@ jp.card.show({
 - Calling `show` again replaces the whole card.
 - About four updates a second reach the Home pages, and each page checks every second. Each update always carries the latest card.
 - Only a button (or text box) the card is showing at that moment can be pressed, and not a disabled one.
+- A button with `page: true` opens the plugin's own page in a new tab, and isn't sent to `jp.card.onPress`. It needs the `page` permission; without it the button isn't shown. JPMixer before 2.0.21 sends it to `jp.card.onPress` like any other button.
 - On FOH Home, with an FOH code set, the cards and their buttons need the code. The other Home pages are open to the whole team, so a card with `"homePages": "all"` can be used by anyone who can open one. Buttons, text, `text` and `input`: JPMixer 2.0.19 and later.
 
 ### `jp.console.get()`

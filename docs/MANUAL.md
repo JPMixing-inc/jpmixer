@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.20 · November 2026**
+**Version 2.0.21 · November 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -617,7 +617,7 @@ To make a plugin, by hand or with an AI assistant, see the [plugin guide](https:
 - **Import session** reads a session saved on the console: a DiGiCo `.ses`, an LV1 `.emo` or a dLive show (`.tar.gz`). Every box comes in with each socket named, patched and marked 48V as the session has it. A DiGiCo session doesn’t say which rack is on Dante or MADI, so the preview asks; it draws the console you mixed on, which you can change there too. Playback channels (a computer on Dante, USB or Waves) go on a Dante or network device of their own. A dLive show brings in its inputs and outputs: the MixRack as the CDM it needs (or the one you choose), the surface’s sockets on the back of an S7000, each DX expander as a DX168, and each I/O port’s channels on a network device of their own. Each output gets the mix, direct out or tie line patched to it. The file is read on the page; nothing is sent anywhere. Importing again updates the same boxes and keeps your own notes and 48V marks.
 - **Patch sheet** lists every socket, to print or download as a spreadsheet.
 - In its settings, **Lock the patch** makes it view-only during a service.
-- Patch puts a card on **FOH Home** (Patch 1.2.0 and later, on JPMixer 2.0.19 or later). It shows how much is patched, and warns about a channel patched from two sockets, or a socket that needs 48V where the console has it off. Type a channel number, a name or a socket into **Find** to see where it's patched, then tap **Done**. To hide the card, turn off **Show the patch on FOH Home** in Patch's settings.
+- Patch puts a card on **FOH Home** (Patch 1.2.0 and later, on JPMixer 2.0.19 or later). It shows how much is patched, and warns about a channel patched from two sockets, or a socket that needs 48V where the console has it off. Type a channel number, a name or a socket into **Find** to see where it's patched, then tap **Done**. **Open Patch** opens the Patch page (JPMixer 2.0.21 and later). To hide the card, turn off **Show the patch on FOH Home** in Patch's settings.
 
 ### The Custom Pages plugin
 
