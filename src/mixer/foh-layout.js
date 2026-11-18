@@ -180,7 +180,10 @@
       layout = { v: 2, cards: {} };
       for (const id of ids) {
         const c = value.cards[id];
-        if (c && [c.x, c.y, c.w, c.h].every(Number.isFinite)) layout.cards[id] = fit({ hidden: c.hidden === true, x: c.x, y: c.y, w: c.w, h: c.h });
+        // auto (parked at the bottom while its card was off) is kept: dropping
+        // it here left a card that turned on later stranded below everything
+        // (Patch's card, off in 1.1.2 and on in 1.2.0)
+        if (c && [c.x, c.y, c.w, c.h].every(Number.isFinite)) layout.cards[id] = fit({ hidden: c.hidden === true, x: c.x, y: c.y, w: c.w, h: c.h, ...(c.auto === true ? { auto: true } : {}) });
       }
     } else if (value && (Array.isArray(value.order) || value.cards)) {
       layout = fromV1(value);
@@ -208,6 +211,15 @@
       // auto: parked while off; moved into a free spot when it turns on (see placeWhenOn)
       layout.cards[id] = { hidden: c ? c.hidden : false, x: 0, y: bottom, w, h, auto: true };
       placed.push(layout.cards[id]);
+    }
+    // One parked while off that's on now: into the first free spot
+    for (const id of ids) {
+      const c = layout.cards[id];
+      if (!c || !c.auto || c.hidden || !inUse(id)) continue;
+      const others = Object.entries(layout.cards).filter(([other, o]) => other !== id && !o.hidden && !o.auto && inUse(other)).map(([, o]) => o);
+      const at = firstFit(others, c.w, c.h);
+      c.x = at.x; c.y = at.y;
+      delete c.auto;
     }
     // A plugin card that starts bigger (the ProPresenter controller), in a
     // layout saved when it was the standard size (8 × 30), is shown at its

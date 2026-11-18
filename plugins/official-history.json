@@ -116,6 +116,66 @@
             "sha256": "051788ef10eca68f733b1899717ad817a06b76163b7294ecef3963936aa81601"
           }
         ]
+      },
+      {
+        "version": "1.2.0",
+        "files": [
+          {
+            "path": "index.js",
+            "size": 16500,
+            "sha256": "429c9d6e98077ad981464b8194fa5b4586c018ff733096299be7266406a68e6d"
+          },
+          {
+            "path": "page/app.js",
+            "size": 76218,
+            "sha256": "cc39687b4a93da02427eb29699551c5bab7c59103671bba8c075776043338416"
+          },
+          {
+            "path": "page/boxes.js",
+            "size": 94485,
+            "sha256": "f1b1913c662283fb7b26e3f639d23f0e0907ac950064f132e3d0a8dcf5f61c1f"
+          },
+          {
+            "path": "page/digico-session.js",
+            "size": 20964,
+            "sha256": "296feea5bb946ca324b07ce2234e9cb75579cafc20c4c3cfc179d736764898fb"
+          },
+          {
+            "path": "page/dlive-show.js",
+            "size": 18767,
+            "sha256": "5754179b16bf22b807c80b3c3836674d63476eab736eadaf74fc0fbfc0e0bb9e"
+          },
+          {
+            "path": "page/index.html",
+            "size": 2982,
+            "sha256": "dbbad5ce41ff80f8bb40707f8659f704ec1c0a4c630ef7b9545870d54d7f8540"
+          },
+          {
+            "path": "page/lv1-session.js",
+            "size": 10010,
+            "sha256": "60a0e15e944ca9896abff9ecf785c5ccba9b78d7507072511a7b0ecd57e350d1"
+          },
+          {
+            "path": "page/sqlite.js",
+            "size": 6863,
+            "sha256": "4d69b0a282d04775cb4946b13e5c8cf8dc1c385477f996a0f3b3b5293dd308b4"
+          },
+          {
+            "path": "page/style.css",
+            "size": 10981,
+            "sha256": "e6b0f14334cee5bfb0c354bc963b7e5223d64fd86377c9ab8631300d6ac6c84d"
+          },
+          {
+            "path": "plugin.json",
+            "size": 1006,
+            "sha256": "62b7abe24cf590c200780ad1aefce5a16318e3b30d3c5edd5697ec6a009daa66"
+          },
+          {
+            "path": "README.md",
+            "size": 4628,
+            "sha256": "051788ef10eca68f733b1899717ad817a06b76163b7294ecef3963936aa81601"
+          }
+        ]
       }
     ],
     "companion": [

@@ -465,7 +465,7 @@ function cleanCard(card) {
   const buttonId = (v) => (BUTTON_ID.test(String(v ?? '')) ? String(v) : '');
   const cleanButtons = (list, max) => (Array.isArray(list) ? list : []).slice(0, max)
     .filter((b) => b && typeof b === 'object' && buttonId(b.id))
-    .map((b) => ({ id: buttonId(b.id), label: text(b.label, 30) || buttonId(b.id), color: color(b.color), active: b.active === true, disabled: b.disabled === true }));
+    .map((b) => ({ id: buttonId(b.id), label: text(b.label, 30) || buttonId(b.id), color: color(b.color), active: b.active === true, disabled: b.disabled === true, ...(b.page === true ? { page: true } : {}) }));
   const part = (p) => ({
     rows: (Array.isArray(p.rows) ? p.rows : []).slice(0, MAX_ROWS)
       .filter((r) => r && typeof r === 'object')
@@ -1083,9 +1083,20 @@ function cards() {
       const stateName = run ? (run.gaveUp ? 'crashed' : run.child ? 'running' : 'restarting') : 'starting';
       return (e.manifest.cards || []).map((c) => {
         const cardId = cardDomId(e.id, c.key);
-        return { id: e.id, key: c.key, cardId, title: c.title, card: withImages(run, cardId, (run && run.cards.get(c.key)) || null), state: stateName, everyPage: c.everyPage, size: c.size || 'standard' };
+        return { id: e.id, key: c.key, cardId, title: c.title, card: withPageLinks(e, withImages(run, cardId, (run && run.cards.get(c.key)) || null)), state: stateName, everyPage: c.everyPage, size: c.size || 'standard' };
       });
     });
+}
+
+// A button with page: true opens the plugin's own page (2.0.21): its address
+// is filled in here, only for a plugin with a page that's on, so a card can
+// never send a phone anywhere else. Without one, the button isn't shown.
+function withPageLinks(e, card) {
+  if (!card) return card;
+  const href = e.manifest.permissions.includes('page') && e.manifest.page ? `/p/${e.id}/` : null;
+  const fix = (list) => (list || []).flatMap((b) => (!b.page ? [b] : href ? [{ ...b, href }] : []));
+  const part = (p) => ({ ...p, buttons: fix(p.buttons), rows: (p.rows || []).map((r) => (r.buttons ? { ...r, buttons: fix(r.buttons) } : r)) });
+  return { ...part(card), sections: (card.sections || []).map(part) };
 }
 
 // A card's picture for the pages (GET /plugin-cards/image/<card>/<hash>, or
@@ -1120,7 +1131,7 @@ function pressCard(cardId, button, value, { foh = true } = {}) {
   const run = card && running.get(card.id);
   if (!card || !card.card || !run || !run.child) return { ok: false, status: 404, error: 'That card isn’t available right now.' };
   const id = String(button || '');
-  const target = pressables(card.card).find((b) => b.id === id);
+  const target = pressables(card.card).find((b) => b.id === id && !b.page);
   if (!target || target.disabled) return { ok: false, status: 400, error: 'That button isn’t on the card.' };
   const msg = { type: 'card-press', key: card.key, button: id };
   if (target.isInput) msg.text = longText(String(value ?? ''), 200);

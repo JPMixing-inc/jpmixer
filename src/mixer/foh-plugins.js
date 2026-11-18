@@ -104,6 +104,13 @@
       btn.type = 'button';
       if (b.color) btn.dataset.color = b.color;
       if (b.active) { btn.classList.add('is-active'); btn.setAttribute('aria-pressed', 'true'); }
+      // A button that opens the plugin's own page (JPMixer fills in its address)
+      if (b.page) {
+        const ok = typeof b.href === 'string' && /^\/p\/[a-z][a-z0-9-]{1,29}\/$/.test(b.href);
+        btn.disabled = b.disabled || !ok;
+        btn.addEventListener('click', () => { if (ok) window.open(b.href, '_blank', 'noopener'); });
+        return btn;
+      }
       btn.disabled = b.disabled || stopped;
       btn.addEventListener('click', () => press(id, b.id));
       return btn;

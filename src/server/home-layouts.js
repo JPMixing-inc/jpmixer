@@ -48,7 +48,7 @@ function clean(layout) {
     for (const [id, c] of Object.entries(source).slice(0, MAX_CARDS)) {
       if (!CARD_ID.test(id) || !c || typeof c !== 'object') continue;
       if (!int(c.w, 4, 24) || !int(c.x, 0, 24 - c.w) || !int(c.y, 0, 5000) || !int(c.h, 12, 160)) continue;
-      cards[id] = { hidden: c.hidden === true, x: c.x, y: c.y, w: c.w, h: c.h };
+      cards[id] = { hidden: c.hidden === true, x: c.x, y: c.y, w: c.w, h: c.h, ...(c.auto === true ? { auto: true } : {}) }; // parked while off (foh-layout.js)
     }
     return Object.keys(cards).length ? { v: 2, cards } : null;
   }

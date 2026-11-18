@@ -366,6 +366,8 @@ test('the plugin keeps one patch for every screen: each change on its own, two s
     // Find on the card: by name and by number, then Done
     const cardId = plugins.cards().find((c) => c.id === 'patch').cardId;
     assert.ok(card().input && card().input.id === 'find', 'the card has a Find box');
+    assert.deepEqual(card().buttons.map((b) => [b.id, b.label, b.page, b.href]), [['open', 'Open Patch', true, '/p/patch/']], 'Open Patch opens its own page');
+    assert.equal(plugins.pressCard(cardId, 'open').ok, false, 'a page button isn’t pressed through to the plugin');
     assert.deepEqual(plugins.pressCard(cardId, 'find', 'kick'), { ok: true });
     await until(() => card().sections && card().sections[0] && card().sections[0].rows.some((r) => r.label === 'Ch 1 · Kick' && r.value.startsWith('Stage right · Input 1')));
     plugins.pressCard(cardId, 'find', '1');

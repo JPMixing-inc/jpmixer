@@ -193,7 +193,7 @@ module.exports = async (jp) => {
     if (jp.settings.fohCard === false) { jp.card.clear(); return; }
     const s = patch.summary;
     if (!s || !s.ports) {
-      jp.card.show({ value: '—', label: 'No stage boxes yet. Open the Patch page (Home pages list) to add them.' });
+      jp.card.show({ value: '—', label: 'No stage boxes yet. Open the Patch page to add them.', buttons: [{ id: 'open', label: 'Open Patch', page: true }] });
       return;
     }
     const all = sockets();
@@ -211,6 +211,8 @@ module.exports = async (jp) => {
         ...warn,
       ],
       input: { id: 'find', placeholder: 'Channel number, name or socket', button: 'Find' },
+      // Opens the Patch page (JPMixer 2.0.21 and later; earlier ones send it here, and it's ignored)
+      buttons: [{ id: 'open', label: 'Open Patch', page: true }],
       note: jp.settings.locked ? 'The patch is locked.' : '',
     };
     if (find) {
@@ -230,6 +232,7 @@ module.exports = async (jp) => {
     jp.card.show(card);
   }
   jp.card.onPress(({ button, text }) => {
+    if (button === 'open') return; // the page button, on a JPMixer before 2.0.21
     clearTimeout(findTimer);
     if (button === 'find' && typeof text === 'string' && text.trim()) {
       find = { q: text.trim().slice(0, 40), at: Date.now() };

@@ -1,7 +1,7 @@
 {
   "id": "patch",
   "name": "Patch",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to. Imports DiGiCo sessions, LV1 sessions and dLive shows. A card on FOH Home finds where anything is patched.",
   "author": "JPMixer",
   "minJPMixer": "2.0.19",

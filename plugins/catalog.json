@@ -114,7 +114,7 @@
     {
       "id": "patch",
       "name": "Patch",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to. Imports DiGiCo sessions, LV1 sessions and dLive shows. A card on FOH Home finds where anything is patched.",
       "author": "JPMixer",
       "permissions": [
@@ -127,8 +127,8 @@
       "files": [
         {
           "path": "index.js",
-          "size": 16500,
-          "sha256": "429c9d6e98077ad981464b8194fa5b4586c018ff733096299be7266406a68e6d"
+          "size": 16792,
+          "sha256": "53691af22e2fde31987ecd129c7a92b9d121d624db9ebddb53b501d2abd7b90a"
         },
         {
           "path": "page/app.js",
@@ -173,7 +173,7 @@
         {
           "path": "plugin.json",
           "size": 1006,
-          "sha256": "62b7abe24cf590c200780ad1aefce5a16318e3b30d3c5edd5697ec6a009daa66"
+          "sha256": "f79976246e3cb14abd19aa811a89a27455c15a1e0751cea65f604411b034dd2c"
         },
         {
           "path": "README.md",
