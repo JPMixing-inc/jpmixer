@@ -122,6 +122,12 @@
     if (typeof ws !== 'undefined' && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'request-aux-dyn', aux }));
   }
   function close() { document.body.classList.remove('geqOpen', 'compOpen'); }
+  // An open panel re-reads its mix (a new mix, or the socket came back):
+  // it used to keep showing 0 dB, and a drag jumped from there
+  function refetch() {
+    if (aux === null || !document.body.classList.contains('geqOpen') && !document.body.classList.contains('compOpen')) return;
+    if (typeof ws !== 'undefined' && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'request-aux-dyn', aux }));
+  }
   geqItem.addEventListener('click', () => { if (typeof closeMenu === 'function') closeMenu(); open('geq'); });
   compItem.addEventListener('click', () => { if (typeof closeMenu === 'function') closeMenu(); open('comp'); });
   geq.close.addEventListener('click', close);
@@ -131,14 +137,17 @@
   globalThis.mixProcessing = {
     // The mix picked (mixer.js applyAux): which of the two it has
     setAux(auxChannel, opt) {
-      if (auxChannel !== aux) { for (const k of Object.keys(values)) delete values[k]; for (const [name, update] of controls) update(name.endsWith('_in') ? 0 : 0); }
+      const changed = auxChannel !== aux;
+      if (changed) { for (const k of Object.keys(values)) delete values[k]; for (const [name, update] of controls) update(name.endsWith('_in') ? 0 : 0); }
       aux = auxChannel;
       flags = { geq: !!(opt && opt.geqEnabled), comp: !!(opt && opt.compEnabled) };
       geqItem.style.display = aux !== null && flags.geq ? '' : 'none';
       compItem.style.display = aux !== null && flags.comp ? '' : 'none';
       if (!flags.geq) document.body.classList.remove('geqOpen');
       if (!flags.comp) document.body.classList.remove('compOpen');
+      if (changed) refetch();
     },
+    refetch,
     // A message for these panels: true when it was one
     onMessage(json) {
       if (json.type === 'aux-dyn') {

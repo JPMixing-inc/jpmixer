@@ -226,6 +226,12 @@ function planEntry(d, date) {
   const url = typeof a.planning_center_url === 'string' && a.planning_center_url.startsWith(PCO_WEB + '/') ? a.planning_center_url : null;
   return { id: d.id, date, title: a.title || null, seriesTitle: a.series_title || null, url };
 }
+// sort_date is the plan's local wall time labelled Z (CONFIRMED on two live
+// accounts: a 6:30 PM Eastern service reads 18:30Z, a 10 AM one 10:00Z), so
+// it's read as this computer's local time. Read as UTC, a plan looked 4-5
+// hours early in the US: with 9 AM and 11 AM as separate plans, 11 AM counted
+// as started at 6 AM and took over from 9 AM mid-service.
+const localWallTime = (date) => Date.parse(String(date || '').replace(/(?:Z|[+-]00:?00)$/, ''));
 async function nextPlan(serviceTypeId, creds) {
   const now = Date.now();
   let url = `/services/v2/service_types/${encodeURIComponent(serviceTypeId)}/plans?order=-sort_date&per_page=25`;
@@ -240,7 +246,7 @@ async function nextPlan(serviceTypeId, creds) {
     let reachedPast = false;
     for (const d of json.data || []) {
       const date = d.attributes && (d.attributes.sort_date || d.attributes.dates);
-      const time = date ? new Date(date).getTime() : NaN;
+      const time = date ? localWallTime(date) : NaN;
       if (!Number.isFinite(time)) continue;
       const entry = planEntry(d, date);
       const distance = Math.abs(time - now);
@@ -260,16 +266,23 @@ async function nextPlan(serviceTypeId, creds) {
       // Otherwise check whether it's still running. Checked even when the
       // next plan is closer: with 9am and 11am as separate plans, 11am is
       // closer at 10:05, but 9am hasn't finished.
-      const times = await listPlanTimes(serviceTypeId, mostRecentPast.id, creds);
+      // Services only, like the rest of Planning Center here: a teardown or
+      // "other" time late in the evening kept the finished plan up and hid
+      // the next one. A time without ends_at counts as start + 90 min (it
+      // used to end at its start, so a 9am plan gave way to 11am at 9:01).
+      const times = serviceTimes(await listPlanTimes(serviceTypeId, mostRecentPast.id, creds));
       let lastServiceEnd = -Infinity;
-      for (const pt of times) {
-        const t = new Date(pt.endsAt || pt.startsAt).getTime();
-        if (Number.isFinite(t) && t > lastServiceEnd) lastServiceEnd = t;
-      }
+      for (const pt of times) if (pt.end > lastServiceEnd) lastServiceEnd = pt.end;
       // No PlanTimes at all means a plain single-service plan — nothing
       // more precise than sort_date to check against, so trust `best`.
       if (lastServiceEnd === -Infinity) return best;
-      return now <= lastServiceEnd ? mostRecentPast : soonestFuture;
+      // A service that runs long keeps its plan for up to 90 minutes after
+      // its scheduled end, as its team does inside a plan (currentServiceTime):
+      // at 7:30:01 a Wednesday service handed the mixes to Sunday's band
+      // mid-song. Not when the next plan is close: that gets the hour before
+      // it, so 9am and 11am as separate plans still swap when 9am ends.
+      const holdUntil = Math.max(lastServiceEnd, Math.min(lastServiceEnd + AFTER_SERVICE_MS, soonestFutureTime - NEXT_PLAN_LEAD_MS));
+      return now <= holdUntil ? mostRecentPast : soonestFuture;
     }
     url = (json.links && json.links.next) || null;
   }
@@ -322,6 +335,7 @@ async function listPlanTimes(serviceTypeId, planId, creds) {
 // (Closest-to-now, used before, kept Saturday's until about 1 AM.)
 const SERVICE_LENGTH_MS = 90 * 60 * 1000; // a time without ends_at
 const AFTER_SERVICE_MS = 90 * 60 * 1000;  // a service's team stays this long after it ends
+const NEXT_PLAN_LEAD_MS = 60 * 60 * 1000; // ...but the next plan gets the hour before it (nextPlan)
 // Services only: a Thursday rehearsal on a weekend plan resolved "auto" to
 // Thursday, hiding everyone scheduled for the weekend services. Falls back
 // to every time if none are tagged as services. Sorted, with times parsed.
@@ -633,4 +647,4 @@ const shared = {
   clear: () => sharedCache.clear(), // tests
 };
 
-module.exports = { teamMatcher, _setRequestTimeout: (ms) => { REQUEST_TIMEOUT_MS = ms; }, requestStats, isTemporary: temporary, listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };
+module.exports = { localWallTime, teamMatcher, _setRequestTimeout: (ms) => { REQUEST_TIMEOUT_MS = ms; }, requestStats, isTemporary: temporary, listServiceTypes, listTeams, listPositions, listPlanTimes, listPlanItems, getLiveItemId, getLive, resolveAutoDay, currentServiceTime, serviceDays, nextPlan, upcomingPlans, planTeamMembers, shared, USER_AGENT, PCO_WEB };

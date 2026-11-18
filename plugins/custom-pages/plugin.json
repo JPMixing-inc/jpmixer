@@ -1,7 +1,7 @@
 {
   "id": "custom-pages",
   "name": "Custom Pages",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Link-only pages for a youth night or an event: the channel and control group faders that group needs, each with its own highest level, plus mute buttons and Companion buttons if you want them.",
   "author": "JPMixer",
   "minJPMixer": "2.0.16",

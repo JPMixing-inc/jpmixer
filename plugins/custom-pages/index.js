@@ -30,8 +30,18 @@ const pages = require('./pages');
 module.exports = async (jp) => {
   const file = path.join(jp.plugin.dataFolder, 'pages.json');
   let store = { pages: [] };
-  try { store = pages.cleanStore(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) { if (e.code !== 'ENOENT') console.error('pages.json couldn’t be read; starting with no pages:', e.message); }
+  // Pages that can't be read are never saved over: they're moved aside and
+  // kept; if even that fails, nothing is saved until the plugin restarts
+  let readOnly = false;
+  try { store = pages.cleanStore(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) {
+    if (e.code !== 'ENOENT') {
+      const aside = `${file}.broken-${Date.now()}`;
+      try { fs.renameSync(file, aside); console.error(`pages.json couldn’t be read (${e.message}); starting with no pages. It was kept as ${path.basename(aside)}.`); }
+      catch (e2) { readOnly = true; console.error(`pages.json couldn’t be read (${e.message}) or moved aside (${e2.code || e2.message}); nothing is saved until the plugin restarts.`); }
+    }
+  }
   function persist(next) {
+    if (readOnly) throw new Error('The saved pages couldn’t be read, so nothing is saved until the plugin restarts.');
     const tmp = file + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(next, null, 2));
     fs.renameSync(tmp, file);

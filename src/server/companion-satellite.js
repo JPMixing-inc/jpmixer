@@ -198,7 +198,8 @@ function mountCompanion(app, { canUse = () => true } = {}) {
     const role = roleOf(req, res);
     if (!role) return;
     const addr = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
-    if (tooFast(addr)) { res.status(429).json({ ok: false, error: 'Too many presses — slow down a little.' }); return; }
+    // Only presses count: a release turned away left the key held in Companion
+    if (req.body?.pressed === true && tooFast(addr)) { res.status(429).json({ ok: false, error: 'Too many presses — slow down a little.' }); return; }
     let ok = false;
     if (live() && !homeOff(role)) {
       try { ok = (await plugins.callIntegration('companion', 'press', { role, key: Number(req.body?.key), pressed: req.body?.pressed === true }, 3000)) === true; } catch (_) { ok = false; }

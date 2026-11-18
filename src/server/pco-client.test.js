@@ -9,6 +9,9 @@
 
 const assert = require('node:assert/strict');
 const http = require('http');
+// Planning Center's sort_date is the plan's local wall time labelled Z
+// (confirmed on live accounts); PlanTimes carry real UTC
+const wallZ = (iso) => { const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString(); };
 const pco = require('./pco-client.js');
 
 let n = 0;
@@ -87,9 +90,9 @@ async function main() {
     // this file was written, since "now" keeps moving.
     '/services/v2/service_types/1/plans?order=-sort_date&per_page=25': {
       body: { data: [
-        { id: '101', type: 'Plan', attributes: { sort_date: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(), title: 'Far future plan' } },
-        { id: '102', type: 'Plan', attributes: { sort_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), title: 'Closest-to-now plan' } },
-        { id: '100', type: 'Plan', attributes: { sort_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), title: 'Long-past plan' } }, // descending order — past plans trail the future ones, must still lose to a much-closer future one
+        { id: '101', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString()), title: 'Far future plan' } },
+        { id: '102', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()), title: 'Closest-to-now plan' } },
+        { id: '100', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()), title: 'Long-past plan' } }, // descending order — past plans trail the future ones, must still lose to a much-closer future one
       ] },
     },
     // A church running same-day services at different times (e.g. Saturday
@@ -98,8 +101,8 @@ async function main() {
     // yet, so the "active" team doesn't flip to the wrong one an hour early.
     '/services/v2/service_types/4/plans?order=-sort_date&per_page=25': {
       body: { data: [
-        { id: '401', type: 'Plan', attributes: { sort_date: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), title: '7pm service' } },
-        { id: '400', type: 'Plan', attributes: { sort_date: new Date(Date.now() - 20 * 60 * 1000).toISOString(), title: '5pm service' } },
+        { id: '401', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()), title: '7pm service' } },
+        { id: '400', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 20 * 60 * 1000).toISOString()), title: '5pm service' } },
       ] },
     },
     // nextPlan() checks the closest-by-distance past plan's own PlanTimes
@@ -113,8 +116,8 @@ async function main() {
     // upcoming plan should win instead once that's checked.
     '/services/v2/service_types/7/plans?order=-sort_date&per_page=25': {
       body: { data: [
-        { id: '701', type: 'Plan', attributes: { sort_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(), title: 'Next weekend' } },
-        { id: '700', type: 'Plan', attributes: { sort_date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), title: 'Last weekend' } },
+        { id: '701', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()), title: 'Next weekend' } },
+        { id: '700', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()), title: 'Last weekend' } },
       ] },
     },
     '/services/v2/service_types/7/plans/700/plan_times': {
@@ -129,8 +132,8 @@ async function main() {
     // mid-weekend) — must stay selected rather than jumping ahead early.
     '/services/v2/service_types/8/plans?order=-sort_date&per_page=25': {
       body: { data: [
-        { id: '801', type: 'Plan', attributes: { sort_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(), title: 'Next weekend' } },
-        { id: '800', type: 'Plan', attributes: { sort_date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), title: 'This weekend' } },
+        { id: '801', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()), title: 'Next weekend' } },
+        { id: '800', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()), title: 'This weekend' } },
       ] },
     },
     '/services/v2/service_types/8/plans/800/plan_times': {
@@ -152,8 +155,8 @@ async function main() {
     // ago and runs another 25 min; 11am starts in 55 min, so it's closer.
     '/services/v2/service_types/10/plans?order=-sort_date&per_page=25': {
       body: { data: [
-        { id: '1101', type: 'Plan', attributes: { sort_date: new Date(Date.now() + 55 * 60 * 1000).toISOString(), title: '11am' } },
-        { id: '1100', type: 'Plan', attributes: { sort_date: new Date(Date.now() - 65 * 60 * 1000).toISOString(), title: '9am' } },
+        { id: '1101', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 55 * 60 * 1000).toISOString()), title: '11am' } },
+        { id: '1100', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 65 * 60 * 1000).toISOString()), title: '9am' } },
       ] },
     },
     '/services/v2/service_types/10/plans/1100/plan_times': {
@@ -165,8 +168,8 @@ async function main() {
     // Same, at "10:40": 9am finished 10 min ago.
     '/services/v2/service_types/11/plans?order=-sort_date&per_page=25': {
       body: { data: [
-        { id: '1201', type: 'Plan', attributes: { sort_date: new Date(Date.now() + 20 * 60 * 1000).toISOString(), title: '11am' } },
-        { id: '1200', type: 'Plan', attributes: { sort_date: new Date(Date.now() - 100 * 60 * 1000).toISOString(), title: '9am' } },
+        { id: '1201', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 20 * 60 * 1000).toISOString()), title: '11am' } },
+        { id: '1200', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 100 * 60 * 1000).toISOString()), title: '9am' } },
       ] },
     },
     '/services/v2/service_types/11/plans/1200/plan_times': {
@@ -174,6 +177,52 @@ async function main() {
         starts_at: new Date(Date.now() - 100 * 60 * 1000).toISOString(),
         ends_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
       } }] },
+    },
+    // A Wednesday service that ended 2 hours ago, with a teardown ("other")
+    // still on the plan for another hour: the next plan should take over.
+    '/services/v2/service_types/13/plans?order=-sort_date&per_page=25': {
+      body: { data: [
+        { id: '1401', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()), title: 'Next' } },
+        { id: '1400', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()), title: 'Wednesday' } },
+      ] },
+    },
+    '/services/v2/service_types/13/plans/1400/plan_times': {
+      body: { data: [
+        { id: 'svc', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), ends_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() } },
+        { id: 'tear', type: 'PlanTime', attributes: { time_type: 'other', starts_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), ends_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() } },
+      ] },
+    },
+    // 9am plan with no ends_at, seen at 9:20, next plan (11am) in 100 min:
+    // it still runs (start + 90 min).
+    '/services/v2/service_types/14/plans?order=-sort_date&per_page=25': {
+      body: { data: [
+        { id: '1501', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 100 * 60 * 1000).toISOString()), title: '11am' } },
+        { id: '1500', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 20 * 60 * 1000).toISOString()), title: '9am' } },
+      ] },
+    },
+    '/services/v2/service_types/14/plans/1500/plan_times': {
+      body: { data: [{ id: 'pt', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() - 20 * 60 * 1000).toISOString() } }] },
+    },
+    // A Wednesday service that ended 10 min ago (running long); Sunday's
+    // plan is days away: Wednesday's stays up.
+    '/services/v2/service_types/15/plans?order=-sort_date&per_page=25': {
+      body: { data: [
+        { id: '1601', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()), title: 'Sunday' } },
+        { id: '1600', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()), title: 'Wednesday' } },
+      ] },
+    },
+    '/services/v2/service_types/15/plans/1600/plan_times': {
+      body: { data: [{ id: 'svc', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() - 70 * 60 * 1000).toISOString(), ends_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() } }] },
+    },
+    // Same, 100 min after it ended: Sunday's takes over.
+    '/services/v2/service_types/16/plans?order=-sort_date&per_page=25': {
+      body: { data: [
+        { id: '1701', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()), title: 'Sunday' } },
+        { id: '1700', type: 'Plan', attributes: { sort_date: wallZ(new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString()), title: 'Wednesday' } },
+      ] },
+    },
+    '/services/v2/service_types/16/plans/1700/plan_times': {
+      body: { data: [{ id: 'svc', type: 'PlanTime', attributes: { time_type: 'service', starts_at: new Date(Date.now() - 160 * 60 * 1000).toISOString(), ends_at: new Date(Date.now() - 100 * 60 * 1000).toISOString() } }] },
     },
     // planTeamMembers() always fetches plan_times too (to resolve `days`) —
     // an empty list here means a plain, non-split-team plan with one service.
@@ -369,6 +418,18 @@ async function main() {
     const finished = await pco.nextPlan('11', creds);
     assert.equal(finished.id, '1201', 'once 9am has ended, 11am takes over');
     t('nextPlan keeps a running service selected until it ends, even when the next separate plan is closer');
+  }
+
+  {
+    assert.equal((await pco.nextPlan('13', creds)).id, '1401', 'a teardown time must not keep a finished service up');
+    assert.equal((await pco.nextPlan('14', creds)).id, '1500', 'a service time without ends_at runs 90 minutes');
+    t('nextPlan only counts service times when deciding a plan is over');
+  }
+
+  {
+    assert.equal((await pco.nextPlan('15', creds)).id, '1600', 'a service 10 min over its end keeps its plan');
+    assert.equal((await pco.nextPlan('16', creds)).id, '1701', '90 min after the end, the next plan takes over');
+    t('nextPlan keeps a finished service up for 90 minutes when the next plan is days away');
   }
 
   {

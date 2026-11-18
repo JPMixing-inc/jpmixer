@@ -101,9 +101,14 @@ const silencedSends = new Map();
 // Releases sent in the last 10 s: key -> when. UDP to a console that's gone
 // just vanishes (it's only noticed gone after 5 s of silence), so these are
 // sent again when it's back; switching a send on twice does nothing. The
-// console reporting that send's on/off since clears it.
+// console reporting that send's on/off since clears it. One made while the
+// console is gone, or in the 10 s before the drop was noticed, is kept for
+// the reconnect however long it's away (KEPT): the 10 s used to be counted
+// at the reconnect, so an outage over 10 s lost the unmute and the channel
+// stayed off in that musician's ears.
 const recentReleases = new Map();
-const RELEASE_RESEND_MS = 10000;
+let RELEASE_RESEND_MS = 10000;
+const KEPT = Infinity;
 // JPMixer's own writes, so what the console reports in the moment after
 // (its echo, or an answer to a question asked just before the write) doesn't
 // put a fader back: "lvl:ch:aux" | "pan:ch:aux" | "trk:strip:n" -> when.
@@ -373,7 +378,7 @@ function applySilencing(aux) {
       pacer.cancel(`geton:${key}`); // not asked yet: nothing was switched off
       if (entry.wasOn) {
         queueSendOn(ch, aux, true);
-        recentReleases.set(key, Date.now());
+        recentReleases.set(key, consoleConnected ? Date.now() : KEPT);
       }
     }
   }
@@ -968,7 +973,7 @@ function start(cfg) {
     }
     // And mutes/solos released while it couldn't be reached, or just before
     for (const [key, at] of recentReleases) {
-      if (Date.now() - at >= RELEASE_RESEND_MS || silencedSends.has(key)) continue;
+      if ((at !== KEPT && Date.now() - at >= RELEASE_RESEND_MS) || silencedSends.has(key)) continue;
       const [ch, aux] = key.split(':').map(Number);
       queueSendOn(ch, aux, true);
     }
@@ -977,6 +982,12 @@ function start(cfg) {
   });
   client.on('disconnected', () => {
     if (m32 !== client) return;
+    // Releases sent in the moments before the drop was noticed may not have
+    // arrived: kept until it's back, however long that takes
+    for (const [key, at] of [...recentReleases]) {
+      if (at === KEPT || Date.now() - at < RELEASE_RESEND_MS) recentReleases.set(key, KEPT);
+      else recentReleases.delete(key);
+    }
     consoleConnected = false;
     logEvent('console-error', 'no reply from the console — check its IP address and that it is switched on');
     if (onConsoleStatusChange) onConsoleStatusChange(false);
@@ -1065,4 +1076,5 @@ module.exports = { getConnectedDevicesInfo, pushDevicePresets, getControlGroups,
   setServerErrorCallback, getOscLog, setOscTrafficCallback,
   startOscLogRecording, stopOscLogRecording, getOscLogRecordingStatus, oscLogRecordsFolder,
   fireSnapshot, setMute: sendMute, setSolo: sendSolo, setChannelLabel, setAuxLabel, getStrips, primeStrips, setStrip,
+  _setReleaseResendMs: (ms) => { RELEASE_RESEND_MS = ms; }, // tests: an outage longer than the window
 };

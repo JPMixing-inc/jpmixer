@@ -29,6 +29,9 @@ const types = {
 };
 const booleans = new Set(['pcoEnabled','greenRoomMics','wirelessEnabled','greenRoomSpl','smaartEnabled','greenRoomQr','autoStart','keepAwake','demoMode','sceneRecallEnabled','performerEarScenes','autoBackupEnabled','dliveTlsEnabled','dliveListenSendLevels','dlivePollSendLevels','dliveMuteBySendOff','dlivePan','pcoIncludeUnconfirmed','pcoUpdateAuxNames','pcoPhoneAssignments','apiEnabled','companionEnabled','companionHome']);
 const numbers = { serverPort:[1,65535],deskSendPort:[1,65535],deskListenPort:[1,65535],channels:[1,256],auxes:[0,256],groups:[0,256],dliveBaseChannel:[0,11],dliveMidiPort:[0,65535],dliveFxReturns:[0,16],klangPort:[0,65535],wingPort:[0,65535],lv1Port:[0,65535],m32Port:[0,65535],apiPort:[1,65535],companionPort:[1,65535],companionColumns:[1,12],companionRows:[1,8],smaartPort:[1,65535],autoBackupIntervalDays:[1,365] };
+const safeId = (id) => (typeof id === 'number' && Number.isFinite(id)) || (typeof id === 'string' && /^[\w.-]{1,64}$/.test(id));
+// img:<name>, file:<n> or an emoji, never markup
+const safeIcon = (icon) => typeof icon === 'string' && (icon === '' || /^img:[\w-]{1,40}$/.test(icon) || /^file:\d{1,3}$/.test(icon) || (icon.length <= 40 && !/[<>"'&`]/.test(icon)));
 function validateConfig(config) {
   if (!object(config)) throw new Error('Invalid configuration in this backup.');
   for (const key of definitions.flatMap(d => d[3])) {
@@ -38,8 +41,10 @@ function validateConfig(config) {
     if (!valid) throw new Error('Invalid ' + key + ' in this backup.');
   }
   for (const key of ['channelOverrides','auxOverrides']) if (config[key] && Object.entries(config[key]).some(([n,v]) => !/^[1-9]\d*$/.test(n) || !object(v))) throw new Error('Invalid ' + key + ' in this backup.');
-  if (config.channelGroups?.some(group => !object(group) || !['string','number'].includes(typeof group.id) || typeof group.name !== 'string')) throw new Error('Invalid channel groups.');
-  if (config.ipadConnections?.some(device => !object(device) || typeof device.ip !== 'string' || !Number.isInteger(device.sendPort) || device.sendPort < 1 || device.sendPort > 65535)) throw new Error('Invalid iPad connections.');
+  // Ids end up in Settings' markup: only the shapes Settings makes (a
+  // Date.now() number). Icons are cleaned in normalize instead.
+  if (config.channelGroups?.some(group => !object(group) || !safeId(group.id) || typeof group.name !== 'string')) throw new Error('Invalid channel groups.');
+  if (config.ipadConnections?.some(device => !object(device) || (device.id !== undefined && !safeId(device.id)) || typeof device.ip !== 'string' || !Number.isInteger(device.sendPort) || device.sendPort < 1 || device.sendPort > 65535)) throw new Error('Invalid iPad connections.');
   if (config.pcoGreenRoomHidden?.some(name => typeof name !== 'string')) throw new Error('Invalid hidden Planning Center positions.');
   if (config.pcoPositionMapping && Object.values(config.pcoPositionMapping).some(aux => !Number.isInteger(Number(aux)) || Number(aux) < 1 || Number(aux) > 64)) throw new Error('Invalid Planning Center aux mapping.');
   if (config.wirelessReceivers?.some(r => !object(r) || typeof r.ip !== 'string' || !/^\d{1,3}(\.\d{1,3}){3}$/.test(r.ip))) throw new Error('Invalid Shure wireless receivers.');
@@ -78,7 +83,12 @@ function normalize(data, filename) {
   // allows used to be one) mustn't take the saved mixes in the file with
   // them: the rest of the file can still be restored, with a note
   if (result.config !== undefined) {
-    try { validateConfig(result.config); } catch (e) {
+    try {
+      validateConfig(result.config);
+      // An icon that isn't one Settings makes is left off that channel, not
+      // the whole file: it could carry markup into the Settings window
+      for (const ov of Object.values(result.config.channelOverrides || {})) if (ov.icon !== undefined && !safeIcon(ov.icon)) delete ov.icon;
+    } catch (e) {
       const others = ['presets','scenes','homeLayouts','deviceStage','consoleNames','plugins'].some(key => result[key] !== undefined);
       if (!others) throw e;
       result.config = undefined; result.configProblem = e.message;

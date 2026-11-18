@@ -179,12 +179,12 @@ test('a JPMixer with a newer copy of its own plugin than the list on GitHub: the
   fs.writeFileSync(path.join(old, 'plugin.json'), JSON.stringify({ ...m, version: '0.9.0' }));
   assert.equal((await plugins.install(old, { origin: 'file' })).ok, true);
   try {
-    const patch = (await store().catalog('2.0.15')).plugins.find((p) => p.id === 'patch');
+    const patch = (await store().catalog('2.0.19')).plugins.find((p) => p.id === 'patch');
     assert.deepEqual([patch.bundled, patch.version, patch.update], [true, here.version, true], 'the copy here, not the list’s older one');
-    assert.deepEqual(store().updates('2.0.15').filter((u) => u.id === 'patch').map((u) => [u.version, u.installedVersion]), [[here.version, '0.9.0']]);
+    assert.deepEqual(store().updates('2.0.19').filter((u) => u.id === 'patch').map((u) => [u.version, u.installedVersion]), [[here.version, '0.9.0']]);
     // The list caught up: its own copy again
     served.set('/plugins/catalog.json', JSON.stringify({ version: 1, plugins: [here] }));
-    assert.equal((await store().catalog('2.0.15')).plugins.find((p) => p.id === 'patch').bundled, false);
+    assert.equal((await store().catalog('2.0.19')).plugins.find((p) => p.id === 'patch').bundled, false);
   } finally {
     plugins.forget('patch');
     fs.rmSync(path.join(plugins.pluginsDir(), 'patch'), { recursive: true, force: true });

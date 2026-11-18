@@ -12,8 +12,10 @@
 //         putBox adds a box, or replaces it (an import). At most 200 a call.
 // The FOH card's summary is counted here, from the saved patch, with the
 // page's own drawings (page/boxes.js) for how many sockets each box has.
-// "Lock the patch" in its settings makes it view-only. With "Show a patch
-// summary on FOH Home" on, the card shows how much is patched.
+// "Lock the patch" in its settings makes it view-only. The FOH Home card
+// (on unless "Show the patch on FOH Home" is off) shows how much is patched,
+// warns of a channel patched twice or a socket that needs 48V the console
+// has off, and finds where a channel or socket is.
 
 const fs = require('fs');
 const path = require('path');
@@ -109,44 +111,139 @@ module.exports = async (jp) => {
   const file = path.join(jp.plugin.dataFolder, 'patch.json');
   const library = loadLibrary(jp.plugin.folder);
   let patch = { rev: 0, boxes: [], summary: null };
+  let lastConsole = null; // the console as last asked (names and 48V for the card)
+  // A saved patch that can't be read is never written over: the start-up
+  // recount saved the empty patch over it (a damaged file, a hand edit, an
+  // older Patch reading a newer one). It's moved aside, kept to send in;
+  // if even that fails, nothing is saved this run.
+  let loadFailed = false, readOnly = false;
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (saved && Array.isArray(saved.boxes)) patch = { rev: Number.isInteger(saved.rev) ? saved.rev : 0, boxes: cleanBoxes(saved.boxes), summary: saved.summary || null };
+    else throw new Error('not a saved patch');
   } catch (e) {
-    if (e.code !== 'ENOENT') console.error('Couldn’t read the saved patch:', e.message);
+    if (e.code !== 'ENOENT') {
+      loadFailed = true;
+      const aside = `${file}.broken-${Date.now()}`;
+      try { fs.renameSync(file, aside); console.error(`Couldn’t read the saved patch (${e.message}); it was kept as ${path.basename(aside)}.`); }
+      catch (e2) { readOnly = true; console.error(`Couldn’t read the saved patch (${e.message}), or move it aside (${e2.code || e2.message}): nothing is saved until Patch restarts.`); }
+    }
   }
 
   // Saved first, then kept: if the file can't be written, the patch stays as it was
   function save(next) {
+    if (readOnly) throw Object.assign(new Error('the saved patch couldn’t be read'), { code: 'UNREADABLE' });
     const tmp = `${file}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(next));
     fs.renameSync(tmp, file);
     patch = next;
   }
 
-  // The FOH Home card (only with "Show a patch summary on FOH Home" on)
+  // ── The FOH Home card ──
+  const chName = (n) => {
+    const c = lastConsole && Array.isArray(lastConsole.channels) ? lastConsole.channels.find((x) => x.number === n) : null;
+    return c && c.name && !/^(ch|channel)\s*\d+$/i.test(String(c.name).trim()) ? String(c.name) : '';
+  };
+  const SRC = { ch: 'Ch', cg: 'CG', mix: 'Mix' };
+  // Every socket with what it is, from the page's drawings
+  function sockets() {
+    const out = [];
+    for (const box of patch.boxes) {
+      let ports = [];
+      try { ports = library ? library.layoutFor(box).ports : Object.keys(box.ports).map((key) => ({ key, kind: key.startsWith('in') ? 'in' : 'out', label: key })); } catch (_) { ports = []; }
+      const model = library && library.BOXES.find((m) => m.id === box.model);
+      const boxName = box.name || (model ? model.name : 'Stage box');
+      for (const p of ports) out.push({ box, boxName, port: p, data: box.ports[p.key] || {} });
+    }
+    return out;
+  }
+  const srcText = (src) => {
+    if (!src) return '';
+    const name = src.kind === 'ch' ? chName(src.n) : '';
+    return `${SRC[src.kind] || ''} ${src.n}${src.side ? ` ${src.side}` : ''}${name ? ` · ${name}` : ''}`;
+  };
+  // Inputs that need 48V where the console says that channel's is off
+  // (only consoles that report it: DiGiCo and LV1)
+  function phantomOff(all) {
+    const chans = lastConsole && lastConsole.connected && Array.isArray(lastConsole.channels) ? lastConsole.channels : [];
+    const out = [];
+    for (const x of all) {
+      if (x.port.kind !== 'in' || !x.data.phantom || !x.data.src || x.data.src.kind !== 'ch') continue;
+      const c = chans.find((ch) => ch.number === x.data.src.n);
+      if (c && c.phantom === false) out.push(x);
+    }
+    return out;
+  }
+  // What someone looked for on the card: shared by every FOH screen, and
+  // cleared after a few minutes so the card goes back to the summary
+  let find = null; // { q, at }
+  const FIND_MS = 3 * 60 * 1000;
+  let findTimer = null;
+  function found(q) {
+    const all = sockets();
+    const t = q.trim().toLowerCase();
+    const n = /^\d{1,3}$/.test(t) ? Number(t) : null;
+    return all.filter((x) => {
+      if (n !== null) return x.data.src && x.data.src.kind === 'ch' && x.data.src.n === n;
+      const hay = [x.data.name, x.data.note, x.port.label, `${x.boxName} ${x.port.label}`, x.data.src ? srcText(x.data.src) : ''].map((v) => String(v || '').toLowerCase());
+      return hay.some((v) => v.includes(t));
+    });
+  }
   function showCard() {
-    if (!jp.settings.showCard) { jp.card.clear(); return; }
+    if (jp.settings.fohCard === false) { jp.card.clear(); return; }
     const s = patch.summary;
-    if (!s || !s.ports) { jp.card.show({ value: '—', label: 'No stage boxes yet. Open the Patch page to add them.' }); return; }
-    jp.card.show({
+    if (!s || !s.ports) {
+      jp.card.show({ value: '—', label: 'No stage boxes yet. Open the Patch page (Home pages list) to add them.' });
+      return;
+    }
+    const all = sockets();
+    const warn = [
+      ...(s.doubles || []).slice(0, 6).map((d) => ({ label: str(d, 40), value: 'patched twice', color: 'red' })),
+      ...phantomOff(all).slice(0, 6).map((x) => ({ label: str(`${srcText(x.data.src)}`, 40), value: `needs 48V · off`, color: 'yellow' })),
+    ];
+    const card = {
       value: `${s.patched}`,
       unit: `of ${s.ports}`,
       label: 'sockets patched',
-      color: s.doubles && s.doubles.length ? 'yellow' : s.patched === s.ports ? 'green' : '',
+      color: warn.length ? 'yellow' : s.patched === s.ports ? 'green' : '',
       rows: [
         ...(s.boxes || []).slice(0, 12).map((b) => ({ label: str(b.name, 40), value: `${b.patched} / ${b.ports}` })),
-        ...(s.doubles || []).slice(0, 6).map((d) => ({ label: str(d, 40), value: 'patched twice', color: 'red' })),
+        ...warn,
       ],
+      input: { id: 'find', placeholder: 'Channel number, name or socket', button: 'Find' },
       note: jp.settings.locked ? 'The patch is locked.' : '',
-    });
+    };
+    if (find) {
+      const hits = found(find.q);
+      card.sections = [{
+        title: `Find: ${str(find.q, 30)}`,
+        rows: hits.length
+          ? hits.slice(0, 12).map((x) => ({
+            label: str(x.data.src ? srcText(x.data.src) : (x.data.name || x.port.label), 40),
+            value: str(`${x.boxName} · ${x.port.label}${x.data.name && x.data.src ? ` (${x.data.name})` : ''}`, 60),
+          }))
+          : [{ label: 'Nothing patched matches that.', value: '' }],
+        buttons: [{ id: 'clear', label: 'Done' }],
+      }];
+      if (hits.length > 12) card.sections[0].rows.push({ label: `…and ${hits.length - 12} more`, value: '' });
+    }
+    jp.card.show(card);
   }
+  jp.card.onPress(({ button, text }) => {
+    clearTimeout(findTimer);
+    if (button === 'find' && typeof text === 'string' && text.trim()) {
+      find = { q: text.trim().slice(0, 40), at: Date.now() };
+      findTimer = setTimeout(() => { find = null; showCard(); }, FIND_MS);
+    } else find = null;
+    showCard();
+  });
+  // Names and 48V as the console has them now
+  jp.console.onChange((state) => { lastConsole = state; showCard(); });
 
   async function consoleNow() {
     try { return await jp.console.get(); } catch (_) { return null; }
   }
 
-  let lastConsole = null;
   jp.page.handle('load', async () => ({ rev: patch.rev, boxes: patch.boxes, locked: !!jp.settings.locked, console: await consoleNow() }));
 
 
@@ -214,6 +311,7 @@ module.exports = async (jp) => {
       lastConsole = await consoleNow();
       const summary = countPatch(patch.boxes, library, lastConsole);
       if (patch.rev !== rev || JSON.stringify(summary) === JSON.stringify(patch.summary)) return;
+      if (loadFailed && patch.rev === 0) return; // nothing of the person's to count yet
       save({ ...patch, summary });
       showCard();
       showStatus();

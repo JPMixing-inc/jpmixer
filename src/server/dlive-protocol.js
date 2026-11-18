@@ -27,6 +27,8 @@ const SYSEX_END = 0xF7;
 // note numbers / NRPN select messages / SysEx channel bytes.
 function coordinate(baseN, type, index) {
   if (baseN < 0 || baseN > 11) throw new RangeError(`baseN must be 0-11, got ${baseN}`);
+  // NaN passed every range check below (NaN < 0 is false) and went out as byte 0
+  if (!Number.isInteger(index)) throw new RangeError(`${type} ${index} is not a whole number`);
   const i = index - 1; // 1-based channel numbers in, 0-based byte offsets out
 
   switch (type) {

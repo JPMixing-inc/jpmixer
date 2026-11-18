@@ -91,7 +91,7 @@ function renderIconHTML(icon) {
     if (!Number.isInteger(n) || n < 1 || n > 120) return '+';
     return `<img class="instrument-icon" src="${instrumentIconURL(n)}" width="18" height="18" />`;
   }
-  return icon; // emoji
+  return escHtml(icon); // emoji (escaped: a restored backup could carry markup)
 }
 
 // ── Existing config fields ────────────────────────────────────────────────
@@ -2393,20 +2393,20 @@ function renderIpadConnections() {
     row.dataset.id = conn.id;
     row.innerHTML = `
       <div class="ipad-row-header">
-        <input type="text" class="ipad-name ch-label-input" placeholder="iPad Name" value="${escHtml(conn.name)}" data-id="${conn.id}" />
+        <input type="text" class="ipad-name ch-label-input" placeholder="iPad Name" value="${escHtml(conn.name)}" data-id="${escHtml(conn.id)}" />
         <label class="toggle-label" style="flex-shrink:0;font-size:11px">On</label>
-        <input type="checkbox" class="toggle ipad-enabled" data-id="${conn.id}" ${conn.enabled ? 'checked' : ''} />
-        <button class="btn btn-sm btn-danger ipad-remove" data-id="${conn.id}">Remove</button>
+        <input type="checkbox" class="toggle ipad-enabled" data-id="${escHtml(conn.id)}" ${conn.enabled ? 'checked' : ''} />
+        <button class="btn btn-sm btn-danger ipad-remove" data-id="${escHtml(conn.id)}">Remove</button>
       </div>
-      <div class="ipad-status" data-status-id="${conn.id}"></div>
+      <div class="ipad-status" data-status-id="${escHtml(conn.id)}"></div>
       <div class="ipad-row-fields">
         <div>
           <label>IP Address</label>
-          <input type="text" class="ipad-ip ch-label-input" placeholder="192.168.1.x" value="${escHtml(conn.ip)}" data-id="${conn.id}" />
+          <input type="text" class="ipad-ip ch-label-input" placeholder="192.168.1.x" value="${escHtml(conn.ip)}" data-id="${escHtml(conn.id)}" />
         </div>
         <div>
           <label>Send Port <span class="sub">(port the iPad app listens on)</span></label>
-          <input type="number" class="ipad-send-port ch-label-input" min="1" max="65535" value="${conn.sendPort}" data-id="${conn.id}" />
+          <input type="number" class="ipad-send-port ch-label-input" min="1" max="65535" value="${conn.sendPort}" data-id="${escHtml(conn.id)}" />
         </div>
       </div>
     `;
@@ -2560,9 +2560,9 @@ function renderGroups() {
     const row = document.createElement('div');
     row.className = 'group-row group-chip';
     row.innerHTML = `
-      <input type="text" class="group-name-input" value="${escHtml(g.name)}" placeholder="Group name" data-id="${g.id}" aria-label="Group name" size="${Math.max(6, Math.min(24, g.name.length + 1))}" />
+      <input type="text" class="group-name-input" value="${escHtml(g.name)}" placeholder="Group name" data-id="${escHtml(g.id)}" aria-label="Group name" size="${Math.max(6, Math.min(24, g.name.length + 1))}" />
       <span class="group-count" title="Channels in this group">${used}</span>
-      <button class="group-remove delete-group" data-id="${g.id}" aria-label="Remove group ${escHtml(g.name)}" title="Remove group">×</button>
+      <button class="group-remove delete-group" data-id="${escHtml(g.id)}" aria-label="Remove group ${escHtml(g.name)}" title="Remove group">×</button>
     `;
     list.appendChild(row);
   }
@@ -2574,7 +2574,7 @@ function addGroup() {
   channelGroups.push(g);
   renderGroups();
   refreshGroupDropdowns();
-  const input = document.querySelector(`.group-name-input[data-id="${g.id}"]`);
+  const input = document.querySelector(`.group-name-input[data-id="${escHtml(g.id)}"]`);
   if (input) { input.scrollIntoView({ block: 'center' }); input.focus(); input.select(); }
   return g;
 }
@@ -2603,7 +2603,7 @@ function refreshGroupDropdowns() {
     const ch   = sel.dataset.ch;
     const gid  = (channelOverrides[ch] || {}).groupId;
     const opts = channelGroups.map(g =>
-      `<option value="${g.id}" ${gid == g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
+      `<option value="${escHtml(g.id)}" ${gid == g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
     ).join('');
     sel.innerHTML = `<option value="" ${!gid ? 'selected' : ''}>No group</option>${opts}<option value="__new">+ New group…</option>`;
   });
@@ -2653,7 +2653,7 @@ function renderChannels() {
     const consoleName = consoleNames[String(ch)] || '';
 
     const groupOpts = channelGroups.map(g =>
-      `<option value="${g.id}" ${ov.groupId == g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
+      `<option value="${escHtml(g.id)}" ${ov.groupId == g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`
     ).join('');
 
     const row = document.createElement('div');

@@ -108,6 +108,7 @@ module.exports = (jp) => {
       if (my !== gen) { res.destroy(); return; }
       if (res.statusCode !== 200) { res.resume(); lost(`ProPresenter answered ${res.statusCode}. Is it 7.9 or later?`); return; }
       state.connected = true; state.error = '';
+      lastAnswer = Date.now(); // the time without answers starts again
       jp.status(`Connected to ProPresenter at ${host}:${port}`, 'ok');
       refreshLists();
       draw();
@@ -190,7 +191,10 @@ module.exports = (jp) => {
         break;
       default: return;
     }
-    if (/slide|layers|transport/.test(msg.url)) refreshPictures();
+    // The slide's words and its number come apart (the stream, then the
+    // poll): pictures follow both at the end of askSlide, so one move fetches
+    // one picture, not one for each half
+    if (/layers|transport/.test(msg.url)) refreshPictures();
     // ProPresenter 21.4 sends the slide number once, not when it changes:
     // a new slide (or presentation) is asked for at once
     if (msg.url === 'status/slide' || msg.url === 'presentation/current') askSlide();
@@ -199,24 +203,30 @@ module.exports = (jp) => {
   // The live slide's number, asked for (see above); and every second, as a
   // change isn't always streamed at all (four times a second: each is a
   // few hundred bytes, answered in about 5 ms)
-  let asking = false, unanswered = 0;
+  // Gone is judged by the time since the last answer, with a 1 s limit on
+  // these: counting 12 missed polls took 36 s against a computer that took
+  // the connection and never answered (each one waited out 3 s).
+  let asking = false, lastAnswer = Date.now();
+  const SILENT_MS = 3000;
   async function askSlide() {
     if (asking || !state.connected) return;
     asking = true;
     try {
-      const [at, slide] = await Promise.all([get('/v1/presentation/slide_index'), get('/v1/status/slide')]);
-      unanswered = 0;
+      const [at, slide] = await Promise.all([call('GET', '/v1/presentation/slide_index', undefined, 1000), call('GET', '/v1/status/slide', undefined, 1000)]);
+      lastAnswer = Date.now();
       if (slide && typeof slide === 'object' && JSON.stringify(slide) !== JSON.stringify(state.slide)) onUpdate({ url: 'status/slide-asked', data: slide });
       const now = at && at.presentation_index;
       const key = now && Number.isInteger(now.index) && now.presentation_id ? `${now.presentation_id.uuid}:${now.index}` : '';
       const had = state.slideAt ? `${state.slideAt.uuid}:${state.slideAt.index}` : '';
       if (key !== had) onUpdate({ url: 'presentation/slide_index', data: at });
+      refreshPictures(); // nothing to do when neither changed
     } catch (e) {
       // A connection that died without closing (the ProPresenter computer
       // asleep, a cable out) never ends the stream: 3 s of no answers at all
       // is gone. (An error answer, like an older ProPresenter's 404, is an answer.)
-      if (e && e.status) unanswered = 0;
-      else if (++unanswered >= 12 && state.connected) { unanswered = 0; dropped('ProPresenter stopped answering. Check it’s on and on the network.'); }
+      // (One that doesn't know these, answering 404, streams them instead)
+      if (e && e.status) { lastAnswer = Date.now(); refreshPictures(); }
+      else if (Date.now() - lastAnswer >= SILENT_MS && state.connected) dropped('ProPresenter stopped answering. Check it’s on and on the network.');
     } finally { asking = false; }
   }
   const slideTimer = setInterval(askSlide, 250);
@@ -226,13 +236,18 @@ module.exports = (jp) => {
   // while an image or video from the Media bin is on screen. Each is fetched
   // once, when it changes, and handed to JPMixer for the pages.
   const shown = { current: null, next: null }; // what each picture is of: 'p:<uuid>:<index>' | 'm:<uuid>' | null
+  const textHash = (text) => { let h = 5381; for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0; return h.toString(36); };
   const pictureCache = new Map(); // the last few pictures: going back a slide, or Next becoming Now, needs no new fetch
   let retryPictures = null;
   function refreshPictures() {
     const want = { current: null, next: null };
     if (state.connected && state.layers.slide && state.slideAt) {
-      want.current = `p:${state.slideAt.uuid}:${state.slideAt.index}`;
-      if (state.slide && state.slide.next) want.next = `p:${state.slideAt.uuid}:${state.slideAt.index + 1}`;
+      // With a hash of the slide's words: pictures are kept by position, so
+      // a slide inserted or edited before (or as) the next one showed the
+      // old slide's picture there
+      const words = (s) => textHash(s && typeof s.text === 'string' ? s.text : '');
+      want.current = `p:${state.slideAt.uuid}:${state.slideAt.index}:${words(state.slide && state.slide.current)}`;
+      if (state.slide && state.slide.next) want.next = `p:${state.slideAt.uuid}:${state.slideAt.index + 1}:${words(state.slide.next)}`;
     } else if (state.connected && state.layers.media && state.mediaUuid) {
       want.current = `m:${state.mediaUuid}`;
     }

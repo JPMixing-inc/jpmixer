@@ -345,3 +345,24 @@ test('Companion for custom pages only: with the Home page surfaces off, just the
     companion.close();
   }
 });
+
+test('saved pages that can’t be read are kept, never saved over', async () => {
+  plugins._reset();
+  assert.equal((await plugins.installBundled('custom-pages')).ok, true);
+  const folder = plugins.dataDir('custom-pages');
+  fs.mkdirSync(folder, { recursive: true });
+  for (const f of fs.readdirSync(folder)) fs.rmSync(path.join(folder, f), { recursive: true, force: true });
+  const damaged = '{"pages":[{"id":"p1","name":"YTH"'; // cut off part-way
+  fs.writeFileSync(path.join(folder, 'pages.json'), damaged);
+  plugins.save({ 'custom-pages': { enabled: true, settings: {} } });
+  const { providers } = fakeDesk();
+  await plugins.start(providers);
+  try {
+    await until(() => plugins.list().find((p) => p.id === 'custom-pages')?.state === 'running');
+    const kept = await until(() => { const k = fs.readdirSync(folder).filter((f) => /^pages\.json\.broken-\d+$/.test(f)); return k.length && k; });
+    assert.equal(kept.length, 1, 'moved aside');
+    assert.equal(fs.readFileSync(path.join(folder, kept[0]), 'utf8'), damaged, 'exactly as it was');
+  } finally {
+    await plugins.stopAll();
+  }
+});

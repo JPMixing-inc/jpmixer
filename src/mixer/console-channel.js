@@ -221,19 +221,23 @@
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', 'EQ curve. Drag a band’s dot to change its frequency and gain.');
     svg.style.touchAction = 'none';
-    let dragging = null, draggingFilter = null;
+    // One finger at a time: a second one used to drive the band the first held
+    let dragging = null, draggingFilter = null, pointer = null;
     svg.addEventListener('pointerdown', (e) => {
+      if (pointer !== null && (dragging !== null || draggingFilter)) return;
       const handle = e.target.closest('[data-filter]');
-      if (handle) { draggingFilter = handle.dataset.filter; svg.setPointerCapture(e.pointerId); return; }
+      if (handle) { draggingFilter = handle.dataset.filter; pointer = e.pointerId; svg.setPointerCapture(e.pointerId); return; }
       const dot = e.target.closest('[data-band]');
       if (!dot) return;
       dragging = Number(dot.dataset.band);
+      pointer = e.pointerId;
       band = dragging;
       svg.setPointerCapture(e.pointerId);
       renderBandControls();
       drawEq();
     });
     svg.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== pointer) return;
       if (draggingFilter) {
         const r = svg.getBoundingClientRect();
         const path = FILTERS[draggingFilter], def = params[path];
@@ -249,7 +253,9 @@
       controls.get(`EQ/eq_freq_${dragging}`)?.update(values[`EQ/eq_freq_${dragging}`]);
       controls.get(`EQ/eq_gain_${dragging}`)?.update(values[`EQ/eq_gain_${dragging}`]);
     });
-    const end = () => {
+    const end = (e) => {
+      if (e && e.pointerId !== pointer) return;
+      pointer = null;
       if (draggingFilter) { setValue(FILTERS[draggingFilter], values[FILTERS[draggingFilter]], true); draggingFilter = null; return; }
       if (dragging === null) return;
       setValue(`EQ/eq_freq_${dragging}`, values[`EQ/eq_freq_${dragging}`], true);

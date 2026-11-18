@@ -186,7 +186,23 @@ function noteDeskHeard() {
     if (onConsoleStatusChange) onConsoleStatusChange(true);
     reassertMuteSolo();
     if (cache.has('/Console/Input_Channels') && cache.has('/Console/Aux_Outputs/modes')) queueActiveAuxRefresh();
+    // A snapshot fired while it was gone never reached us: ask which one is
+    // current (a different one recalls its Ear Scenes; the same one is left
+    // alone). The Console Controller's faders and mutes may have moved too:
+    // the ones it knows are read again, and the answers reach open pages.
+    snapshotCheckOnly = true;
+    sendToDesk('/Snapshots/Current_Snapshot/?', []);
+    requeryConsoleState();
   }
+}
+
+function requeryConsoleState() {
+  const queries = [];
+  const add = (state, base, prop) => { for (const n of Object.keys(state)) queries.push(`/${base}/${n}/${prop}/?`); };
+  add(consoleFaders, 'Input_Channels', 'fader'); add(consoleMutes, 'Input_Channels', 'mute'); add(consoleSolos, 'Input_Channels', 'solo');
+  add(auxFaders, 'Aux_Outputs', 'fader'); add(auxMutes, 'Aux_Outputs', 'mute');
+  add(cgFaders, 'Control_Groups', 'fader'); add(cgMutes, 'Control_Groups', 'mute'); add(cgSolos, 'Control_Groups', 'solo');
+  if (queries.length) queueDeskQueries(queries);
 }
 
 function watchDesk() {
@@ -374,6 +390,9 @@ function clearConsoleState() {
 // Snapshot tracking
 let currentSnapshotName = '';
 let currentSnapshot     = -1;
+// The next Current_Snapshot answer is the console-back check: the same
+// snapshot as before means nothing happened, so its Ear Scenes aren't recalled
+let snapshotCheckOnly = false;
 
 // Debounce timer for session-change reloads
 let sessionReloadTimer  = null;
@@ -544,6 +563,10 @@ function announceDeskLabel(kind, n, label) {
 // that echo separate from the musician's logical fader value. This also
 // applies an existing solo to channels whose first reply arrives later.
 function processDeskSendLevel(msg) {
+  // A session change is settling: these sends belong to the new session, and
+  // the mutes are the old one's (cleared when the reload starts). Silencing
+  // them wrote -150 into the new session, behind phones showing it open.
+  if (sessionReloadTimer) return msg;
   const match = msg.address.match(/^\/Input_Channels\/(\d+)\/Aux_Send\/(\d+)\/send_level$/);
   if (!match) return msg;
   const [, ch, aux] = match;
@@ -1164,6 +1187,9 @@ function processSnapshotMsg(oscMsg) {
   // settles. The metadata reload requests the current snapshot again.
   if (sessionReloadTimer) return;
   if (oscMsg.address === '/Snapshots/Current_Snapshot') {
+    const checkOnly = snapshotCheckOnly;
+    snapshotCheckOnly = false;
+    if (checkOnly && oscMsg.args[0] === currentSnapshot) return;
     cancelSceneRecall();
     if (oscMsg.args[0] !== currentSnapshot) dropQueuedSceneWrites();
     currentSnapshot = oscMsg.args[0];
@@ -1363,6 +1389,7 @@ function startWebSocketServer() {
         if (msg.type === 'request-aux-eq') {
           const auxNum = parseInt(msg.aux);
           if (isNaN(auxNum) || auxNum < 1 || auxNum > liveAuxCount()) return;
+          if (serverCfg.auxOverrides?.[String(auxNum)]?.eqEnabled !== true) return; // EQ is off for this mix
           // The parsed number, not msg.aux as sent: "3abc" passed the check
           // above and went to the desk as /Aux_Outputs/3abc/EQ/…
           const prefix = `/Aux_Outputs/${auxNum}/EQ/`;
@@ -1603,7 +1630,9 @@ function startWebSocketServer() {
           const auxEq = address.match(/^\/Aux_Outputs\/(\d+)\/EQ\//);
           if (auxEq) {
             const aux = parseInt(auxEq[1], 10);
-            return aux >= 1 && aux <= auxMax;
+            // Only a mix whose EQ Settings allows, as dLive and LV1 check:
+            // the phone hiding the menu was the only thing stopping it
+            return aux >= 1 && aux <= auxMax && serverCfg.auxOverrides?.[String(aux)]?.eqEnabled === true;
           }
           return false; // shouldn't happen — ALLOWED_OSC_RE already matched one of the two shapes above
         }
@@ -1968,6 +1997,7 @@ function start(cfg) {
       metadataFetchTimer = null;
       currentSnapshot = -1;
       currentSnapshotName = '';
+      snapshotCheckOnly = false;
       logEvent('session-change', 'debouncing 500ms');
       clearTimeout(sessionReloadTimer);
       sessionReloadTimer = setTimeout(() => {

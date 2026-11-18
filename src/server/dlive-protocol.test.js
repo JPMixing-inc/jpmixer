@@ -258,4 +258,10 @@ t('PEQ parameters: band 0 type 1A to band 3 gain 29', () => {
   assert.equal(P.peqFromParam(0x30), null);
 });
 
+t('a channel number that isn\'t a whole number is refused, not sent as byte 0', () => {
+  assert.throws(() => P.coordinate(0, 'monoAux', NaN), RangeError);
+  assert.throws(() => P.coordinate(0, 'input', 1.5), RangeError);
+  assert.throws(() => P.coordinate(0, 'stereoAux', '1'), RangeError);
+});
+
 console.log(`\n${n} tests passed`);

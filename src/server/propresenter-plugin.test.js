@@ -187,3 +187,51 @@ test('the ProPresenter plugin: its cards on every Home page, and each button rea
     pp.server.close();
   }
 });
+
+// A ProPresenter that answers the slide polls (as 21.4 does): a slide's words
+// changing at the same number fetch its picture again; and one that keeps the
+// connection but stops answering is noticed in a few seconds, not half a minute
+test('ProPresenter: edited slides get new pictures, and a silent ProPresenter is noticed in seconds', async () => {
+  const state = { silent: false, text: 'Verse one', thumbs: 0 };
+  const line = (url, data) => `${JSON.stringify({ url, data })}\r\n\r\n`;
+  const slide = () => ({ current: { text: state.text, notes: '', uuid: 's1' }, next: null });
+  const at = { presentation_index: { index: 0, presentation_id: { name: 'Songs', uuid: 'p1', index: 0 } } };
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      const json = (v) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(v)); };
+      if (req.url === '/v1/status/updates') {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Transfer-Encoding': 'chunked' });
+        res.write(line('status/layers', { slide: true, media: false }));
+        res.write(line('status/slide', slide()));
+        res.write(line('presentation/slide_index', at));
+        return; // kept open, as ProPresenter does
+      }
+      if (state.silent) return; // takes the request, never answers
+      if (req.url === '/v1/status/slide') return json(slide());
+      if (req.url === '/v1/presentation/slide_index') return json(at);
+      if (/^\/v1\/presentation\/p1\/thumbnail\/0/.test(req.url)) { state.thumbs++; res.writeHead(200, { 'Content-Type': 'image/jpeg' }); res.end(Buffer.from(`jpeg ${state.text}`)); return; }
+      if (req.url === '/v1/timers/current' || req.url === '/v1/macros' || req.url === '/v1/looks' || req.url === '/v1/clear/groups' || req.url === '/v1/messages') return json([]);
+      res.writeHead(404); res.end();
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  plugins.save({ propresenter: { enabled: true, settings: { host: '127.0.0.1', port: server.address().port } } });
+  await plugins.start({ allowed: true });
+  try {
+    const picture = () => plugins.cardImage('p-propresenter_now', 'current', { foh: false })?.buf.toString();
+    await until(() => picture() === 'jpeg Verse one');
+    state.text = 'Chorus (inserted)'; // the same slide number, other words: not streamed, only polled
+    await until(() => picture() === 'jpeg Chorus (inserted)');
+    assert.equal(state.thumbs, 2, 'one fetch for each version of the slide');
+    state.silent = true;
+    const quietAt = Date.now();
+    await until(() => card('now')?.value === 'Not connected', 8000);
+    const took = Date.now() - quietAt;
+    assert.ok(took < 6000, `noticed after ${took} ms`);
+  } finally {
+    await plugins.stopAll();
+    server.closeAllConnections?.();
+    server.close();
+  }
+});

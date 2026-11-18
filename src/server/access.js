@@ -83,14 +83,16 @@ function mountOneTimeLinks(appExpress) {
 }
 
 // ── Codes ──
-// The cookie each code gives a device. FOH Home's salt is the one it has
-// always used, so devices already signed in stay signed in.
+// The cookie each code gives a device. It's keyed on this computer's own
+// secret as well as the code: from the code alone (as it was), a phone could
+// work out the cookie for every code from 0000 to 9999 and try each one on any
+// page, never touching the unlock's limit on guesses.
 const KINDS = {
   foh:     { key: 'fohAccessCode', cookie: 'jpm_foh', salt: 'jpmixer-foh-home-v1' },
   console: { key: 'consoleAccessCode', cookie: 'jpm_console', salt: 'jpmixer-console-v1' },
 };
 const codeOf = (kind) => String(config.get(KINDS[kind].key) || '').trim();
-const cookieFor = (kind, code) => crypto.createHmac('sha256', code).update(KINDS[kind].salt).digest('hex').slice(0, 40);
+const cookieFor = (kind, code) => crypto.createHmac('sha256', localSecret()).update(`${KINDS[kind].salt}:${code}`).digest('hex').slice(0, 40);
 function hasAccess(req, kind) {
   const code = codeOf(kind);
   return !code || fromThisComputer(req) || sameText(readCookie(req, KINDS[kind].cookie), cookieFor(kind, code));

@@ -185,6 +185,7 @@ function onOpen() {
       updateEQBandInfo();
       ws.send(JSON.stringify({ type: 'request-aux-eq', aux: selectedAux }));
     }
+    globalThis.mixProcessing?.refetch?.(); // an open graphic EQ or compressor too
   }
   // Always fetch this device's server backup and merge it in (see the
   // device-presets handler) — not only when localStorage is empty, so mixes
@@ -1133,6 +1134,10 @@ function onMessage(e) {
   const eqMatch = address.match(/^\/Aux_Outputs\/(\d+)\/EQ\/(.+)$/);
   if (eqMatch) {
     if (parseInt(eqMatch[1]) === selectedAux) {
+      // The console echoes the drag's own earlier positions: a band being
+      // dragged, or just let go, keeps the finger's value (as the faders do)
+      const held = eqMatch[2].match(/^eq_(?:gain|freq)_(\d+)$/);
+      if (held && (Number(held[1]) === eqDragging || (eqHoldUntil[held[1]] || 0) > Date.now())) return;
       applyEQParam(eqMatch[2], args[0]);
       if (document.body.classList.contains('eqOpen')) { renderEQCurve(); updateEQBandInfo(); }
     }
@@ -2246,6 +2251,7 @@ function applyEQData(data) {
   }
 }
 
+const eqHoldUntil = {}; // band -> until when the console's echoes of it are ignored
 function applyEQParam(param, value) {
   const mGain = param.match(/^eq_gain_(\d+)$/);
   const mFreq = param.match(/^eq_freq_(\d+)$/);
@@ -2281,14 +2287,20 @@ function closeEQPanel() {
   const svg = document.getElementById('eqCanvas');
   let throttleTimer = null;
   let rafPending    = false;
+  // The finger dragging: a second finger, or a touch iOS cancelled (Control
+  // Center, a call), used to drive or keep the dragged band
+  let dragPointer = null;
+  const hold = (b) => { eqHoldUntil[b] = Date.now() + ECHO_HOLD_MS; };
 
   svg.addEventListener('pointerdown', e => {
     e.preventDefault();
+    if (dragPointer !== null && eqDragging !== null) return; // already one finger on a band
     const { x, y } = clientToSVG(e.clientX, e.clientY);
     const b = findNearestBand(x, y);
-    if (b === null) return;
+    if (b === null) { eqDragging = null; dragPointer = null; return; }
     eqDragging = b;
     eqActive   = b;
+    dragPointer = e.pointerId;
     svg.setPointerCapture(e.pointerId);
     renderEQCurve();
     updateEQBandInfo();
@@ -2298,7 +2310,7 @@ function closeEQPanel() {
     // Defensive, matching pointerup's own eqBands[b] check below — a
     // reconnect mid-drag can otherwise leave eqDragging pointing at a band
     // eqBands was just reset without (see onOpen()'s reconnect handling).
-    if (eqDragging === null || !eqBands[eqDragging]) return;
+    if (eqDragging === null || !eqBands[eqDragging] || e.pointerId !== dragPointer) return;
     e.preventDefault();
     const { x, y } = clientToSVG(e.clientX, e.clientY);
     if (!isPassBand(eqBands[eqDragging])) eqBands[eqDragging].gain = yToGain(y); // a pass band only moves in frequency
@@ -2317,6 +2329,7 @@ function closeEQPanel() {
       throttleTimer = setTimeout(() => {
         throttleTimer = null;
         if (band !== null && aux !== null && eqBands[band]) {
+          hold(band);
           if (!isPassBand(eqBands[band])) sendOSC(`/Aux_Outputs/${aux}/EQ/eq_gain_${band}`, [eqBands[band].gain]);
           sendOSC(`/Aux_Outputs/${aux}/EQ/eq_freq_${band}`, [eqBands[band].freq]);
         }
@@ -2324,15 +2337,20 @@ function closeEQPanel() {
     }
   });
 
-  svg.addEventListener('pointerup', e => {
-    if (eqDragging === null) return;
+  const endDrag = (e) => {
+    if (eqDragging === null || e.pointerId !== dragPointer) return;
     const aux = selectedAux; const b = eqDragging;
-    eqDragging = null;
+    eqDragging = null; dragPointer = null;
     if (aux !== null && eqBands[b]) {
+      hold(b);
       if (!isPassBand(eqBands[b])) sendOSC(`/Aux_Outputs/${aux}/EQ/eq_gain_${b}`, [eqBands[b].gain]);
       sendOSC(`/Aux_Outputs/${aux}/EQ/eq_freq_${b}`, [eqBands[b].freq]);
     }
-  });
+  };
+  svg.addEventListener('pointerup', endDrag);
+  // A cancelled touch ends the drag where it was (its last position is sent)
+  svg.addEventListener('pointercancel', endDrag);
+  svg.addEventListener('lostpointercapture', endDrag);
 })();
 
 document.getElementById('eqCloseBtn').addEventListener('click', closeEQPanel);

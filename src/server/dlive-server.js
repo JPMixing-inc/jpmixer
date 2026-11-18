@@ -786,7 +786,9 @@ function onPanValue({ handle, value, bytes }) {
   if (sub.what === 'stereo') {
     const was = panLink.stereoIn.get(sub.ch);
     panLink.stereoIn.set(sub.ch, DP.isStereoValue(value, bytes));
-    if (was !== panLink.stereoIn.get(sub.ch)) { scheduleLayoutPush(); releaseRightHalf(sub.ch); } // the channel list changes
+    // The channel list changes. The pair's right half is let go whichever
+    // half's flag came last (only the changed one's was checked)
+    if (was !== panLink.stereoIn.get(sub.ch)) { scheduleLayoutPush(); releaseRightHalf(sub.ch % 2 ? sub.ch + 1 : sub.ch); }
     return;
   }
   if (isRightHalf(sub.ch)) return; // its pair's left half carries it
@@ -1586,6 +1588,7 @@ function setAuxLabel(n, label) {
 function pushSceneValuesToDesk(baseN, auxStr, values) {
   const levels = {};
   const aux = parseInt(auxStr, 10);
+  if (!Number.isInteger(aux) || aux < 1) return {}; // a phone's message: not a mix number
   const anySolo = Object.values(soloState[aux] || {}).some(v => v);
   if (!premuteState[aux]) premuteState[aux] = {};
   const snd = auxCoord(baseN, aux);
@@ -1676,7 +1679,14 @@ function finishMixProbe(baseN) {
   const probe = mixProbe; mixProbe = null;
   if (!probe || !client) return;
   const mono = [...probe.mono.keys()].sort((a, b) => a - b), stereo = [...probe.stereo.keys()].sort((a, b) => a - b);
-  if (!mono.length && !stereo.length) {
+  if (!mono.length && !stereo.length && mixMap) {
+    // Nothing answered, but the layout is known (a reconnect to a console
+    // still waking up): asked again, and if still nothing, the known layout
+    // stays. Dropping to Settings' mono numbering moved phones onto other
+    // mixes with their mutes left behind on the old ones.
+    if (!probe.again) { logEvent('mix-layout', `no answer — asking again (keeping the ${mixMap.length} mixes known)`); startMixProbe(baseN, true); return; }
+    logEvent('mix-layout', `no answer again — keeping the ${mixMap.length} mixes already known`);
+  } else if (!mono.length && !stereo.length) {
     logEvent('mix-layout', `no answer — using Settings' ${serverCfg.auxes || 16} mono auxes`);
     mixMap = null;
     for (let i = 1; i <= (serverCfg.auxes || 16); i++) {
@@ -2178,6 +2188,11 @@ function start(cfg) {
     const aux = auxFor(baseN, ev.sndMidiCh, ev.sndCh); if (!aux) return;
     const key = levelKey(ch, aux);
     assignCache.set(key, ev.on);
+    // The console says otherwise than JPMixer's last write, and it isn't that
+    // write's echo: someone else switched it since, so a reconnect mustn't
+    // send JPMixer's old on/off again (it turned an engineer's off back on)
+    const w = assignWrites.get(key);
+    if (w && w.on !== ev.on && Date.now() - w.at > ECHO_MS) assignWrites.delete(key);
     if (!muteBySendOff() || !isSilenced(aux, ch)) return;
     if (ev.on || !ownAssign.has(key)) ownAssign.set(key, ev.on);
     const src = sourceCoord(baseN, ch), snd = auxCoord(baseN, aux);

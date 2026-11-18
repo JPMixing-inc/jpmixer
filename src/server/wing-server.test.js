@@ -23,6 +23,7 @@ async function main() {
   const received = [];
   let mockRemote = null;
   let unplugged = false; // the console gone: nothing arrives, nothing answers
+  let ch1Name = 'Kick';
   mock.on('message', (buf, rinfo) => {
     if (unplugged) return;
     mockRemote = rinfo;
@@ -33,6 +34,7 @@ async function main() {
     if (Array.isArray(msg.args) && msg.args.length === 0) {
       let reply;
       if (msg.address === '/ch/1/fdr') reply = ['0.0', 0.5, -6.0];
+      else if (msg.address === '/ch/1/name') reply = [ch1Name];
       else if (msg.address.endsWith('/name')) reply = ['Kick'];
       else if (msg.address.endsWith('/on')) reply = ['ON', 1.0, 1]; // send currently on
       else reply = ['0.0', 0.5, 0.0];
@@ -154,6 +156,10 @@ async function main() {
     assert.equal(server.isConsoleConnected(), false, 'the console should show offline');
     ws.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 2, muted: false }));
     await new Promise((r) => setTimeout(r, 150));
+    ch1Name = 'Snare'; // renamed on the console while it was away
+    const relabels = [];
+    const onMsg = (m) => { const j = JSON.parse(m); if (j.type === 'channel-relabeled') relabels.push(j); };
+    ws.on('message', onMsg);
     unplugged = false;
     received.length = 0;
     deadline = Date.now() + 9000;
@@ -161,6 +167,12 @@ async function main() {
     await new Promise((r) => setTimeout(r, 200));
     assert.ok(received.some(m => m.address === '/ch/2/send/1/on' && m.args === 1), 'the send should be switched back on when the console is back');
     console.log('ok - an unmute made while the console was unreachable is sent when it is back');
+    deadline = Date.now() + 3000;
+    while (!relabels.some(j => j.channel === 1) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    ws.removeListener('message', onMsg);
+    assert.ok(relabels.some(j => j.channel === 1 && j.label === 'Snare'), 'an open phone is told the name the console has now');
+    assert.ok(!relabels.some(j => j.channel === 2), 'a name that hasn’t changed isn’t sent again');
+    console.log('ok - a channel name read after phones are open reaches them');
   }
 
   ws.close();

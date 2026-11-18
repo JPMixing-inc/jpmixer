@@ -140,6 +140,53 @@ async function main() {
 
   ws.close();
   server.stop();
+
+  // ── The paired dLive is asked for channel names; open phones get them ──
+  // It was never asked (it only says a name when one is renamed), so phones
+  // showed CH 1…8 all service; and names that did arrive reached no phone.
+  {
+    const net = require('net');
+    const asked = [], held = [];
+    let replyNow = null; // replies wait until the phone is open, so it's there to be told
+    const fakeDlive = net.createServer((sock) => {
+      sock.on('data', (d) => {
+        const b = [...d];
+        // Name get: header, midiCh, 0x01, ch, F7 (possibly several in one chunk)
+        for (let i = 0; i + 10 < b.length + 1; i++) {
+          if (b[i] === 0xF0 && b[i + 9] === 0x01 && b[i + 11] === 0xF7) {
+            const midiCh = b[i + 8], ch = b[i + 10];
+            asked.push(ch + 1);
+            const name = ch === 0 ? 'Kick' : ch === 1 ? '2' : `Ch${ch + 1}`; // "2": the dLive's default
+            const reply = Buffer.from([0xF0, 0x00, 0x00, 0x1A, 0x50, 0x10, 0x01, 0x00, midiCh, 0x02, ch, ...Buffer.from(name, 'ascii'), 0xF7]);
+            if (replyNow) sock.write(reply); else held.push(() => sock.write(reply));
+          }
+        }
+      });
+    });
+    await new Promise((r) => fakeDlive.listen(0, '127.0.0.1', r));
+    const port2 = 18212;
+    server.start({ serverPort: port2, klangIp: '127.0.0.1', klangPort: mockPort, channels: 4, auxes: 2, deskIp: '127.0.0.1', dliveMidiPort: fakeDlive.address().port, dliveBaseChannel: 0, channelOverrides: { 3: { label: 'Settings name' } } });
+    await new Promise((r) => setTimeout(r, 100));
+    const phone = new WebSocket(`ws://127.0.0.1:${port2}`);
+    const got = [];
+    phone.on('message', (m) => got.push(JSON.parse(m)));
+    await new Promise((r) => phone.on('open', r));
+    await new Promise((r) => setTimeout(r, 200));
+    replyNow = true;
+    held.splice(0).forEach((send) => send());
+    let deadline = Date.now() + 3000;
+    while (!got.some(j => j.type === 'channel-relabeled' && j.channel === 4) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual([...new Set(asked)].sort(), [1, 2, 3, 4], 'every input up to Settings’ count is asked for');
+    const relabels = got.filter(j => j.type === 'channel-relabeled');
+    assert.ok(relabels.some(j => j.channel === 1 && j.label === 'Kick'), 'an open phone sees the console’s name');
+    assert.ok(!relabels.some(j => j.channel === 2), 'a dLive default (a number) is left to CH 2');
+    assert.ok(relabels.some(j => j.channel === 3 && j.label === 'Settings name'), 'Settings’ own label still wins');
+    assert.equal(server.getChannelNames()[1], 'Kick', 'and pages that open later get it too');
+    console.log('ok - the paired dLive is asked for every channel name, and open phones are told');
+    phone.close();
+    server.stop();
+    fakeDlive.close();
+  }
   mock.close();
 
   console.log('\nAll klang-server end-to-end checks passed');

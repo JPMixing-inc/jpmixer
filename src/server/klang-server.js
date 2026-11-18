@@ -59,6 +59,7 @@ const { createPacedWriter } = require('./paced-writer');
 // urgent; a musician's own fader/pan move stays direct.
 const pacer = createPacedWriter();
 const { DliveClient } = require('./dlive-client');
+const DP = require('./dlive-protocol');
 
 let httpServer = null;
 let wss        = null;
@@ -85,6 +86,22 @@ let currentSceneNumber = null; // from the paired dLive console, if connected
 const levelCache  = new Map(); // "ch:aux" -> dB, last value WE sent (see file header)
 const panCache    = new Map(); // "ch:aux" -> 0..1 slider value, same caveat
 const nameCache   = new Map(); // "input:N" -> name, from the dLive side only
+// The paired dLive is asked for every input's name when it connects (it
+// only says one on its own when it's renamed), one every 25 ms as
+// dlive-server.js paces its own: phones showed CH 1…48 all service
+let nameTimer = null;
+const NAME_ASK_MS = 25;
+function stopNameRequests() { if (nameTimer) { clearInterval(nameTimer); nameTimer = null; } }
+function requestDliveNames(client, baseN) {
+  stopNameRequests();
+  const count = Math.min(serverCfg.channels || 48, 128); // the dLive's 128 inputs
+  let i = 1;
+  nameTimer = setInterval(() => {
+    if (dlive !== client || i > count) { stopNameRequests(); return; }
+    try { client.requestName(DP.coordinate(baseN, 'input', i)); } catch (_) { /* out of range: skipped */ }
+    i++;
+  }, NAME_ASK_MS);
+}
 const muteState   = {};        // muteState[aux][ch]
 const soloState   = {};        // soloState[aux][ch]
 // Mutes/solos switched off and not yet followed by a good reachability check:
@@ -515,11 +532,22 @@ function start(cfg) {
       baseChannel: baseN,
     });
 
-    dlive.on('connect', () => logEvent('dlive-connect', cfg.deskIp));
-    dlive.on('close', () => logEvent('dlive-disconnect', cfg.deskIp));
+    const client = dlive;
+    dlive.on('connect', () => { logEvent('dlive-connect', cfg.deskIp); requestDliveNames(client, baseN); });
+    dlive.on('close', () => { logEvent('dlive-disconnect', cfg.deskIp); if (dlive === client) stopNameRequests(); });
     dlive.on('error', (err) => logEvent('dlive-error', err.message || err.code || String(err)));
     dlive.on('name', (ev) => {
-      if (ev.midiCh === baseN) nameCache.set(`input:${ev.ch + 1}`, ev.name);
+      if (ev.midiCh !== baseN) return;
+      // dLive's default names are numbers: left to the CH N fallback, as dlive-server does
+      if (!ev.name || /^\d+$/.test(ev.name)) return;
+      const n = ev.ch + 1, key = `input:${n}`;
+      if (nameCache.get(key) === ev.name) return;
+      nameCache.set(key, ev.name);
+      // Phones already open see it now (Settings' own label still wins)
+      if (n <= (serverCfg.channels || 48)) {
+        const label = serverCfg.channelOverrides?.[String(n)]?.label;
+        broadcastToClients({ type: 'channel-relabeled', channel: n, label: label || ev.name });
+      }
     });
     dlive.on('sceneRecall', (ev) => {
       currentSceneNumber = ev.sceneNumber;
@@ -606,6 +634,7 @@ function stop() {
     closing.on('error', () => {});
     closed = new Promise((resolve) => setImmediate(() => { closing.disconnect(); resolve(); }));
   }
+  stopNameRequests();
   if (dlive) { dlive.removeAllListeners(); dlive.disconnect(); dlive = null; }
   // Same fix as osc-server.js's stop() — wss.close() alone leaves already-
   // upgraded sockets open, detached from the HTTP server's own tracking.

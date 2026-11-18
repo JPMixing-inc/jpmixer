@@ -716,7 +716,10 @@ async function apply({ force = false } = {}) {
     if (entry && !force && !run.gaveUp && run.live && run.child && filesPrint(entry) === run.files && fingerprint(entry, settings) !== run.fp) {
       if (send(run, { type: 'settings', settings })) { run.settings = settings; run.fp = fingerprint(entry, settings); continue; }
     }
-    const changed = !entry || force || run.gaveUp || fingerprint(entry, settings) !== run.fp;
+    // One that gave up after crashing stays stopped through an ordinary save
+    // (every Settings save, and a phone changing a card's options, ran this):
+    // only Reload, off and on, or new settings or files try it again
+    const changed = !entry || force || fingerprint(entry, settings) !== run.fp;
     if (changed) stops.push(stopOne(id));
   }
   await Promise.all(stops);

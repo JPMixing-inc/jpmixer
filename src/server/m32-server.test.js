@@ -258,9 +258,16 @@ test('M32 backend end to end', async (t) => {
     a.send(JSON.stringify({ type: 'set-mute', aux: 3, ch: 2, muted: false })); // lost
     await wait(100);
     assert.equal(fake.state.get('/ch/02/mix/03/on'), 0);
+    // Away for longer than the resend window (10 s, shortened here): the
+    // release made meanwhile is still sent when it's back
+    server._setReleaseResendMs(300);
+    await wait(700);
     fake.silent = false;
     assert.ok(await until(() => connected === true, 5000), 'back');
     assert.ok(await until(() => fake.state.get('/ch/02/mix/03/on') === 1), 'the release reached it');
+    await wait(300);
+    assert.equal(fake.state.get('/ch/02/mix/03/on'), 1, 'and stays on: the read after it isn’t taken as the engineer switching it off');
+    server._setReleaseResendMs(10000);
   });
 
   await t.test('the traffic log has what went each way', () => {

@@ -536,6 +536,133 @@ async function main() {
     ph8.close(); server.stop(); mock8.close();
   }
 
+  // ── A reconnect to a console that doesn't answer yet keeps the known
+  // mixes, and doesn't switch back on a send the engineer switched off ────
+  {
+    const mockR = net.createServer();
+    let sockR = null; let bytesR = []; let answerNames = true; let answerAssign = true;
+    const showsR = [[P.coordinate(0, 'monoAux', 1), 'IEM 1'], [P.coordinate(0, 'monoAux', 2), 'IEM 2'], [P.coordinate(0, 'stereoAux', 1), 'BAND ST']];
+    const inR = P.coordinate(0, 'input', 1), auxR = P.coordinate(0, 'monoAux', 1);
+    mockR.on('connection', (s) => {
+      sockR = s;
+      const dec = new P.Decoder();
+      let asked = [];
+      s.on('data', (d) => {
+        bytesR = bytesR.concat([...d]); asked = asked.concat([...d]);
+        if (answerNames) for (const ev of dec.push([...d])) {
+          if (ev.type !== 'sysex' || ev.bytes[8] !== 0x01) continue;
+          const hit = showsR.find(([c]) => c.midiCh === ev.bytes[7] && c.ch === ev.bytes[9]);
+          if (hit) s.write(Buffer.from(P.buildNameSet(hit[0].midiCh, hit[0].ch, hit[1])));
+        }
+        if (answerAssign && containsSubsequence(asked, P.buildSendAssignGet(inR.midiCh, inR.ch, auxR))) { asked = []; s.write(Buffer.from(P.buildSendAssignSet(inR.midiCh, inR.ch, auxR, true))); }
+      });
+    });
+    await new Promise((resolve) => mockR.listen(0, '127.0.0.1', resolve));
+    const origCCR = net.createConnection;
+    net.createConnection = (opts, cb) => origCCR.call(net, { ...opts, port: mockR.address().port }, cb);
+    await new Promise((resolve) => { server.start({ serverPort: 18211, deskIp: '127.0.0.1', channels: 4, auxes: 16, dliveBaseChannel: 0, dlivePan: false }); setTimeout(resolve, 300); });
+    const phR = new WebSocket('ws://127.0.0.1:18211'); const seenR = [];
+    phR.on('message', (m) => seenR.push(JSON.parse(m)));
+    await new Promise((resolve) => phR.once('open', resolve));
+    const waitFor = async (check, ms = 6000) => { const end = Date.now() + ms; while (!check() && Date.now() < end) await new Promise((r) => setTimeout(r, 50)); return check(); };
+    const sentR = (b) => containsSubsequence(bytesR, b);
+    assert.ok(await waitFor(() => server.getAuxCount() === 3), 'the console\'s 3 mixes are read');
+
+    // A preset for a mix that isn't a number: nothing sent, nothing crashes
+    bytesR = [];
+    phR.send(JSON.stringify({ type: 'apply-preset', aux: 'x', name: 'p', levels: { 1: 0.5 }, pans: {} }));
+    await new Promise((r) => setTimeout(r, 200));
+    assert.ok(phR.readyState === WebSocket.OPEN && server.getAuxCount() === 3, 'a preset for mix "x" is ignored, and the server carries on');
+    assert.ok(!seenR.some(j => j.type === 'preset-loaded' && Object.keys(j.levels || {}).length), 'with no levels written');
+    console.log('ok - a preset for a mix that isn\'t a number is ignored');
+
+    // Mute and unmute (send off, then on), then the engineer switches it off
+    phR.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 1, muted: true }));
+    assert.ok(await waitFor(() => sentR(P.buildSendAssignSet(inR.midiCh, inR.ch, auxR, false))), 'the mute switches the send off');
+    bytesR = [];
+    phR.send(JSON.stringify({ type: 'set-mute', aux: 1, ch: 1, muted: false }));
+    assert.ok(await waitFor(() => sentR(P.buildSendAssignSet(inR.midiCh, inR.ch, auxR, true))), 'the unmute switches it on');
+    await new Promise((r) => setTimeout(r, 700)); // past the echo window
+    sockR.write(Buffer.from(P.buildSendAssignSet(inR.midiCh, inR.ch, auxR, false))); // the engineer, on the surface
+    await new Promise((r) => setTimeout(r, 200));
+
+    // The link drops; the console comes back but answers nothing for a while
+    answerNames = false; answerAssign = false;
+    const dropped = sockR;
+    bytesR = []; // from the drop on: the reconnect's own resends too
+    dropped.destroy();
+    assert.ok(await waitFor(() => sockR !== dropped, 5000), 'it reconnects');
+    net.createConnection = origCCR;
+    await new Promise((r) => setTimeout(r, 11500)); // both of the layout's probes
+    assert.equal(server.getAuxCount(), 3, 'no answer on the reconnect: the 3 known mixes stay (not Settings\' 16 mono auxes)');
+    const cfgR = seenR.filter(j => j.config).at(-1).config;
+    assert.deepEqual(cfgR.aux.map(a => a.stereo), [false, false, true], 'phones keep the stereo mix where it was');
+    assert.ok(!sentR(P.buildSendAssignSet(inR.midiCh, inR.ch, auxR, true)), 'the send the engineer switched off isn\'t switched back on by the reconnect');
+    console.log('ok - a reconnect with no answer keeps the known mixes, and leaves an engineer\'s send off alone');
+    phR.close(); await server.stop(); mockR.close();
+  }
+
+  // ── A pair linked live: the right half's solo is let go, whichever half's
+  // stereo flag the console reports first ─────────────────────────────────
+  {
+    const DP = require('./dlive-private');
+    const midiNamesL = [[P.coordinate(0, 'monoAux', 1), 'IEM'], [P.coordinate(0, 'stereoAux', 1), 'BAND']];
+    const midiL = net.createServer((s) => {
+      const dec = new P.Decoder();
+      s.on('data', (d) => { for (const ev of dec.push([...d])) { if (ev.type !== 'sysex' || ev.bytes[8] !== 0x01) continue; const hit = midiNamesL.find(([c]) => c.midiCh === ev.bytes[7] && c.ch === ev.bytes[9]); if (hit) s.write(Buffer.from(P.buildNameSet(hit[0].midiCh, hit[0].ch, hit[1]))); } });
+    });
+    await new Promise((r) => midiL.listen(0, '127.0.0.1', r));
+    const privL = { handles: new Map(), sock: null, stereo: new Map() };
+    const frameOf = (src, dst, type, payload = Buffer.alloc(0)) => { const h = Buffer.alloc(19); h[0] = 0xf1; h.writeUInt16BE(1, 1); h.writeUInt32BE(src, 3); h.writeUInt32BE(dst, 7); h.writeUInt32BE(type, 11); h.writeUInt32BE(payload.length, 15); return Buffer.concat([h, payload, Buffer.from([0xf8])]); };
+    const u16 = (v) => { const b = Buffer.alloc(2); b.writeUInt16BE(v); return b; };
+    const flagParam = (ch) => DP.STEREO_PARAM(ch);
+    const privServerL = net.createServer((s) => {
+      privL.sock = s;
+      let buf = Buffer.alloc(0);
+      s.on('data', (d) => {
+        buf = Buffer.concat([buf, d]);
+        for (;;) {
+          if (!buf.length) break;
+          const m = buf[0]; let n = null;
+          if (m === 0xf1 && buf.length >= 19) n = 20 + buf.readUInt32BE(15);
+          else if (m === 0xe0 && buf.length >= 3) n = 4 + buf.readUInt16BE(1);
+          if (n === null || buf.length < n) break;
+          const f = buf.subarray(0, n); buf = buf.subarray(n);
+          if (m !== 0xf1) continue;
+          const src = f.readUInt32BE(3), dst = f.readUInt32BE(7), type = f.readUInt32BE(11), payload = f.subarray(19, n - 1);
+          if (type === 4) {
+            const name = payload.toString('latin1'), mm = /Number (\d\d)/.exec(name);
+            const b = Buffer.alloc(4); if (mm) b.writeUInt32BE(0x2d + Number(mm[1]));
+            s.write(frameOf(1, 0, mm ? 2 : 3, mm ? b : Buffer.alloc(0)));
+          }
+          else if (type === 6) privL.handles.set(payload.readUInt32BE(2), { obj: src, param: payload.readUInt16BE(12) });
+          else if (type === 8) { const h = privL.handles.get(dst); if (h) s.write(frameOf(dst, src, 0x1000, u16(h.param >= 0x12b0 && h.param < 0x12b8 ? 0x0125 : 0))); } // every input mono
+        }
+      });
+    });
+    await new Promise((r) => privServerL.listen(0, '127.0.0.1', r));
+    const origCCL = net.createConnection;
+    net.createConnection = (opts, cb) => origCCL.call(net, { ...opts, port: opts.port === DP.PORT ? privServerL.address().port : midiL.address().port }, cb);
+    server.start({ serverPort: 18212, deskIp: '127.0.0.1', channels: 4, auxes: 2, dliveBaseChannel: 0, dlivePollSendLevels: false });
+    const phL = new WebSocket('ws://127.0.0.1:18212'); const seenL = [];
+    phL.on('message', (m) => seenL.push(JSON.parse(m)));
+    await new Promise((resolve) => phL.once('open', resolve));
+    const waitFor = async (check, ms = 8000) => { const end = Date.now() + ms; while (!check() && Date.now() < end) await new Promise((r) => setTimeout(r, 50)); return check(); };
+    const handleOf = (ch) => [...privL.handles.entries()].find(([, h]) => h.param === flagParam(ch));
+    assert.ok(await waitFor(() => handleOf(1) && handleOf(2)), 'channels 1 and 2\'s stereo flags are subscribed');
+    await new Promise((r) => setTimeout(r, 300));
+    phL.send(JSON.stringify({ type: 'set-solo', aux: 1, ch: 2, soloed: true }));
+    const soloOf2 = () => { const st = seenL.filter(j => j.type === 'mute-solo-state' && j.aux === 1).at(-1); return st ? !!(st.solos || {})[2] : undefined; };
+    assert.ok(await waitFor(() => soloOf2() === true), 'ch 2 is soloed on mix 1');
+    // The engineer links 1+2; the console reports ch 2's flag before ch 1's
+    const push = (ch) => { const [handle, h] = handleOf(ch); privL.sock.write(frameOf(handle, h.obj, 0x1000, u16(0x0025))); };
+    push(2); await new Promise((r) => setTimeout(r, 100)); push(1);
+    assert.ok(await waitFor(() => soloOf2() === false, 3000), 'ch 2, now the pair\'s right half, has its solo let go');
+    console.log('ok - a pair linked live lets go of its right half\'s solo, whichever flag came first');
+    phL.close(); await server.stop(); midiL.close(); privServerL.close();
+    net.createConnection = origCCL;
+  }
+
   // ── Mute by send off, FX returns in mixes, mix EQ, the channel panel, the
   // Console Controller's other strips ─────────────────────────────────────
   {

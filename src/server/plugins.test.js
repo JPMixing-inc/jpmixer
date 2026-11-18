@@ -242,6 +242,9 @@ test('a plugin that keeps crashing stops after five crashes, until it’s starte
     assert.match(p.status.text, /Stopped after crashing 5 times/);
     await new Promise((r) => setTimeout(r, 300));
     assert.equal(plugins.list().find((e) => e.id === 'always-crash').state, 'crashed', 'it isn’t started again by itself');
+    await plugins.apply(); // an ordinary Settings save
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(plugins.list().find((e) => e.id === 'always-crash').state, 'crashed', 'a Settings save doesn’t start another five tries');
     await plugins.apply({ force: true }); // Reload
     assert.notEqual(plugins.list().find((e) => e.id === 'always-crash').state, 'crashed', 'Reload tries again');
   } finally {

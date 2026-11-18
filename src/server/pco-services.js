@@ -85,7 +85,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Sunday). The times are only looked up for a plan within a week of today.
 async function planIsToday(pco, serviceTypeId, plan, creds, now) {
   if (!plan || !plan.date) return false;
-  const date = new Date(plan.date);
+  // sort_date is local wall time labelled Z (see pco-client's localWallTime):
+  // read as UTC, a 2 AM plan fell on the day before
+  const date = new Date(require('./pco-client').localWallTime(plan.date));
   if (Number.isNaN(date.getTime())) return false;
   const today = localDay(now);
   if (localDay(date) === today) return true;

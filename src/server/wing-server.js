@@ -555,7 +555,12 @@ async function checkLiveness(client, first) {
     const ch = i;
     enqueuePrime(async () => {
       const name = wing && await wing.getChannelName(ch);
-      if (typeof name === 'string' && name) nameCache.set(`input:${ch}`, name);
+      if (typeof name !== 'string' || !name || nameCache.get(`input:${ch}`) === name) return;
+      nameCache.set(`input:${ch}`, name);
+      // Phones already open (connected before the WING answered, or during
+      // the read) kept CH N until they reloaded. Settings' label still wins.
+      const label = serverCfg.channelOverrides?.[String(ch)]?.label;
+      broadcastToClients({ type: 'channel-relabeled', channel: ch, label: label || name });
     });
   }
   startPriming();

@@ -1522,6 +1522,9 @@ async function runPcoSync({ serviceTypeId: mainTypeId, mapping: mainMapping, inc
     // came back after performer names were switched off: write nothing,
     // they've been cleared. Sync Now is the person asking, so it goes ahead.
     if (automatic && config.get('pcoUpdateAuxNames') === false) return { ok: false, error: 'Performer names on aux mixes are turned off.' };
+    // ...or Planning Center itself was turned off meanwhile (its names were
+    // cleared on that save; writing them now left them on every phone)
+    if (automatic && config.get('pcoEnabled') === false) return { ok: false, error: 'Planning Center is turned off.' };
 
     const applied = [], unmapped = [], errors = [], records = [];
     // The name each mix had before this sync, read once per mix: with two
@@ -1529,9 +1532,17 @@ async function runPcoSync({ serviceTypeId: mainTypeId, mapping: mainMapping, inc
     // record nothing to go back to. Judged against the mapping this sync
     // uses, which Sync Now can pass before it's saved.
     const beforeByAux = new Map();
+    // Two people on one mix: the last one's name, as before, but written
+    // once (it was renamed to the first and then the second on every sync)
+    const finalLabel = new Map();
+    for (const m of relevant) {
+      const auxNum = m.positionName ? lookupAux(mapping, m.positionName) : undefined;
+      if (auxNum !== undefined) finalLabel.set(String(auxNum), `${m.positionName} - ${m.personName}`);
+    }
     for (const m of relevant) {
       if (!m.positionName) continue;
       const auxNum = lookupAux(mapping, m.positionName);
+      if (auxNum !== undefined && finalLabel.get(String(auxNum)) !== `${m.positionName} - ${m.personName}`) continue;
       if (auxNum === undefined) {
         if (!offMix.has(m.positionName.toLowerCase()) && !unmapped.includes(m.positionName)) unmapped.push(m.positionName);
         continue;

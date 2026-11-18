@@ -62,7 +62,7 @@
     {
       "id": "custom-pages",
       "name": "Custom Pages",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Link-only pages for a youth night or an event: the channel and control group faders that group needs, each with its own highest level, plus mute buttons and Companion buttons if you want them.",
       "author": "JPMixer",
       "permissions": [
@@ -76,8 +76,8 @@
       "files": [
         {
           "path": "index.js",
-          "size": 9951,
-          "sha256": "7723d6c36a7fa91eeccc9ce03c95c767b7022af2e0c65a6f6cff426a89507b70"
+          "size": 10586,
+          "sha256": "a7c1c423833c7e605a9e48cf68060da6c4a56cf3b0b088d988853de68ab5a75c"
         },
         {
           "path": "page/app.js",
@@ -102,7 +102,7 @@
         {
           "path": "plugin.json",
           "size": 762,
-          "sha256": "b4a3a1344bd216100094c78a24ccee147e0c3f2116d07ec699ea3429154044b1"
+          "sha256": "9a4fc399bf8a6e507f64cbc4a375b1fda8ea21b40d57423e1a7adf39afb40717"
         },
         {
           "path": "README.md",
@@ -114,21 +114,21 @@
     {
       "id": "patch",
       "name": "Patch",
-      "version": "1.1.2",
-      "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to. Imports DiGiCo sessions, LV1 sessions and dLive shows.",
+      "version": "1.2.0",
+      "description": "Patch screens for your stage boxes: tap a socket to name it and choose the channel, control group or mix it's patched to. Imports DiGiCo sessions, LV1 sessions and dLive shows. A card on FOH Home finds where anything is patched.",
       "author": "JPMixer",
       "permissions": [
         "page",
         "console",
         "card"
       ],
-      "minJPMixer": "2.0.13",
+      "minJPMixer": "2.0.19",
       "path": "patch",
       "files": [
         {
           "path": "index.js",
-          "size": 11510,
-          "sha256": "92f62f89028f31cbaeb1814a9581e0257e9e4d733a5a186b87d4e4375171df4e"
+          "size": 16500,
+          "sha256": "429c9d6e98077ad981464b8194fa5b4586c018ff733096299be7266406a68e6d"
         },
         {
           "path": "page/app.js",
@@ -172,8 +172,8 @@
         },
         {
           "path": "plugin.json",
-          "size": 863,
-          "sha256": "c8bf436da1a1470573ec8630f68abf3e8cbe5639363c33c3baf1370e44c7c522"
+          "size": 1006,
+          "sha256": "62b7abe24cf590c200780ad1aefce5a16318e3b30d3c5edd5697ec6a009daa66"
         },
         {
           "path": "README.md",
@@ -185,7 +185,7 @@
     {
       "id": "propresenter",
       "name": "ProPresenter",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "description": "A ProPresenter controller on the Home pages: pictures of the current and next slide, next and previous, clear, timers and the stage message, plus cards for every timer, audience messages, and macros and Looks.",
       "author": "JPMixer",
       "permissions": [
@@ -197,13 +197,13 @@
       "files": [
         {
           "path": "index.js",
-          "size": 24165,
-          "sha256": "5b17b0f55b63a85ef33bcd4da10169f39045a110aea1a2595aba9006a9a22d72"
+          "size": 25400,
+          "sha256": "db85edda3a2e85986eddbd91a775bf51ef647b4f3136bed0bf1268ed521c8ba9"
         },
         {
           "path": "plugin.json",
           "size": 1418,
-          "sha256": "8f803e0caebe90384e4003a26e8ecebcf50d6e8a3bef7667c25f350817946a07"
+          "sha256": "80f22e3363d5f92e9670e38a972c8fe7121117b77f2db56d9b43ccb8c3e0e926"
         },
         {
           "path": "README.md",

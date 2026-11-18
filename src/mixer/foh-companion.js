@@ -124,10 +124,18 @@
   }
 
   // ── Presses ──
-  async function press(index, pressed) {
-    try {
-      await fetch('/companion/press', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ role: ROLE, key: index, pressed }) });
-    } catch (_) {}
+  // One key's presses and releases go one after another: a quick tap sent
+  // both at once, and a release that got there first left the key held
+  const chains = new Map(); // key -> the last request for it
+  function press(index, pressed) {
+    const next = (chains.get(index) || Promise.resolve()).then(async () => {
+      try {
+        await fetch('/companion/press', { method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store', body: JSON.stringify({ role: ROLE, key: index, pressed }) });
+      } catch (_) {}
+    });
+    chains.set(index, next);
+    next.then(() => { if (chains.get(index) === next) chains.delete(index); });
+    return next;
   }
   // A mouse presses at once. A finger waits a moment first: on a phone the
   // cards stack and the page scrolls, and a scroll that started on a button

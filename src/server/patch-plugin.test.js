@@ -307,7 +307,7 @@ test('importing a dLive show: the MixRack, the surface, DX168s and the I/O ports
 test('the plugin keeps one patch for every screen: each change on its own, two screens at once, junk, and the lock', async () => {
   plugins._reset();
   fs.cpSync(SOURCE, path.join(userData, 'plugins', 'patch'), { recursive: true });
-  plugins.save({ patch: { enabled: true, settings: { showCard: true } } });
+  plugins.save({ patch: { enabled: true, settings: {} } }); // the FOH card is on unless turned off
   const desk = { type: 'digico', connected: true, channels: [{ number: 1, name: 'Kick' }], groups: [{ number: 1, name: 'Drums' }], mixes: [{ number: 1, name: 'Vocal 1' }] };
   await plugins.start({ allowed: true, console: () => desk });
   try {
@@ -363,6 +363,27 @@ test('the plugin keeps one patch for every screen: each change on its own, two s
     await plugins.callPage('patch', 'change', { ops: [{ op: 'setPort', box: 'b1', key: 'in.3', port: { src: { kind: 'ch', n: 1 } } }] });
     await until(() => card() && card().rows.some((r) => r.label === 'Ch 1 · Kick' && r.value === 'patched twice'));
     await plugins.callPage('patch', 'change', { ops: [{ op: 'setPort', box: 'b1', key: 'in.3', port: null }] });
+    // Find on the card: by name and by number, then Done
+    const cardId = plugins.cards().find((c) => c.id === 'patch').cardId;
+    assert.ok(card().input && card().input.id === 'find', 'the card has a Find box');
+    assert.deepEqual(plugins.pressCard(cardId, 'find', 'kick'), { ok: true });
+    await until(() => card().sections && card().sections[0] && card().sections[0].rows.some((r) => r.label === 'Ch 1 · Kick' && r.value.startsWith('Stage right · Input 1')));
+    plugins.pressCard(cardId, 'find', '1');
+    await until(() => card().sections && card().sections[0].title === 'Find: 1' && card().sections[0].rows.length === 1);
+    assert.deepEqual(plugins.pressCard(cardId, 'clear'), { ok: true });
+    await until(() => card() && !(card().sections || []).length);
+    // Kick needs 48V: warned when the console has it off
+    desk.channels[0].phantom = false;
+    await until(() => card() && card().rows.some((r) => r.label === 'Ch 1 · Kick' && r.value === 'needs 48V · off'));
+    desk.channels[0].phantom = true;
+    await until(() => card() && !card().rows.some((r) => r.value === 'needs 48V · off'));
+
+    // Turned off in Settings: no card
+    plugins.save({ patch: { settings: { fohCard: false } } });
+    await plugins.apply();
+    await until(() => plugins.list().find((p) => p.id === 'patch')?.state === 'running' && !card());
+    plugins.save({ patch: { settings: { fohCard: true } } });
+    await plugins.apply();
 
     // Started again: the same patch
     await plugins.restart('patch');
@@ -383,6 +404,29 @@ test('the plugin keeps one patch for every screen: each change on its own, two s
     await plugins.apply();
     await until(() => plugins.list().find((p) => p.id === 'patch')?.state === 'running');
     assert.deepEqual((await plugins.callPage('patch', 'change', { ops: [{ op: 'removeBox', box: 'b1' }] })).boxes, []);
+  } finally {
+    await plugins.stopAll();
+  }
+});
+
+test('a saved patch that can’t be read is kept, never saved over', async () => {
+  plugins._reset();
+  fs.cpSync(SOURCE, path.join(userData, 'plugins', 'patch'), { recursive: true });
+  const folder = plugins.dataDir('patch');
+  fs.mkdirSync(folder, { recursive: true });
+  for (const f of fs.readdirSync(folder)) fs.rmSync(path.join(folder, f), { recursive: true, force: true });
+  const damaged = '{"rev":4,"boxes":[{"id":"b1","model":"digico-d-rack","name":"Stage left"'; // cut off part-way
+  fs.writeFileSync(path.join(folder, 'patch.json'), damaged);
+  plugins.save({ patch: { enabled: true, settings: {} } });
+  await plugins.start({ allowed: true, console: () => ({ type: 'digico', connected: true, channels: [{ number: 1, name: 'Kick' }], groups: [], mixes: [] }) });
+  try {
+    const until = async (fn) => { for (let i = 0; i < 160; i++) { const v = fn(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } throw new Error('timed out'); };
+    await until(() => plugins.list().find((p) => p.id === 'patch')?.state === 'running');
+    await new Promise((r) => setTimeout(r, 400)); // the start-up recount has run
+    const kept = fs.readdirSync(folder).filter((f) => /^patch\.json\.broken-\d+$/.test(f));
+    assert.equal(kept.length, 1, 'moved aside');
+    assert.equal(fs.readFileSync(path.join(folder, kept[0]), 'utf8'), damaged, 'exactly as it was');
+    assert.equal(fs.existsSync(path.join(folder, 'patch.json')), false, 'the empty patch isn’t saved in its place at start');
   } finally {
     await plugins.stopAll();
   }

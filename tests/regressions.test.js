@@ -169,8 +169,19 @@ test('solo silences channels as their first values arrive and restores them', ()
   assert.equal(h.ports[0].sent.at(-1).args[0], -6);
 });
 
+test('a mix whose EQ is off in Settings can’t have its EQ changed or read from a phone', () => {
+  const h = serverHarness();
+  const before = h.ports[0].sent.length;
+  h.send({ address: '/Aux_Outputs/1/EQ/eq_gain_1', args: [6] });
+  h.send({ type: 'request-aux-eq', aux: 1 });
+  h.send({ address: '/Aux_Outputs/1/EQ/eq_gain_1/?', args: [] });
+  h.clock.advance(1000);
+  assert.equal(h.ports[0].sent.length, before, 'nothing reaches the desk');
+});
+
 test('cold queries are deduplicated and paced alongside EQ and cache priming', () => {
   const h = serverHarness();
+  h.run("serverCfg.auxOverrides = { '1': { eqEnabled: true } }"); // EQ allowed on mix 1 in Settings
   const before = h.ports[0].sent.length;
   // The harness console has 2 channels — 1.8.0 rejects queries for channels
   // that don't exist, so only those two count (each sent twice → queued once)
@@ -326,6 +337,7 @@ test('browser retains failed sync entries, retries, and clears only matching ack
 
 test('existing musician and console controls remain available', () => {
   const h = serverHarness();
+  h.run("serverCfg.auxOverrides = { '1': { eqEnabled: true } }"); // EQ allowed on mix 1 in Settings
   for (const message of [
     { address: level(1), args: [-9] },
     { address: '/Input_Channels/1/Aux_Send/1/send_pan', args: [0.7] },
