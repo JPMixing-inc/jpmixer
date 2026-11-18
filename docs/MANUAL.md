@@ -7,7 +7,7 @@
 
 # JPMixer User Manual
 
-**Version 2.0.19 · November 2026**
+**Version 2.0.20 · November 2026**
 
 Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.
 
@@ -616,7 +616,8 @@ To make a plugin, by hand or with an AI assistant, see the [plugin guide](https:
 - **48V:** mark a mic socket as needing 48V. On DiGiCo and LV1, a socket patched to a channel with 48V on at the desk lights up by itself, and one marked for 48V on a channel that has it off shows in yellow.
 - **Import session** reads a session saved on the console: a DiGiCo `.ses`, an LV1 `.emo` or a dLive show (`.tar.gz`). Every box comes in with each socket named, patched and marked 48V as the session has it. A DiGiCo session doesn’t say which rack is on Dante or MADI, so the preview asks; it draws the console you mixed on, which you can change there too. Playback channels (a computer on Dante, USB or Waves) go on a Dante or network device of their own. A dLive show brings in its inputs and outputs: the MixRack as the CDM it needs (or the one you choose), the surface’s sockets on the back of an S7000, each DX expander as a DX168, and each I/O port’s channels on a network device of their own. Each output gets the mix, direct out or tie line patched to it. The file is read on the page; nothing is sent anywhere. Importing again updates the same boxes and keeps your own notes and 48V marks.
 - **Patch sheet** lists every socket, to print or download as a spreadsheet.
-- In its settings, **Lock the patch** makes it view-only during a service, and **Show a patch summary on FOH Home** adds a card with how much is patched.
+- In its settings, **Lock the patch** makes it view-only during a service.
+- Patch puts a card on **FOH Home** (Patch 1.2.0 and later, on JPMixer 2.0.19 or later). It shows how much is patched, and warns about a channel patched from two sockets, or a socket that needs 48V where the console has it off. Type a channel number, a name or a socket into **Find** to see where it's patched, then tap **Done**. To hide the card, turn off **Show the patch on FOH Home** in Patch's settings.
 
 ### The Custom Pages plugin
 
@@ -656,7 +657,7 @@ Anyone who can open a Home page can use the buttons, as with ProPresenter Contro
 
 <p align="center"><sub>Fig. 11.5 · Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</sub></p>
 
-Settings → Pages lists every page JPMixer serves with its direct link. FOH Home and the Console Controller can each have an **Access code**: other devices enter it once, and changing it signs every device out. JPMixer’s own windows, and pages opened from Settings, never need it. Leave it empty to turn it off. From 2.0.19 the Console Controller’s code also covers the **‹ ›** scene buttons, on the Console Controller and the Monitor Engineer page (which asks for it once).
+Settings → Pages lists every page JPMixer serves with its direct link. FOH Home and the Console Controller can each have an **Access code**: other devices enter it once, and changing it signs every device out. JPMixer’s own windows, and pages opened from Settings, never need it. Leave it empty to turn it off. From 2.0.19 the Console Controller’s code also covers the **‹ ›** scene buttons, on the Console Controller and the Monitor Engineer page (which asks for it once). After updating to 2.0.20, every device enters its code once more.
 
 Up to 2.0.15, a device using the address without a port (the Port 80 helper, which the QR codes use) wasn’t asked for the FOH Home code. From 2.0.16 every other device is asked.
 

@@ -196,7 +196,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 <header class="cover">
   <div class="wrap">
     <div>
-      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.19 · NOVEMBER 2026</span></div>
+      <div class="cover-top"><span class="brand">JPMixer</span><span class="edition">USER MANUAL · VERSION 2.0.20 · NOVEMBER 2026</span></div>
       <h1 style="margin-top:34px">JPMixer User Manual</h1>
       <p class="lede">Setting up and running JPMixer: personal monitor mixes on every musician’s phone, tools for the monitor and FOH engineers, and a Home page for every production station, all driven by your console and your Planning Center schedule.</p>
       <dl class="cover-facts">
@@ -732,7 +732,8 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
     <li><strong>48V:</strong> mark a mic socket as needing 48V. On DiGiCo and LV1, a socket patched to a channel with 48V on at the desk lights up by itself, and one marked for 48V on a channel that has it off shows in yellow.</li>
     <li><strong>Import session</strong> reads a session saved on the console: a DiGiCo <code>.ses</code>, an LV1 <code>.emo</code> or a dLive show (<code>.tar.gz</code>). Every box comes in with each socket named, patched and marked 48V as the session has it. A DiGiCo session doesn’t say which rack is on Dante or MADI, so the preview asks; it draws the console you mixed on, which you can change there too. Playback channels (a computer on Dante, USB or Waves) go on a Dante or network device of their own. A dLive show brings in its inputs and outputs: the MixRack as the CDM it needs (or the one you choose), the surface’s sockets on the back of an S7000, each DX expander as a DX168, and each I/O port’s channels on a network device of their own. Each output gets the mix, direct out or tie line patched to it. The file is read on the page; nothing is sent anywhere. Importing again updates the same boxes and keeps your own notes and 48V marks.</li>
     <li><strong>Patch sheet</strong> lists every socket, to print or download as a spreadsheet.</li>
-    <li>In its settings, <span class="ui">Lock the patch</span> makes it view-only during a service, and <span class="ui">Show a patch summary on FOH Home</span> adds a card with how much is patched.</li>
+    <li>In its settings, <span class="ui">Lock the patch</span> makes it view-only during a service.</li>
+    <li>Patch puts a card on <span class="ui">FOH Home</span> (Patch 1.2.0 and later, on JPMixer 2.0.19 or later). It shows how much is patched, and warns about a channel patched from two sockets, or a socket that needs 48V where the console has it off. Type a channel number, a name or a socket into <span class="ui">Find</span> to see where it's patched, then tap <span class="ui">Done</span>. To hide the card, turn off <span class="ui">Show the patch on FOH Home</span> in Patch's settings.</li>
   </ul>
 
   <h3>The Custom Pages plugin</h3>
@@ -768,7 +769,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 
   <h3>The Pages tab and access codes</h3>
   <figure class="shot"><img src="img/settings-pages.png" alt="The Pages tab: Home page picker, FOH Home with access code, and the other Home pages"><figcaption><b>Fig. 11.5</b>Settings → Pages. Each page has an Open button and its direct link; Change jumps to its role in Planning Center.</figcaption></figure>
-  <p>Settings → Pages lists every page JPMixer serves with its direct link. FOH Home and the Console Controller can each have an <strong>Access code</strong>: other devices enter it once, and changing it signs every device out. JPMixer’s own windows, and pages opened from Settings, never need it. Leave it empty to turn it off. From 2.0.19 the Console Controller’s code also covers the <span class="ui">‹ ›</span> scene buttons, on the Console Controller and the Monitor Engineer page (which asks for it once).</p>
+  <p>Settings → Pages lists every page JPMixer serves with its direct link. FOH Home and the Console Controller can each have an <strong>Access code</strong>: other devices enter it once, and changing it signs every device out. JPMixer’s own windows, and pages opened from Settings, never need it. Leave it empty to turn it off. From 2.0.19 the Console Controller’s code also covers the <span class="ui">‹ ›</span> scene buttons, on the Console Controller and the Monitor Engineer page (which asks for it once). After updating to 2.0.20, every device enters its code once more.</p>
   <p>Up to 2.0.15, a device using the address without a port (the Port 80 helper, which the QR codes use) wasn’t asked for the FOH Home code. From 2.0.16 every other device is asked.</p>
   <div class="callout warn"><b>Important</b><p>Only FOH Home and the Console Controller can have a code. Anyone on the same network can open the other Home pages, chat and press their Companion buttons, so keep production Wi-Fi separate from guest Wi-Fi.</p></div>
 </section>
@@ -996,7 +997,7 @@ footer.end { border-top: 1px solid var(--rule); padding-top: 22px; color: var(--
 </section>
 
       <footer class="end">
-        <p style="max-width:none">JPMixer User Manual · Version 2.0.19 · November 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
+        <p style="max-width:none">JPMixer User Manual · Version 2.0.20 · November 2026. Screens show JPMixer’s demo console and a fictional schedule.</p>
         <p style="max-width:none;font-size:12px">JPMixer is not affiliated with DiGiCo, Allen &amp; Heath, KLANG:technologies, Behringer / MUSIC Tribe, Waves Audio, Bitfocus or Planning Center. All trademarks belong to their owners.</p>
       </footer>
     </div>

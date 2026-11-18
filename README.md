@@ -81,7 +81,19 @@
 
 <a id="new-in-2-0-15"></a>
 
-## 🆕 New in 2.0.19
+## 🆕 New in 2.0.20
+
+| | |
+|---|---|
+| 🔌 **Patch on FOH Home** | Patch 1.2.0 puts a card on FOH Home: how much is patched, a warning for a channel patched twice or a socket that needs 48V the console has off, and a Find box that shows where a channel, name or socket is patched. |
+| 📅 **Planning Center picks the right plan** | Extra services in the same service type (a Thanksgiving or Christmas Eve plan) now stay up for 90 minutes after they end if they run long, rehearsal and crew times no longer keep an old plan up, and separate same-day plans switch at the right time in every US time zone. |
+| 🔒 **Stronger access codes** | Access codes can no longer be guessed around the limit on tries. Every device enters its FOH Home or Console Controller code once more after updating. |
+| 🛡️ **A review of the whole app** | Fixes for mutes after a session change (DiGiCo), a reconnect (dLive, M32) and a stereo link (dLive), channel names on KLANG and WING, phone EQ with two fingers, Companion buttons that stuck, ProPresenter noticing a lost connection in 3 seconds, and a damaged Patch or Custom Pages file never being saved over. |
+
+<details>
+<summary><b>Earlier releases: 2.0.19, 2.0.18, 2.0.17, 2.0.16, 2.0.15, 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
+
+### 2.0.19
 
 | | |
 |---|---|
@@ -90,9 +102,6 @@
 | ⏱️ **Running timers at the top** | A ProPresenter timer that's running shows under the header of every Home page and beside the clock on the Green Room screen. |
 | 🧩 **Plugin cards on every Home page** | Plugins can now put several cards on any Home page, with sections, pictures, buttons and a text box. Plugin settings are in backups. |
 | 🛡️ **A review of every console and plugin** | Mutes and solos that hold through a dropped connection on dLive, LV1 and M32, the ‹ › scene buttons behind the Console Controller code on every console, and fixes for Shure wireless and the Monitor and Console pages' reconnect. |
-
-<details>
-<summary><b>Earlier releases: 2.0.18, 2.0.17, 2.0.16, 2.0.15, 2.0.14, 2.0.13, 2.0.12, 2.0.11, 2.0.10, 2.0.9, 2.0.8, 2.0.7, 2.0.5 and 2.0</b></summary>
 
 ### 2.0.18
 
